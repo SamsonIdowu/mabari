@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useQuery } from '@tanstack/react-query';
 
 async function fetchHealth(): Promise<{ ok: boolean }> {

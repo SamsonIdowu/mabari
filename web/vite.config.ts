@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
@@ -8,8 +9,8 @@ export default defineConfig({
     port: 4317,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:4318',
-      '/ws': { target: 'ws://127.0.0.1:4318', ws: true },
+      '/api': 'http://127.0.0.1:4327',
+      '/ws': { target: 'ws://127.0.0.1:4327', ws: true },
     },
   },
 });

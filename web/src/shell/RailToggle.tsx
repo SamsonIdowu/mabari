@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { Icon } from './Icon.tsx';
 import { useRailStore } from './railStore.ts';
 

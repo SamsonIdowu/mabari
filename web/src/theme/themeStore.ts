@@ -1,4 +1,5 @@
-import type { ThemeName } from '@mabari/shared/tokens';
+// SPDX-License-Identifier: Apache-2.0
+import type { ThemeName } from '../shared/tokens.ts';
 import { create } from 'zustand';
 import { resolveInitialTheme } from './resolveInitialTheme.ts';
 

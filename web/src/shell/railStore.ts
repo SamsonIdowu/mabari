@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 
 const STORAGE_KEY = 'mabari-rail';

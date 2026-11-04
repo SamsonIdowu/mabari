@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Route } from '../routes.ts';
 
 /** Headings and descriptions copied from the prototype. Stage 2 replaces these bodies. */

@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
-import { themes } from '@mabari/shared/tokens';
+import { themes } from '../src/shared/tokens.ts';
 
 const NAV: [string, string][] = [
   ['Office', 'Office'],
@@ -15,7 +16,8 @@ const NAV: [string, string][] = [
 
 function cssVar(page: Page, name: string) {
   return page.evaluate(
-    (variable) => getComputedStyle(document.documentElement).getPropertyValue(variable).trim(),
+    (variable) =>
+      getComputedStyle(document.documentElement).getPropertyValue(variable).trim().toLowerCase(),
     name,
   );
 }
@@ -24,7 +26,7 @@ test('starts on the welcome page in the dark theme', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('h1')).toHaveText('See your AI agents at work, in a little office.');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  expect(await cssVar(page, '--bg')).toBe(themes.dark.bg);
+  expect(await cssVar(page, '--bg')).toBe(themes.dark.bg.toLowerCase());
 });
 
 test('every nav link routes and marks itself current', async ({ page }) => {
@@ -41,11 +43,11 @@ test('the theme button switches themes and remembers the choice', async ({ page 
   await page.goto('/');
   await page.getByRole('button', { name: 'Light theme' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  expect(await cssVar(page, '--bg')).toBe(themes.light.bg);
+  expect(await cssVar(page, '--bg')).toBe(themes.light.bg.toLowerCase());
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Dark theme' })).toBeVisible();
-  expect(await cssVar(page, '--bg')).toBe(themes.light.bg);
+  expect(await cssVar(page, '--bg')).toBe(themes.light.bg.toLowerCase());
 
   await page.getByRole('button', { name: 'Dark theme' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

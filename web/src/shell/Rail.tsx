@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Route } from '../routes.ts';
 import { BrandMark } from './BrandMark.tsx';
 import { Icon } from './Icon.tsx';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useThemeStore } from '../theme/themeStore.ts';
 import { Icon } from './Icon.tsx';
 

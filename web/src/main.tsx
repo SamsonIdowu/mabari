@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import '@fontsource/nunito/500.css';
 import '@fontsource/nunito/600.css';
 import '@fontsource/nunito/700.css';

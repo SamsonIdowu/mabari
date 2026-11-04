@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
@@ -14,10 +15,20 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:4317',
-    reuseExistingServer: true,
-    timeout: 30_000,
-  },
+  // Started directly, not through `make dev`, because air detaches its child process.
+  webServer: [
+    {
+      command: 'go run ./cmd/mabari serve --port 4327',
+      cwd: '..',
+      url: 'http://127.0.0.1:4327/api/health',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: 'pnpm dev',
+      url: 'http://localhost:4317',
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+  ],
 });

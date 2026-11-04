@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Design tokens copied from design/mabari-prototype.html.
- * apps/web/src/styles/tokens.css is generated from this file: run `pnpm tokens` after editing.
+ * web/src/styles/tokens.css is generated from this file: run `pnpm tokens` after editing.
  */
 
 const dark = {
@@ -163,7 +164,7 @@ export function themeOverrides(name: ThemeName): Partial<ThemeTokens> {
 }
 
 const HEADER =
-  '/* Generated from packages/shared/tokens.ts by `pnpm tokens`. Do not edit by hand. */';
+  '/* Generated from web/src/shared/tokens.ts by `pnpm tokens`. Do not edit by hand. */';
 
 /** Keeps the prototype's three blocks: dark root, system light when unset, explicit light. */
 export function renderTokensCss(): string {

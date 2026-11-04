@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
+	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )

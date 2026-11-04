@@ -36,6 +36,50 @@ func TestAssignmentsKeepTheNameAndHideTheValue(t *testing.T) {
 	}
 }
 
+func TestHarderShapes(t *testing.T) {
+	tests := map[string]string{
+		`password="two words here"`:             `password="[redacted]"`,
+		`{"token": "a\"b c d"}`:                 `{"token": "[redacted]"}`,
+		"mysql --password hunter22 -h db":       "mysql --password [redacted] -h db",
+		"tool --api-key 'abc def'":              "tool --api-key '[redacted]'",
+		"PASSPHRASE=hunter22":                   "PASSPHRASE=[redacted]",
+		"PWD=hunter22":                          "PWD=[redacted]",
+		"private_key: abcd1234":                 "private_key: [redacted]",
+		"Cookie: session=abc; other=def":        "Cookie: [redacted]",
+		"set-cookie: session=abc; Path=/":       "set-cookie: [redacted]",
+		"Authorization: abcdefgh":               "Authorization: [redacted]",
+		"https://me:p@ss/word@db.local/app":     "https://me:[redacted]@db.local/app",
+		"https://:hunter2@db.local/app":         "https://:[redacted]@db.local/app",
+		"https://abcdefghijklmnop@github.com/x": "https://[redacted]@github.com/x",
+	}
+	for text, want := range tests {
+		if got := Text(text); got != want {
+			t.Errorf("%q: got %q", text, got)
+		}
+	}
+}
+
+func TestPGPPrivateKeys(t *testing.T) {
+	got := Text("-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----")
+	if strings.Contains(got, "abc") {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestSecretKeysInJSON(t *testing.T) {
+	got, _ := Value(map[string]any{
+		"pwd": "x", "passphrase": "x", "cookie": "x", "tokens_in": 1200.0, "credentials": map[string]any{"a": "b"},
+	}).(map[string]any)
+	for _, key := range []string{"pwd", "passphrase", "cookie", "credentials"} {
+		if got[key] != Mask {
+			t.Errorf("%s = %v", key, got[key])
+		}
+	}
+	if got["tokens_in"] != 1200.0 {
+		t.Errorf("a count is not a secret: %v", got["tokens_in"])
+	}
+}
+
 func TestPrivateKeys(t *testing.T) {
 	got := Text("a\n-----BEGIN RSA PRIVATE KEY-----\nabc\ndef\n-----END RSA PRIVATE KEY-----\nb")
 	if strings.Contains(got, "abc") || !strings.HasPrefix(got, "a\n") || !strings.HasSuffix(got, "\nb") {

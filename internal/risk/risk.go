@@ -8,6 +8,9 @@
 package risk
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -44,20 +47,64 @@ type Verdict struct {
 	Reason string
 }
 
-// lowRisk lists the commands that may pass low risk auto approve. A nil list allows any
-// arguments, and otherwise the first word after the command must be on the list.
-var lowRisk = map[string][]string{
-	"cat": nil, "cd": nil, "echo": nil, "find": nil, "grep": nil, "head": nil, "ls": nil,
-	"pwd": nil, "rg": nil, "sed": nil, "tail": nil, "true": nil, "wc": nil,
-	"bun":    {"add", "ci", "i", "install", "lint", "run", "test", "typecheck"},
-	"cargo":  {"build", "check", "clippy", "fmt", "test"},
-	"git":    {"add", "commit", "diff", "log", "show", "status"},
-	"go":     {"build", "fmt", "mod", "test", "vet"},
-	"make":   {"build", "lint", "test", "typecheck"},
-	"npm":    {"add", "ci", "i", "install", "lint", "run", "test", "typecheck"},
-	"pnpm":   {"add", "i", "install", "lint", "run", "test", "typecheck"},
-	"pytest": nil,
-	"yarn":   {"add", "install", "lint", "run", "test", "typecheck"},
+// commandRule says how a command may be used and pass low risk auto approve. Everything is an
+// allowlist, because these tools have flags that run code: an unknown flag makes a command risky.
+type commandRule struct {
+	// first lists the allowed subcommands. Nil means the command takes none.
+	first []string
+	// flags lists the allowed flags, by subcommand where there are subcommands. A trailing = means
+	// the flag takes a value, as in -run=Total.
+	flags map[string][]string
+	// noArguments means only flags may follow.
+	noArguments bool
+	// numbers allows counts such as -5.
+	numbers bool
+}
+
+const anySubcommand = ""
+
+var packageManager = commandRule{
+	first: []string{"ci", "i", "install", "lint", "run", "test", "typecheck"},
+}
+
+var lowRisk = map[string]commandRule{
+	"cat":  {},
+	"cd":   {},
+	"echo": {},
+	"find": {flags: map[string][]string{anySubcommand: {"-iname", "-maxdepth", "-mindepth", "-name", "-path", "-type"}}},
+	"grep": {flags: map[string][]string{anySubcommand: {"-E", "-F", "-c", "-i", "-l", "-n", "-v", "-w"}}},
+	"head": {numbers: true, flags: map[string][]string{anySubcommand: {"-n"}}},
+	"ls":   {flags: map[string][]string{anySubcommand: {"-1", "-a", "-al", "-l", "-la", "-lah", "-lh"}}},
+	"pwd":  {noArguments: true},
+	"tail": {numbers: true, flags: map[string][]string{anySubcommand: {"-n"}}},
+	"true": {noArguments: true},
+	"wc":   {flags: map[string][]string{anySubcommand: {"-c", "-l", "-w"}}},
+	"bun":  packageManager,
+	"npm":  packageManager,
+	"pnpm": packageManager,
+	"yarn": packageManager,
+	"cargo": {
+		first: []string{"build", "check", "clippy", "fmt", "test"},
+		flags: map[string][]string{anySubcommand: {"--all", "--all-features", "--all-targets", "--release", "--workspace"}},
+	},
+	"git": {
+		numbers: true,
+		first:   []string{"add", "commit", "diff", "log", "show", "status"},
+		flags: map[string][]string{
+			"add":    {"--all", "-A", "-u"},
+			"commit": {"-m"},
+			"diff":   {"--cached", "--name-only", "--stat", "--staged"},
+			"log":    {"--oneline", "--stat", "-n"},
+			"show":   {"--name-only", "--stat"},
+			"status": {"--branch", "--porcelain", "--short", "-b", "-s"},
+		},
+	},
+	"go": {
+		first: []string{"build", "fmt", "mod", "test", "vet"},
+		flags: map[string][]string{"test": {"-count=", "-cover", "-race", "-run=", "-short", "-timeout=", "-v"}},
+	},
+	"make":   {first: []string{"build", "lint", "test", "typecheck"}, noArguments: true},
+	"pytest": {flags: map[string][]string{anySubcommand: {"-k", "-q", "-v", "-x"}}},
 }
 
 // lowRiskScripts are the only package scripts `npm run` and friends may start.
@@ -66,21 +113,19 @@ var lowRiskScripts = []string{"build", "format", "lint", "test", "typecheck"}
 // lowRiskGoMod are the only `go mod` commands allowed.
 var lowRiskGoMod = []string{"download", "tidy", "verify"}
 
-// riskyFlags turn an allowed command into something else.
-var riskyFlags = map[string][]string{
-	"bun":  {"-g", "--global"},
-	"find": {"-delete", "-exec", "-execdir", "-fprint", "-ok", "-okdir"},
-	"git":  {"--amend", "--force", "-f", "--no-verify", "-n", "-c", "-C"},
-	"npm":  {"-g", "--global", "--prefix"},
-	"pnpm": {"-g", "--global", "-C", "--dir"},
-	"sed":  {"-i", "--in-place"},
-	"yarn": {"global", "--cwd"},
-}
+// sedPrint is the one form of sed allowed: printing lines. sed scripts can run commands and write
+// files, so nothing else is safe to pass.
+var sedPrint = regexp.MustCompile(`^[0-9]+(,[0-9]+)?p$`)
 
-// sensitive paths always need a person, even inside the working folder.
+// number is a count such as -5.
+var number = regexp.MustCompile(`^-[0-9]+$`)
+
+// sensitive paths always need a person, even inside the working folder. Workflow and editor
+// folders count, because what is in them runs without anyone asking.
 var sensitive = regexp.MustCompile(
-	`(?i)(^|/)(\.env[^/]*|\.git|\.ssh|\.aws|\.gnupg|\.claude|\.codex|\.npmrc|\.netrc|\.kube|` +
-		`credentials[^/]*|secrets?[^/]*|id_rsa[^/]*|id_ed25519[^/]*|[^/]*\.pem|[^/]*\.key)(/|$)`)
+	`(?i)(^|/)(\.env[^/]*|\.git|\.github|\.husky|\.vscode|\.ssh|\.aws|\.gnupg|\.claude|\.codex|` +
+		`\.npmrc|\.netrc|\.kube|credentials[^/]*|secrets?[^/]*|id_rsa[^/]*|id_ed25519[^/]*|` +
+		`[^/]*\.pem|[^/]*\.key)(/|$)`)
 
 // reasons explain well-known dangerous words. They only choose the wording: anything not on
 // the low risk list is risky whether or not it appears here.
@@ -116,42 +161,89 @@ func Classify(action Action) Verdict {
 func low(reason string) Verdict   { return Verdict{Level: models.RiskLow, Reason: reason} }
 func risky(reason string) Verdict { return Verdict{Level: models.RiskHigh, Reason: reason} }
 
-// inside reports whether path stays in folder, following symbolic links where they exist.
-func inside(path, folder string) bool {
-	if path == "" || folder == "" {
-		return false
+// maxLinks stops a loop of symbolic links.
+const maxLinks = 32
+
+// resolved finds where a path really lands. It walks one part at a time, so a link is followed
+// even when its target doesn't exist. It reports false for anything it can't be sure of.
+func resolved(path string, links *int) (string, bool) {
+	volume := filepath.VolumeName(path)
+	current := volume + string(filepath.Separator)
+	parts := strings.Split(filepath.ToSlash(path[len(volume):]), "/")
+	for index, part := range parts {
+		if part == "" {
+			continue
+		}
+		next := filepath.Join(current, part)
+		info, err := os.Lstat(next)
+		if errors.Is(err, fs.ErrNotExist) {
+			return filepath.Join(append([]string{current}, parts[index:]...)...), true
+		}
+		if err != nil {
+			return "", false
+		}
+		if info.Mode()&fs.ModeSymlink == 0 {
+			current = next
+			continue
+		}
+		if *links++; *links > maxLinks {
+			return "", false
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			return "", false
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(current, target)
+		}
+		through, ok := resolved(target, links)
+		if !ok {
+			return "", false
+		}
+		current = through
+	}
+	return current, true
+}
+
+// relativeTo returns where path really lands inside folder. It reports false if that is outside
+// the folder or can't be worked out. A path with .. in it is never accepted, because what .. means
+// depends on links in the part before it.
+func relativeTo(path, folder string) (string, bool) {
+	if path == "" || !filepath.IsAbs(folder) {
+		return "", false
+	}
+	if slices.Contains(strings.Split(filepath.ToSlash(path), "/"), "..") {
+		return "", false
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(folder, path)
 	}
-	root := resolve(filepath.Clean(folder))
-	target := resolve(filepath.Clean(path))
-	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
-}
-
-// resolve follows links in the part of the path that exists, so a new file in a linked folder
-// is still judged by where it would really land.
-func resolve(path string) string {
-	rest := ""
-	for current := path; ; {
-		if real, err := filepath.EvalSymlinks(current); err == nil {
-			return filepath.Join(real, rest)
-		}
-		parent := filepath.Dir(current)
-		if parent == current {
-			return path
-		}
-		rest = filepath.Join(filepath.Base(current), rest)
-		current = parent
+	var links int
+	root, ok := resolved(filepath.Clean(folder), &links)
+	if !ok {
+		return "", false
 	}
+	target, ok := resolved(path, &links)
+	if !ok {
+		return "", false
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.ToSlash(relative), true
 }
 
 func classifyPath(action Action, safe string) Verdict {
 	if sensitive.MatchString(filepath.ToSlash(action.Path)) {
 		return risky("This file may hold secrets or settings.")
 	}
-	if !inside(action.Path, action.Folder) {
+	relative, ok := relativeTo(action.Path, action.Folder)
+	if !ok {
 		return risky("This is outside the agent's working folder.")
+	}
+	if sensitive.MatchString(relative) {
+		return risky("This file may hold secrets or settings.")
 	}
 	return low(safe)
 }
@@ -170,8 +262,9 @@ func classifyCommand(action Action) Verdict {
 	if !ok || len(commands) == 0 {
 		return risky(orShellReason(action.Command))
 	}
+	cwd := action.Folder
 	for _, words := range commands {
-		if !allowed(words, action.Folder) {
+		if !allowed(words, &cwd) {
 			return risky(explain(action.Command))
 		}
 	}
@@ -185,54 +278,96 @@ func orShellReason(command string) string {
 	return "This command is too complex for Mabari to be sure about."
 }
 
-func allowed(words []string, folder string) bool {
+// allowed checks one command. It updates cwd when the command is cd, so that later commands in a
+// chain are judged from where they will really run.
+func allowed(words []string, cwd *string) bool {
 	name, args := words[0], words[1:]
-	allowedFirst, known := lowRisk[name]
+	switch name {
+	case "cd":
+		return moveTo(args, cwd)
+	case "sed":
+		return len(args) == 3 && args[0] == "-n" && sedPrint.MatchString(args[1]) && safePath(args[2], *cwd)
+	}
+	rule, known := lowRisk[name]
 	if !known {
 		return false
 	}
-	for _, arg := range args {
-		if !safeArgument(arg, folder) || slices.Contains(riskyFlags[name], arg) {
+	subcommand := anySubcommand
+	if rule.first != nil {
+		if len(args) == 0 || !slices.Contains(rule.first, args[0]) {
 			return false
 		}
-		// A short flag group such as -delete or -rf must not slip past the exact match.
-		if name == "git" && strings.HasPrefix(arg, "--force") {
-			return false
-		}
+		subcommand, args = args[0], args[1:]
 	}
-	if allowedFirst != nil {
-		if len(args) == 0 || !slices.Contains(allowedFirst, args[0]) {
-			return false
-		}
+	if rule.noArguments && len(args) > 0 {
+		return false
 	}
 	switch {
-	case name == "cd":
-		return len(args) == 1
-	case name == "go" && args[0] == "mod":
-		return len(args) == 2 && slices.Contains(lowRiskGoMod, args[1])
-	case len(args) > 0 && args[0] == "run" && name != "go" && name != "cargo":
-		return len(args) >= 2 && slices.Contains(lowRiskScripts, args[1])
+	case name == "go" && subcommand == "mod":
+		return len(args) == 1 && slices.Contains(lowRiskGoMod, args[0])
+	case subcommand == "run" && name != "go" && name != "cargo":
+		return len(args) == 1 && slices.Contains(lowRiskScripts, args[0])
+	case isPackageManager(name) && slices.Contains([]string{"i", "install"}, subcommand):
+		// Installing from the lockfile is routine. A named package runs a stranger's install scripts.
+		return len(args) == 0
+	case name == "git" && subcommand == "commit":
+		return len(args) == 2 && args[0] == "-m"
+	}
+	return argumentsAllowed(rule, subcommand, args, *cwd)
+}
+
+func isPackageManager(name string) bool {
+	return slices.Contains([]string{"bun", "npm", "pnpm", "yarn"}, name)
+}
+
+func moveTo(args []string, cwd *string) bool {
+	if len(args) != 1 {
+		return false
+	}
+	relative, ok := relativeTo(args[0], *cwd)
+	if !ok || sensitive.MatchString(relative) {
+		return false
+	}
+	*cwd = filepath.Join(*cwd, args[0])
+	return true
+}
+
+func argumentsAllowed(rule commandRule, subcommand string, args []string, cwd string) bool {
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			if !safePath(arg, cwd) {
+				return false
+			}
+			continue
+		}
+		if !flagAllowed(rule, subcommand, arg) {
+			return false
+		}
 	}
 	return true
 }
 
-func safeArgument(arg, folder string) bool {
-	path := arg
-	if index := strings.IndexByte(arg, '='); strings.HasPrefix(arg, "-") && index > 0 {
-		path = arg[index+1:]
+func flagAllowed(rule commandRule, subcommand, flag string) bool {
+	if rule.numbers && number.MatchString(flag) {
+		return true
 	}
-	if sensitive.MatchString(filepath.ToSlash(path)) {
-		return false
+	flags := rule.flags[subcommand]
+	if index := strings.IndexByte(flag, '='); index > 0 {
+		return slices.Contains(flags, flag[:index+1])
 	}
-	if filepath.IsAbs(path) {
-		return inside(path, folder)
-	}
-	for part := range strings.SplitSeq(filepath.ToSlash(path), "/") {
-		if part == ".." {
+	return slices.Contains(flags, flag)
+}
+
+// safePath checks a word that may be a path. It also looks after a colon, because git reads
+// HEAD:.env as a file.
+func safePath(arg, cwd string) bool {
+	for part := range strings.SplitSeq(arg, ":") {
+		if sensitive.MatchString(filepath.ToSlash(part)) {
 			return false
 		}
 	}
-	return true
+	relative, ok := relativeTo(arg, cwd)
+	return ok && !sensitive.MatchString(relative)
 }
 
 // split breaks a command at && into words. It reports false for anything the shell would treat

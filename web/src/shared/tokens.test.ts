@@ -13,7 +13,7 @@ import {
 
 describe('tokens', () => {
   it('matches spot values from the prototype', () => {
-    expect(themes.dark.bg).toBe('#0E0D12');
+    expect(themes.dark.bg).toBe('#000000');
     expect(themes.dark.accent).toBe('#A99CFF');
     expect(themes.light.bg).toBe('#F4F3F7');
     expect(themes.light.accent).toBe('#5B4BD6');

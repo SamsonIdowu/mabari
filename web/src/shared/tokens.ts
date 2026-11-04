@@ -5,18 +5,18 @@
  */
 
 const dark = {
-  bg: '#0E0D12',
-  surface: '#16151C',
-  surface2: '#1D1C25',
-  surface3: '#25232F',
-  line: '#2A2833',
-  line2: '#3A3746',
+  bg: '#000000',
+  surface: '#0A0A0C',
+  surface2: '#141417',
+  surface3: '#1C1C20',
+  line: '#202024',
+  line2: '#303036',
   fg: '#ECEAF2',
   fg2: '#C7C4D2',
   muted: '#A19EAE',
   accent: '#A99CFF',
   'accent-fg': '#14112A',
-  'accent-soft': '#25213F',
+  'accent-soft': '#1E1A38',
   query: '#7CCFE0',
   'query-soft': '#14272C',
   claude: '#E8894A',
@@ -31,8 +31,8 @@ const dark = {
   'amber-soft': '#3A2B10',
   ok: '#5CCB92',
   'ok-soft': '#12291D',
-  'code-bg': '#0A0A0E',
-  shadow: '0 16px 40px rgba(0,0,0,.55)',
+  'code-bg': '#050506',
+  shadow: '0 16px 40px rgba(0,0,0,.8),0 0 0 1px #24242A',
 };
 
 export type ThemeTokens = typeof dark;

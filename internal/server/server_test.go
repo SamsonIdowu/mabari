@@ -207,7 +207,9 @@ func TestProjectRoutes(t *testing.T) {
 	if updated.Instructions != "Be kind" || updated.Name != "Docs" {
 		t.Errorf("updated = %+v", updated)
 	}
-	if listed := decode[[]models.Project](t, office.do(t, http.MethodGet, "/api/projects", "")); len(listed) != 1 {
+	// A fresh install starts with My first project.
+	if listed := decode[[]models.Project](t, office.do(t, http.MethodGet, "/api/projects", "")); len(listed) != 2 ||
+		listed[0].Name != "My first project" {
 		t.Errorf("listed = %+v", listed)
 	}
 	if response := office.do(t, http.MethodDelete, path, ""); response.Code != http.StatusNoContent {
@@ -528,6 +530,8 @@ func TestActivitySearch(t *testing.T) {
 func TestWipeNeedsConfirmationAndReturnsToFirstRun(t *testing.T) {
 	office := newOffice(t)
 	office.demo(t)
+	office.do(t, http.MethodPatch, "/api/settings", `{"retentionDays":7}`)
+	office.do(t, http.MethodPost, "/api/auto-approve", `{"on":true,"scope":"all","acknowledged":true}`)
 	if response := office.do(t, http.MethodPost, "/api/wipe", `{}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("unconfirmed wipe = %d", response.Code)
 	}
@@ -535,9 +539,16 @@ func TestWipeNeedsConfirmationAndReturnsToFirstRun(t *testing.T) {
 		t.Fatalf("wipe = %d", response.Code)
 	}
 	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
-	if !snapshot.FirstRun || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 0 ||
-		len(snapshot.Log) != 0 || len(snapshot.Messages) != 0 {
+	if !snapshot.FirstRun || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 1 ||
+		snapshot.Projects[0].ID != "general" || len(snapshot.Log) != 0 || len(snapshot.Messages) != 0 {
 		t.Errorf("after wipe: %+v", snapshot)
+	}
+	// Preferences stay, as in the prototype, but auto approve is off.
+	if snapshot.Settings.RetentionDays != 7 || snapshot.Settings.AutoApprove.On {
+		t.Errorf("settings after wipe = %+v", snapshot.Settings)
+	}
+	if pending := decode[[]models.Approval](t, office.do(t, http.MethodGet, "/api/approvals", "")); len(pending) != 0 {
+		t.Errorf("approvals after wipe = %+v", pending)
 	}
 	for _, account := range snapshot.Accounts {
 		if account.Status != models.AccountOff {

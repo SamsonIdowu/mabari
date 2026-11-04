@@ -68,6 +68,11 @@ var MessageColors = map[MessageKind]string{
 	MessageBroadcast: "#C8B6FF",
 }
 
+// FirstProject is the empty project a fresh install and a wipe start with.
+func FirstProject() Project {
+	return Project{ID: "general", Name: "My first project", Color: "#4FB3FF", Files: []string{}}
+}
+
 // Clone copies the settings with their own Defaults map, so a copy can change without touching the
 // original.
 func (s Settings) Clone() Settings {

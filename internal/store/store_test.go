@@ -199,20 +199,56 @@ func TestSettingsFillInDefaults(t *testing.T) {
 	}
 }
 
+// Every table holds a row before the wipe and none after it, so a table added later without
+// joining Wipe fails this test.
 func TestWipeEmptiesEverything(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
 	must(t, s.SaveProject(ctx, models.Project{ID: "p"}))
 	must(t, s.SaveAccount(ctx, models.Account{ID: "a", Kind: models.AccountHub}))
+	agent := models.LiveAgent{}
+	agent.ID, agent.Name = "agent", "Mori"
+	must(t, s.SaveAgent(ctx, agent))
+	must(t, s.AddEvent(ctx, models.Event{ID: "mori-1", Agent: "agent", Tool: "read"}))
+	must(t, s.AddMessage(ctx, models.Message{ID: "m", From: "agent", To: []string{"agent"}}))
+	must(t, s.SaveInstruction(ctx, models.Instruction{ID: "i", Agent: &agent.ID, Text: "hi"}))
+	must(t, s.SaveApproval(ctx, models.Approval{ID: "ap", Agent: "agent"}))
+	must(t, s.SaveLog(ctx, models.LogEntry{ID: "l", Agent: "Mori"}))
+	must(t, s.SaveSettings(ctx, models.DefaultSettings()))
 	must(t, s.SetMeta(ctx, "k", "v"))
+
+	counts := func() map[string]int {
+		rows, err := s.db.QueryContext(ctx,
+			"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+		must(t, err)
+		var tables []string
+		for rows.Next() {
+			var name string
+			must(t, rows.Scan(&name))
+			tables = append(tables, name)
+		}
+		must(t, rows.Close())
+		found := map[string]int{}
+		for _, table := range tables {
+			var count int
+			// Table names come from sqlite_master, not from input.
+			must(t, s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)) // #nosec G202
+			found[table] = count
+		}
+		return found
+	}
+	for table, count := range counts() {
+		if count == 0 {
+			t.Errorf("the test seeds nothing in %s", table)
+		}
+	}
 	must(t, s.Wipe(ctx))
-	projects, err := s.Projects(ctx)
-	must(t, err)
-	accounts, err := s.Accounts(ctx)
-	must(t, err)
-	value, err := s.Meta(ctx, "k")
-	must(t, err)
-	if len(projects) != 0 || len(accounts) != 0 || value != "" {
-		t.Errorf("left: %v %v %q", projects, accounts, value)
+	for table, count := range counts() {
+		if count != 0 {
+			t.Errorf("%s keeps %d rows after the wipe", table, count)
+		}
+	}
+	if value, err := s.Meta(ctx, "k"); err != nil || value != "" {
+		t.Errorf("meta = %q, %v", value, err)
 	}
 }

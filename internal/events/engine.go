@@ -121,6 +121,9 @@ func (e *Engine) load(ctx context.Context) error {
 	for index := range projects {
 		e.projects = append(e.projects, &projects[index])
 	}
+	if len(e.projects) == 0 {
+		e.SaveProject(models.FirstProject())
+	}
 
 	if e.messages, err = e.store.Messages(ctx, messageLimit); err != nil {
 		return err
@@ -318,6 +321,9 @@ func (e *Engine) SaveSettings(settings models.Settings) {
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.broadcast(models.ServerMessage{Type: models.MsgSettings, Settings: &settings})
 }
+
+// Projects lists projects in the order they were made. Call inside Do.
+func (e *Engine) Projects() []*models.Project { return e.projects }
 
 // Agents lists agents in the order they arrived. Call inside Do.
 func (e *Engine) Agents() []*models.LiveAgent { return e.agents }
@@ -742,15 +748,21 @@ func (e *Engine) ClearOffice() {
 	e.accounts = accounts
 }
 
-// Wipe removes everything Mabari stores and returns to first run. Restoring settings backups joins
-// this in Stage 7. Call inside Do.
+// Wipe removes everything Mabari stores and returns to first run, with one empty project as on a
+// fresh install. Preferences stay, as in the prototype, except auto approve, which is turned off so
+// nothing is approved without a click after a wipe. Restoring settings backups joins this in
+// Stage 7. Call inside Do.
 func (e *Engine) Wipe() {
 	for _, connector := range e.connectors {
 		connector.Stop()
 	}
+	settings := e.settings.Clone()
+	settings.AutoApprove.On = false
 	e.record(e.store.Wipe(context.Background()))
 	e.resetMemory()
-	e.settings = models.DefaultSettings()
+	e.settings = settings
+	e.record(e.store.SaveSettings(context.Background(), settings))
+	e.SaveProject(models.FirstProject())
 	e.firstRun = true
 	e.Reset()
 }

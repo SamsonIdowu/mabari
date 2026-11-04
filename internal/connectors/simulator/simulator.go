@@ -338,6 +338,12 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 		agent.Project = &project
 	case spec.lead != nil:
 		agent.Project = spec.lead.Project
+	default:
+		// Like the prototype, an agent with no project joins the first one.
+		if projects := s.engine.Projects(); len(projects) > 0 {
+			first := projects[0].ID
+			agent.Project = &first
+		}
 	}
 	if spec.lead != nil {
 		lead := spec.lead.ID

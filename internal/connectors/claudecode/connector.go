@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,6 +49,7 @@ type input struct {
 	StopHookActive       bool            `json:"stop_hook_active"`
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	AgentType            string          `json:"agent_type"`
+	AgentID              string          `json:"agent_id"`
 }
 
 // toolInput holds the tool arguments Mabari shows. Each tool uses some of them.
@@ -71,10 +73,12 @@ type Connector struct {
 	// wait is how long a permission hook waits for a click.
 	wait time.Duration
 
-	mu        sync.Mutex
-	waiting   map[string]chan models.Approval
-	pause     map[string]bool
-	stopped   map[string]bool
+	mu      sync.Mutex
+	waiting map[string]chan models.Approval
+	pause   map[string]bool
+	stopped map[string]bool
+	// handing is what the lead last asked a subagent to do, by session, from its Task call.
+	handing   map[string]string
 	lastEvent time.Time
 }
 
@@ -86,6 +90,7 @@ func New(engine *events.Engine) *Connector {
 		waiting: map[string]chan models.Approval{},
 		pause:   map[string]bool{},
 		stopped: map[string]bool{},
+		handing: map[string]string{},
 	}
 }
 
@@ -308,6 +313,11 @@ func (c *Connector) observe(in input) []byte {
 	if in.Event == "SessionEnd" {
 		if agent := c.engine.Agent(agentID(in.SessionID)); agent != nil {
 			c.engine.Log(agent.Name, models.LogSession, "Claude Code session ended", "Left", "")
+			for _, helper := range slices.Clone(c.engine.Agents()) {
+				if helper.Lead != nil && *helper.Lead == agent.ID {
+					c.engine.RemoveAgent(helper.ID)
+				}
+			}
 			c.engine.RemoveAgent(agent.ID)
 		}
 		return nil
@@ -340,6 +350,11 @@ func (c *Connector) observe(in input) []byte {
 		}
 		agent.State = stateFor(in.ToolName)
 		c.engine.AddEvent(agent, in.ToolName, summaryOf(in.ToolName, in.ToolInput), nil)
+		if in.ToolName == "Task" || in.ToolName == "Agent" {
+			c.mu.Lock()
+			c.handing[in.SessionID] = summaryOf(in.ToolName, in.ToolInput)
+			c.mu.Unlock()
+		}
 		return nil
 	case "PostToolUse":
 		agent.State = models.StateThinking
@@ -347,9 +362,20 @@ func (c *Connector) observe(in input) []byte {
 	case "SubagentStart":
 		agent.State = models.StateSpawning
 		c.engine.AddEvent(agent, "spawn", "Started a "+orDefault(in.AgentType, "helper")+" subagent", nil)
+		c.seatHelper(agent, in)
 		return nil
 	case "SubagentStop":
 		c.engine.AddEvent(agent, "report", "A subagent finished", nil)
+		if helper := c.engine.Agent(helperID(in)); helper != nil {
+			report := clip(redact.Text(in.LastAssistantMessage), 160)
+			if report == "" {
+				report = "Done."
+			}
+			helper.State, helper.Progress = models.StateDone, 1
+			c.engine.Touch(helper)
+			c.engine.AddMessage(helper, agent, report, models.MessageReport, 0)
+			c.engine.SetReply(helper, clip(report, 90), 8000)
+		}
 		return nil
 	case "Notification":
 		if in.NotificationType == "idle_prompt" {
@@ -566,6 +592,13 @@ func (c *Connector) Stop() {}
 // Instruct queues the message. Claude Code reads it at the next checkpoint, which is the next
 // tool call, prompt or stop. A session that is waiting for its user gets it when it next runs.
 func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
+	// A subagent has no hooks of its own, so its lead passes the message on.
+	if agent.Lead != nil {
+		if lead := c.engine.Agent(*agent.Lead); lead != nil {
+			c.engine.Queue(lead, "For the "+agent.Name+" subagent: "+text)
+			return
+		}
+	}
 	c.engine.Queue(agent, text)
 	if !agent.State.Active() {
 		c.engine.Toast(agent.Name + " gets this when its session next runs a step.")
@@ -655,4 +688,80 @@ func orDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func helperID(in input) string {
+	return agentID(in.SessionID) + "-" + sessionChars.ReplaceAllString(in.AgentID, "")
+}
+
+// seatHelper gives a Claude Code subagent a desk in its lead's office, with the lead's handoff
+// as its first message. A lead has three helpers at most on the floor. Call inside Do.
+func (c *Connector) seatHelper(lead *models.LiveAgent, in input) {
+	if in.AgentID == "" || c.engine.Agent(helperID(in)) != nil {
+		return
+	}
+	helpers := 0
+	for _, agent := range c.engine.Agents() {
+		if agent.Lead != nil && *agent.Lead == lead.ID && agent.State != models.StateDone {
+			helpers++
+		}
+	}
+	desk := c.nearDesk(lead.Desk)
+	if helpers >= models.MaxSubagents || desk < 0 {
+		return
+	}
+	c.mu.Lock()
+	task := c.handing[in.SessionID]
+	delete(c.handing, in.SessionID)
+	c.mu.Unlock()
+	if task == "" {
+		task = "Help " + lead.Name
+	}
+	name := upperFirst(orDefault(in.AgentType, "helper"))
+	for number := 2; c.engine.AgentByName(name) != nil; number++ {
+		name = upperFirst(orDefault(in.AgentType, "helper")) + " " + strconv.Itoa(number)
+	}
+	helper := &models.LiveAgent{}
+	helper.ID, helper.Name = helperID(in), clip(name, 24)
+	helper.Provider, helper.Account, helper.Source = models.ProviderClaude, models.AccountClaudeCode, Source
+	helper.Model, helper.SubModel, helper.Desk, helper.Folder = lead.Model, "inherit", desk, lead.Folder
+	helper.Lead, helper.Project = &lead.ID, lead.Project
+	count := len(c.engine.Agents())
+	helper.Hue = models.Hues[count%len(models.Hues)]
+	helper.Skin = models.Skins[count%len(models.Skins)]
+	helper.Hair = models.Hairs[(count*3)%len(models.Hairs)]
+	helper.CreatedAt = c.engine.Now().UnixMilli()
+	helper.State, helper.Task = models.StateThinking, clip(task, 120)
+	helper.Queued, helper.Files = []models.Instruction{}, []string{}
+	c.engine.AddAgent(helper)
+	c.engine.AddMessage(lead, helper, "Can you take this for me: "+models.LowerFirst(strings.TrimSuffix(helper.Task, "."))+"?", models.MessageHandoff, 0)
+}
+
+// nearDesk is the free desk closest to the lead's, on the office's real desk grid.
+func (c *Connector) nearDesk(near int) int {
+	used := map[int]bool{}
+	for _, agent := range c.engine.Agents() {
+		used[agent.Desk] = true
+	}
+	position := func(index int) (float64, float64) { return float64(8 + index%4*5), float64(4 + index/4*4) }
+	nx, ny := position(near)
+	best, bestDistance := -1, 0.0
+	for desk := range models.DeskCount {
+		if used[desk] {
+			continue
+		}
+		x, y := position(desk)
+		distance := (x-nx)*(x-nx) + (y-ny)*(y-ny)
+		if best < 0 || distance < bestDistance {
+			best, bestDistance = desk, distance
+		}
+	}
+	return best
+}
+
+func upperFirst(text string) string {
+	if text == "" {
+		return text
+	}
+	return strings.ToUpper(text[:1]) + text[1:]
 }

@@ -421,3 +421,29 @@ func TestASessionJoinsTheProjectForItsFolder(t *testing.T) {
 		t.Errorf("project = %q", project)
 	}
 }
+
+// A Claude Code subagent takes a desk in its lead's office, with the lead's handoff and its own
+// report as messages, and leaves with the session.
+func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Fix the build"})
+	hook(t, c, "PreToolUse", map[string]any{"tool_name": "Task", "tool_input": map[string]any{"description": "Find the failing test"}})
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "sub-1", "agent_type": "explorer"})
+	var helper *models.LiveAgent
+	var messages []models.Message
+	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-sub-1") })
+	if helper == nil || helper.Name != "Explorer" || helper.Lead == nil || *helper.Lead != "cc-abc-123" ||
+		helper.Task != "Find the failing test" {
+		t.Fatalf("helper = %+v", helper)
+	}
+	hook(t, c, "SubagentStop", map[string]any{"agent_id": "sub-1", "last_assistant_message": "The date test is flaky."})
+	messages = engine.Snapshot().Messages
+	if len(messages) != 2 || messages[0].Kind != models.MessageHandoff || messages[1].Kind != models.MessageReport ||
+		messages[1].Text != "The date test is flaky." {
+		t.Fatalf("messages = %+v", messages)
+	}
+	hook(t, c, "SessionEnd", map[string]any{"reason": "other"})
+	if len(engine.Snapshot().Agents) != 0 {
+		t.Error("the helper stayed after the session ended")
+	}
+}

@@ -38,8 +38,8 @@ test('every screen renders in both themes without errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await loadDemo(page);
-  for (const theme of ['Light', 'Dark']) {
-    await page.locator('.topright .tbtn').getByText(theme).click();
+  for (let click = 0; click < 2; click++) {
+    await page.locator('.topright .tbtn').click();
     for (const [route, heading] of SCREENS) {
       await go(page, route);
       await expect(page.locator('main h1')).toHaveText(heading);

@@ -28,11 +28,20 @@ function rgb(hex: string) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-test('starts on the welcome page in the dark theme', async ({ page }) => {
+test('follows the computer until someone picks a theme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.locator('h1')).toHaveText('See your AI agents at work, in a little office.');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await background(page)).toBe(rgb(themes.dark.bg));
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  await page.getByRole('button', { name: 'Dark' }).click();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test('every nav link routes and marks itself current', async ({ page }) => {
@@ -53,6 +62,7 @@ test('the top bar brand goes to the office', async ({ page }) => {
 });
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await page.getByRole('button', { name: 'Light' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');

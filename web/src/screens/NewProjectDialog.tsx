@@ -11,6 +11,7 @@ import { api, type FolderCheck, type ProjectPlan, type ProjectStart } from '../d
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { AccountKind } from '../gen/models.ts';
+import { listen, type Listener } from '../office/speech.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
@@ -109,6 +110,37 @@ function Brief() {
   const repoBox = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const close = () => set({ newProject: false });
+  // Hold the mic to dictate the brief. It only fills the box: nothing starts until Send, and no
+  // project starts until Start project is pressed.
+  const [dictating, setDictating] = useState(false);
+  const dictation = useRef<Listener | null>(null);
+  const stopDictating = () => {
+    dictation.current?.stop();
+    dictation.current = null;
+    setDictating(false);
+  };
+  const startDictating = () => {
+    if (dictation.current) return;
+    const before = text ? `${text} ` : '';
+    setDictating(true);
+    dictation.current = listen({
+      onText: (heard) => setText(before + heard),
+      onError: (message) => {
+        toast(message);
+        dictation.current = null;
+        setDictating(false);
+      },
+      onEnd: () => {
+        dictation.current = null;
+        setDictating(false);
+      },
+    });
+  };
+  useEffect(() => {
+    window.addEventListener('pointerup', stopDictating);
+    return () => window.removeEventListener('pointerup', stopDictating);
+  });
+  useEffect(() => () => dictation.current?.abort(), []);
   useEscape(close);
 
   useEffect(() => {
@@ -596,6 +628,23 @@ function Brief() {
                   </button>
                 </div>
                 <span style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  className={dictating ? 'mic on' : 'mic'}
+                  id="briefMic"
+                  aria-label="Hold to speak"
+                  aria-pressed={dictating}
+                  style={{ width: 40, height: 40 }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    startDictating();
+                  }}
+                >
+                  <Icon>
+                    <rect x="9" y="3" width="6" height="11" rx="3" />
+                    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                  </Icon>
+                </button>
                 <button type="submit" className="btn primary" style={{ minHeight: 40 }}>
                   Send
                 </button>

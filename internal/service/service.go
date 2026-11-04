@@ -23,9 +23,17 @@ const Marker = "Managed by mabari service install"
 // Runner runs a system tool such as launchctl and returns what it printed. Tests replace it.
 type Runner func(ctx context.Context, name string, args ...string) (string, error)
 
-// Exec runs the tool for real, with no shell.
+// tools are the only programs Exec runs: each system's own service manager.
+var tools = map[string]bool{"launchctl": true, "systemctl": true, "schtasks": true}
+
+// Exec runs one of the service managers for real, with no shell. Arguments are labels and
+// paths Mabari builds itself, passed as separate words, so none can start another program.
 func Exec(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput() // #nosec G204 -- fixed system tools
+	if !tools[name] {
+		return "", fmt.Errorf("%q is not a service manager Mabari runs", name)
+	}
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput() // #nosec G204 -- allow-listed tools
 	return strings.TrimSpace(string(out)), err
 }
 

@@ -452,3 +452,9 @@ func version(t *testing.T, base string) string {
 	_ = json.NewDecoder(response.Body).Decode(&health)
 	return health.Version
 }
+
+func TestExecRunsOnlyServiceManagers(t *testing.T) {
+	if _, err := Exec(context.Background(), "sh", "-c", "echo hi"); err == nil {
+		t.Error("ran a program that isn't a service manager")
+	}
+}

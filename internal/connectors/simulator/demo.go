@@ -25,6 +25,25 @@ var hues = []string{
 	"#3FD07F", "#FFD84D", "#7FA8FF", "#FF6F61", "#2DE1C2", "#F8A5C2",
 }
 
+// demoSlowdown stretches the demo's seeded work, so it stays on screen for longer.
+const demoSlowdown = 4.5
+
+// demoTasks is what idle demo agents pick up next.
+var demoTasks = []string{
+	"Add input validation to the signup form",
+	"Write release notes for version 2.4",
+	"Fix the flaky date picker test",
+	"Speed up the product search query",
+	"Translate the settings page to Spanish",
+	"Clean up unused CSS in the dashboard",
+	"Add retry logic to the payment webhook",
+	"Document the public API endpoints",
+	"Upgrade the charting library",
+	"Add dark mode to the email templates",
+	"Profile the slow orders page",
+	"Write tests for the invoice PDF export",
+}
+
 var demoFiles = map[string][]string{
 	"Ledger": {"src/billing/totals.ts", "src/billing/invoice.ts", "test/billing.spec.ts"},
 	"Scout":  {"docs/charting-notes.md"},

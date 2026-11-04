@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,8 @@ type runtime struct {
 	stateLeft float64
 	spawned   bool
 	doneUntil int64
+	// nextTask is when an idle demo agent picks up new work, or zero.
+	nextTask int64
 }
 
 type timer struct {
@@ -63,6 +66,7 @@ type Simulator struct {
 	approvalTimer int
 	convTimer     int
 	hueIndex      int
+	demoMode      bool
 
 	tickEvery time.Duration
 	mu        sync.Mutex
@@ -151,6 +155,7 @@ func (s *Simulator) Stop() {
 
 // Resume carries on after a restart, if the demo was running.
 func (s *Simulator) Resume(active bool) {
+	s.demoMode = active
 	if active {
 		s.Start()
 	}
@@ -569,6 +574,13 @@ func (s *Simulator) tickAgent(agent *models.LiveAgent) {
 	if agent.State == models.StateDone && s.now() > state.doneUntil {
 		s.setState(agent, models.StateIdle)
 		agent.Task = "Waiting for work"
+		if s.demoMode {
+			state.nextTask = s.now() + int64(s.between(15000, 35000))
+		}
+	}
+	if s.demoMode && agent.State == models.StateIdle && !agent.Leaving &&
+		state.nextTask != 0 && s.now() > state.nextTask {
+		s.pickUpTask(agent, state)
 	}
 	if !agent.State.Active() {
 		return
@@ -592,6 +604,30 @@ func (s *Simulator) tickAgent(agent *models.LiveAgent) {
 		next := (planIndex(agent.State) + 1 + int(math.Floor(s.between(0, 2)))) % len(plan)
 		s.setState(agent, plan[next])
 	}
+}
+
+// pickUpTask keeps the demo office busy by giving an idle agent something new to do.
+func (s *Simulator) pickUpTask(agent *models.LiveAgent, state *runtime) {
+	state.nextTask = 0
+	free := slices.DeleteFunc(slices.Clone(demoTasks), func(task string) bool {
+		return slices.ContainsFunc(s.engine.Agents(), func(other *models.LiveAgent) bool {
+			return other.Task == task
+		})
+	})
+	if len(free) > 0 {
+		agent.Task = pick(s, free)
+	} else {
+		// The prototype picks from the empty list first, which uses up a random number. Doing the
+		// same keeps the sequence, and the golden test, in step.
+		s.random()
+		agent.Task = pick(s, demoTasks)
+	}
+	agent.Progress = 0
+	agent.Rate = s.between(0.00018, 0.00034)
+	state.stateLeft = s.between(25, 45)
+	s.setState(agent, models.StateThinking)
+	s.engine.AddEvent(agent, "start", "Picked up a new task: "+agent.Task, nil)
+	s.engine.Log(agent.Name, models.LogSession, "New task: "+agent.Task, "Started", "ok")
 }
 
 func planIndex(state models.AgentState) int {
@@ -753,6 +789,7 @@ func (s *Simulator) loadDemo() {
 	s.timers = nil
 	s.runtimes = map[string]*runtime{}
 	s.approvalTimer, s.convTimer, s.hueIndex = 0, 0, 0
+	s.demoMode = true
 	s.engine.ClearOffice()
 	s.engine.SetFirstRun(false)
 	s.engine.SetMeta(store.MetaDemo, "1")
@@ -811,6 +848,10 @@ func (s *Simulator) loadDemo() {
 		s.makeAgent(spec)
 	}
 	s.runtimeOf(s.engine.AgentByName("Rune")).doneUntil = now + 25000
+	for _, agent := range s.engine.Agents() {
+		agent.Rate = float64(agent.Rate / demoSlowdown)
+	}
+	s.runtimeOf(s.engine.AgentByName("Pixel")).nextTask = now + 60000
 	for _, agent := range s.engine.Agents() {
 		project := demoProjectOf[agent.Name]
 		agent.Project = &project

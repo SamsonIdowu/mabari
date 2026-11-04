@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /* Ported from design/mabari-prototype.html: app shell, slim rail and top bar. */
 .app {
   display: grid;

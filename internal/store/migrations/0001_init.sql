@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- Most records are stored as JSON beside the columns that queries need.
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,

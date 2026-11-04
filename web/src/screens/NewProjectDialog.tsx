@@ -123,18 +123,21 @@ function Brief() {
     if (dictation.current) return;
     const before = text ? `${text} ` : '';
     setDictating(true);
-    dictation.current = listen({
-      onText: (heard) => setText(before + heard),
-      onError: (message) => {
-        toast(message);
-        dictation.current = null;
-        setDictating(false);
+    dictation.current = listen(
+      {
+        onText: (heard) => setText(before + heard),
+        onError: (message) => {
+          toast(message);
+          dictation.current = null;
+          setDictating(false);
+        },
+        onEnd: () => {
+          dictation.current = null;
+          setDictating(false);
+        },
       },
-      onEnd: () => {
-        dictation.current = null;
-        setDictating(false);
-      },
-    });
+      useOfficeStore.getState().office?.settings.voiceEngine,
+    );
   };
   useEffect(() => {
     window.addEventListener('pointerup', stopDictating);

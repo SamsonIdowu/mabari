@@ -13,6 +13,10 @@ interface VoiceStore {
   phase: VoicePhase;
   text: string;
   heard: Heard | null;
+  /** The engine in use: browser speech, or Local Whisper on Mabari's server. */
+  engine: string;
+  /** Local Whisper is turning the recording into text, after release. */
+  transcribing: boolean;
   start: (office: Snapshot) => void;
   /** The mic or Space was released. This only ever gets ready: it sends nothing. */
   stop: () => void;
@@ -39,7 +43,7 @@ export const useVoice = create<VoiceStore>((set, get) => {
   const close = () => {
     const active = listener;
     listener = null;
-    set({ phase: null, text: '', heard: null });
+    set({ phase: null, text: '', heard: null, transcribing: false });
     active?.abort();
   };
 
@@ -66,36 +70,39 @@ export const useVoice = create<VoiceStore>((set, get) => {
     phase: null,
     text: '',
     heard: null,
+    engine: 'browser',
+    transcribing: false,
     start: (office) => {
       if (get().phase) return;
       if (!office.agents.length) {
         toast('There are no agents to talk to yet.');
         return;
       }
-      if (office.settings.voiceEngine === 'whisper') {
-        toast('Local Whisper arrives in a later stage. Switch to browser speech in Settings.');
-        return;
-      }
+      const engine = office.settings.voiceEngine;
       ended = false;
-      set({ phase: 'listen', text: '', heard: null });
-      listener = listen({
-        onText: (text) => {
-          set({ text, heard: detected(text) });
-          settle();
+      set({ phase: 'listen', text: '', heard: null, engine, transcribing: false });
+      listener = listen(
+        {
+          onText: (text) => {
+            set({ text, heard: detected(text) });
+            settle();
+          },
+          onError: (message) => {
+            close();
+            toast(message);
+          },
+          onEnd: () => {
+            ended = true;
+            set({ transcribing: false });
+            settle();
+          },
         },
-        onError: (message) => {
-          close();
-          toast(message);
-        },
-        onEnd: () => {
-          ended = true;
-          settle();
-        },
-      });
+        engine,
+      );
     },
     stop: () => {
       if (get().phase !== 'listen') return;
-      set({ phase: 'confirm' });
+      set({ phase: 'confirm', transcribing: get().engine === 'whisper' && !ended });
       listener?.stop();
       settle();
     },

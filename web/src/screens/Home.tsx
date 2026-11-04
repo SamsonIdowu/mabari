@@ -319,26 +319,37 @@ function useHomeMic(setText: (text: string) => void, send: (text: string) => voi
     active.current = true;
     heard.current = '';
     setListening(true);
-    listener.current = listen({
-      onText: (text) => {
-        heard.current = text;
-        setText(text);
+    listener.current = listen(
+      {
+        onText: (text) => {
+          heard.current = text;
+          setText(text);
+        },
+        onError: (message) => {
+          toast(message);
+          active.current = false;
+          setListening(false);
+          listener.current = null;
+        },
+        onEnd: () => finish.current(),
       },
-      onError: (message) => {
-        toast(message);
-        active.current = false;
-        setListening(false);
-        listener.current = null;
-      },
-      onEnd: () => finish.current(),
-    });
+      useOfficeStore.getState().office?.settings.voiceEngine,
+    );
   };
+  /** Release stops listening. The text is final once the engine ends, which for Local Whisper
+   * is after it has turned the recording into text. */
+  const release = useRef(() => {});
   useEffect(() => {
+    release.current = () => {
+      if (!active.current) return;
+      setListening(false);
+      if (listener.current) listener.current.stop();
+      else finish.current();
+    };
     finish.current = () => {
       if (!active.current) return;
       active.current = false;
       setListening(false);
-      listener.current?.stop();
       listener.current = null;
       const text = heard.current.trim();
       heard.current = '';
@@ -361,7 +372,7 @@ function useHomeMic(setText: (text: string) => void, send: (text: string) => voi
     };
   });
   useEffect(() => {
-    const up = () => finish.current();
+    const up = () => release.current();
     const down = (event: globalThis.KeyboardEvent) => {
       if (event.code !== 'Space' || event.repeat) return;
       const focused = document.activeElement as HTMLElement | null;
@@ -376,7 +387,7 @@ function useHomeMic(setText: (text: string) => void, send: (text: string) => voi
       start();
     };
     const keyUp = (event: globalThis.KeyboardEvent) => {
-      if (event.code === 'Space') finish.current();
+      if (event.code === 'Space') release.current();
     };
     window.addEventListener('pointerup', up);
     window.addEventListener('keydown', down, true);

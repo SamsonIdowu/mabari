@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { recordForWhisper } from './whisper.ts';
 
 interface RecognitionResultEvent {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -24,7 +25,7 @@ export interface Listener {
   abort: () => void;
 }
 
-interface Handlers {
+export interface Handlers {
   onText: (text: string) => void;
   onError: (message: string) => void;
   onEnd: () => void;
@@ -37,12 +38,23 @@ function errorText(code: string): string {
   return "This browser can't recognise speech on this computer right now, so nothing was recorded.";
 }
 
+export type VoiceEngine = 'browser' | 'whisper';
+
+/**
+ * Listens with the engine chosen in Settings. Either way speech stays on this computer:
+ * browser speech is asked to work locally, and Local Whisper runs in Mabari's own server.
+ * Browser speech reports text as it hears it; Whisper reports it once, after stop.
+ */
+export function listen(handlers: Handlers, engine: string = 'browser'): Listener | null {
+  return engine === 'whisper' ? recordForWhisper(handlers) : listenInBrowser(handlers);
+}
+
 /**
  * Listens through the browser's speech recognition, on this computer only. processLocally means
  * the work must be done locally, so a browser without it is refused rather than allowed to pick
  * a remote service. Returns null if listening can't start.
  */
-export function listen(handlers: Handlers): Listener | null {
+function listenInBrowser(handlers: Handlers): Listener | null {
   const scope = window as unknown as {
     SpeechRecognition?: RecognitionClass;
     webkitSpeechRecognition?: RecognitionClass;

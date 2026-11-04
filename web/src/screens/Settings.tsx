@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
@@ -123,6 +124,61 @@ function ApprovalsCard({ settings }: { settings: SettingsModel }) {
   );
 }
 
+const GB = 1e9;
+
+/**
+ * Local Whisper set-up. whisper.cpp is the person's own install; Mabari downloads the model only
+ * when the button is clicked, and checks it against its published checksum.
+ */
+function WhisperSetup() {
+  const queryClient = useQueryClient();
+  const status = useQuery({
+    queryKey: ['whisper'],
+    queryFn: api.whisperStatus,
+    refetchInterval: (query) => (query.state.data?.downloading ? 1000 : false),
+  });
+  const act = (call: () => Promise<unknown>) =>
+    call()
+      .catch((error: Error) => useOfficeStore.getState().toast(error.message))
+      .finally(() => void queryClient.invalidateQueries({ queryKey: ['whisper'] }));
+  const whisper = status.data;
+  if (!whisper) return null;
+  const size = `${(whisper.total / GB).toFixed(1)} GB`;
+  return (
+    <div className="help" id="whisperSetup" style={{ marginLeft: 26, display: 'grid', gap: 8 }}>
+      {whisper.installed ? null : (
+        <span>
+          Install whisper.cpp first, for example with <code>brew install whisper-cpp</code>. Mabari
+          looks for its <code>whisper-cli</code> tool.
+        </span>
+      )}
+      {whisper.downloading ? (
+        <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          Downloading the model… {Math.floor((whisper.done / whisper.total) * 100)}%
+          <button type="button" className="btn ghost" onClick={() => void act(api.removeWhisper)}>
+            Cancel
+          </button>
+        </span>
+      ) : whisper.ready ? (
+        <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {whisper.installed ? 'Ready. Your voice stays on this computer.' : 'Model downloaded.'}
+          <button type="button" className="btn ghost" onClick={() => void act(api.removeWhisper)}>
+            Remove the model
+          </button>
+        </span>
+      ) : (
+        <span style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="btn" onClick={() => void act(api.downloadWhisper)}>
+            Download the model ({size})
+          </button>
+          From Hugging Face, checked against its published checksum.
+        </span>
+      )}
+      {whisper.error ? <span style={{ color: 'var(--red)' }}>{whisper.error}</span> : null}
+    </div>
+  );
+}
+
 function VoiceCard({ settings }: { settings: SettingsModel }) {
   return (
     <div className="card">
@@ -160,6 +216,7 @@ function VoiceCard({ settings }: { settings: SettingsModel }) {
               </span>
             </span>
           </label>
+          {settings.voiceEngine === 'whisper' ? <WhisperSetup /> : null}
         </div>
         <span className="flabel">Spoken replies</span>
         <label className="switch">

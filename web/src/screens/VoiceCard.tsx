@@ -35,6 +35,8 @@ function Card() {
   const phase = useVoice((state) => state.phase);
   const text = useVoice((state) => state.text);
   const heard = useVoice((state) => state.heard);
+  const engine = useVoice((state) => state.engine);
+  const transcribing = useVoice((state) => state.transcribing);
   const send = useVoice((state) => state.send);
   const cancel = useVoice((state) => state.cancel);
   useEscape(cancel);
@@ -62,14 +64,20 @@ function Card() {
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
       >
         <b id="vTitle">
-          {phase === 'listen' ? 'Listening… take your time, release when done' : 'Ready to send'}
+          {phase === 'listen'
+            ? 'Listening… take your time, release when done'
+            : transcribing
+              ? 'Turning it into text on this computer…'
+              : 'Ready to send'}
         </b>
-        <span className="help">Browser speech, on device</span>
+        <span className="help">
+          {engine === 'whisper' ? 'Local Whisper' : 'Browser speech, on device'}
+        </span>
       </div>
       <Wave live={phase === 'listen'} />
       <div className="transcript" id="vText">
         {text}
-        {phase === 'listen' ? <span className="ghost"> …</span> : null}
+        {phase === 'listen' || transcribing ? <span className="ghost"> …</span> : null}
       </div>
       {heard ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

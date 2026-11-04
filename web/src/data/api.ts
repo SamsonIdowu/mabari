@@ -7,6 +7,7 @@ import type {
   Project,
   Settings,
   Snapshot,
+  WhisperStatus,
 } from '../gen/models.ts';
 
 export interface NewAgentBody {
@@ -198,6 +199,17 @@ export const api = {
   snapshot: () => request<Snapshot>('/api/snapshot'),
   loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),
+  whisperStatus: () => request<WhisperStatus>('/api/voice/whisper'),
+  downloadWhisper: () => send<WhisperStatus>('POST', '/api/voice/whisper/model'),
+  removeWhisper: () => send<WhisperStatus>('DELETE', '/api/voice/whisper/model'),
+  /** Turns a 16 kHz WAV recording into text with Local Whisper, on this computer. */
+  transcribe: (wav: Blob, lang: string, signal?: AbortSignal) =>
+    request<{ text: string }>(`/api/voice/transcribe?lang=${encodeURIComponent(lang)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'audio/wav' },
+      body: wav,
+      signal: signal ?? null,
+    }),
   wipe: () => send<{ ok: boolean }>('POST', '/api/wipe', { confirm: true }),
   updateSettings: (patch: Partial<Settings>) => send<Settings>('PATCH', '/api/settings', patch),
   completeProject: (id: string) => send<Project>('POST', `/api/projects/${id}/complete`),

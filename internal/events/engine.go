@@ -309,10 +309,11 @@ func (e *Engine) ConnectorFor(agent *models.LiveAgent) Connector {
 func (e *Engine) Now() time.Time { return e.now() }
 
 // Settings returns the current settings. Call inside Do.
-func (e *Engine) Settings() models.Settings { return e.settings }
+func (e *Engine) Settings() models.Settings { return e.settings.Clone() }
 
 // SaveSettings stores new settings. Call inside Do.
 func (e *Engine) SaveSettings(settings models.Settings) {
+	settings = settings.Clone()
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.broadcast(models.ServerMessage{Type: models.MsgSettings, Settings: &settings})
@@ -840,7 +841,7 @@ func (e *Engine) Snapshot() models.Snapshot {
 		Agents:   agents,
 		Messages: append([]models.Message{}, e.messages...),
 		Log:      append([]models.LogEntry{}, e.log...),
-		Settings: e.settings,
+		Settings: e.settings.Clone(),
 	}
 }
 

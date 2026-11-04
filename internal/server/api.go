@@ -3,6 +3,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"slices"
@@ -553,20 +555,38 @@ func validSettings(s models.Settings) string {
 }
 
 func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
-	// Decoding onto the current settings is what makes this a partial update.
-	current := a.engine.Snapshot().Settings
-	settings := current
-	if !readJSON(w, r, &settings) {
+	var patch json.RawMessage
+	if !readJSON(w, r, &patch) {
 		return
 	}
-	// Auto approve has its own route, which records the change and asks for an acknowledgement.
-	settings.AutoApprove = current.AutoApprove
-	if problem := validSettings(settings); problem != "" {
-		writeError(w, http.StatusBadRequest, problem)
-		return
-	}
-	if err := a.engine.Do(func() { a.engine.SaveSettings(settings) }); err != nil {
+	var (
+		settings models.Settings
+		problem  string
+	)
+	// Read, merge, check and save under one lock, so a change made by another request in between,
+	// such as auto approve being turned off, is never overwritten.
+	err := a.engine.Do(func() {
+		current := a.engine.Settings()
+		// Decoding onto a copy of the current settings is what makes this a partial update.
+		settings = current.Clone()
+		decoder := json.NewDecoder(bytes.NewReader(patch))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&settings) != nil {
+			problem = "request body is not valid"
+			return
+		}
+		// Auto approve has its own route, which records the change and asks for an acknowledgement.
+		settings.AutoApprove = current.AutoApprove
+		if problem = validSettings(settings); problem == "" {
+			a.engine.SaveSettings(settings)
+		}
+	})
+	if err != nil {
 		internalError(w, err)
+		return
+	}
+	if problem != "" {
+		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
 	writeJSON(w, http.StatusOK, settings)

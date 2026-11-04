@@ -3,6 +3,7 @@
 package models
 
 import (
+	"maps"
 	"math"
 	"regexp"
 	"strconv"
@@ -65,6 +66,13 @@ var MessageColors = map[MessageKind]string{
 	MessageReport:    "#FF9F43",
 	MessageReview:    "#FF6B9A",
 	MessageBroadcast: "#C8B6FF",
+}
+
+// Clone copies the settings with their own Defaults map, so a copy can change without touching the
+// original.
+func (s Settings) Clone() Settings {
+	s.Defaults = maps.Clone(s.Defaults)
+	return s
 }
 
 // DefaultSettings are the settings before the user changes anything.

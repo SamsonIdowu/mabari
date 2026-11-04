@@ -118,6 +118,9 @@ func TestLocalOnlyChecks(t *testing.T) {
 		{"lookalike origin", "localhost:4317", "http://localhost.evil.example", http.StatusForbidden},
 		{"sandboxed frame", "localhost:4317", "null", http.StatusForbidden},
 		{"file page", "localhost:4317", "file://", http.StatusForbidden},
+		{"another local port", "localhost:4317", "http://localhost:3000", http.StatusForbidden},
+		{"another local name", "localhost:4317", "http://127.0.0.1:4317", http.StatusForbidden},
+		{"published on another port", "localhost:8080", "http://localhost:8080", http.StatusOK},
 	}
 	handler := newOffice(t).handler
 	for _, tc := range cases {
@@ -133,6 +136,25 @@ func TestLocalOnlyChecks(t *testing.T) {
 				t.Errorf("status = %d, want %d", recorder.Code, tc.want)
 			}
 		})
+	}
+}
+
+// A page on another local port must not reach a writing route, even with a simple request that
+// needs no preflight.
+func TestOtherLocalPortCannotWipe(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	request := httptest.NewRequest(http.MethodPost, "/api/wipe", strings.NewReader(`{"confirm":true}`))
+	request.Host = "localhost:4317"
+	request.Header.Set("Origin", "http://localhost:3000")
+	request.Header.Set("Content-Type", "text/plain")
+	recorder := httptest.NewRecorder()
+	office.handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", recorder.Code)
+	}
+	if got := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", "")); len(got.Agents) == 0 {
+		t.Error("the office was wiped")
 	}
 }
 
@@ -422,6 +444,30 @@ func TestSettingsPartialUpdateAndValidation(t *testing.T) {
 		if response := office.do(t, http.MethodPatch, "/api/settings", body); response.Code != http.StatusBadRequest {
 			t.Errorf("%s = %d", body, response.Code)
 		}
+	}
+}
+
+// A rejected update must change nothing, including the defaults map it was decoded onto.
+func TestRejectedSettingsChangeNothing(t *testing.T) {
+	office := newOffice(t)
+	body := `{"retentionDays":5,"defaults":{"claude":"poisoned"}}`
+	if response := office.do(t, http.MethodPatch, "/api/settings", body); response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", response.Code)
+	}
+	got := decode[models.Settings](t, office.do(t, http.MethodGet, "/api/settings", ""))
+	if got.Defaults["claude"] == "poisoned" || got.RetentionDays != 30 {
+		t.Errorf("settings changed: %+v", got)
+	}
+}
+
+// Turning auto approve off and then saving other settings must leave it off.
+func TestSettingsKeepAutoApproveOff(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/auto-approve", `{"on":true,"scope":"all","acknowledged":true}`)
+	office.do(t, http.MethodPost, "/api/auto-approve", `{"on":false,"scope":"all","acknowledged":true}`)
+	updated := decode[models.Settings](t, office.do(t, http.MethodPatch, "/api/settings", `{"spokenReplies":true}`))
+	if updated.AutoApprove.On || !updated.SpokenReplies {
+		t.Errorf("updated = %+v", updated)
 	}
 }
 

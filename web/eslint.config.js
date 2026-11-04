@@ -10,8 +10,13 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx}', 'scripts/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // This code runs inside the browser while recording the prototype.
+    files: ['scripts/gen-sim-golden.mjs'],
+    languageOptions: { globals: { ...globals.browser } },
   },
   {
     files: ['src/**/*.{ts,tsx}'],

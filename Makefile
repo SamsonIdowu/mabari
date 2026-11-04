@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen build docker release-snapshot
+.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker release-snapshot
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PNPM = pnpm --dir web
@@ -35,6 +35,10 @@ typecheck:
 gen:
 	go tool tygo generate
 	$(PNPM) tokens
+
+# Records the prototype's demo office for the simulator's golden test.
+golden:
+	node web/scripts/gen-sim-golden.mjs
 
 build:
 	$(PNPM) build

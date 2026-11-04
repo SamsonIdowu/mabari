@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-# Keeps the pinned action commits current.
+# Keeps the pinned action commits current. New releases wait a week before they are proposed,
+# so a bad or hijacked release has time to be caught first.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7

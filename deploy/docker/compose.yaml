@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# First version, so the safe way to run Mabari in Docker exists from the start. Finished in Stage 10.
+services:
+  mabari:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    ports:
+      # Mabari has no login yet, so it must only be reachable from this computer.
+      - 127.0.0.1:4317:4317
+    volumes:
+      - mabari-data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+volumes:
+  mabari-data:

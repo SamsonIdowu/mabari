@@ -20,10 +20,14 @@ COPY web/*.go web/
 COPY --from=web /src/web/dist web/dist
 RUN CGO_ENABLED=0 go build -tags embedweb -trimpath \
     -ldflags "-s -w -X main.version=${VERSION}" -o /mabari ./cmd/mabari
+# Distroless has no shell, so the data folder is made here and copied in with its owner.
+RUN mkdir -p /data
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=server /mabari /mabari
+COPY --from=server --chown=65532:65532 /data /data
 # Docker networking needs 0.0.0.0 here. Compose publishes the port on 127.0.0.1 only.
 ENV MABARI_BIND=0.0.0.0 MABARI_IN_CONTAINER=1 MABARI_DATA_DIR=/data
 EXPOSE 4317
+VOLUME /data
 ENTRYPOINT ["/mabari", "serve"]

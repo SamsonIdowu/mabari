@@ -104,6 +104,10 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	if _, err := fmt.Fprintf(stdout, "Mabari is running at http://%s\n", listener.Addr()); err != nil {
 		return err
 	}
+	if !config.IsLoopback(cfg.Bind) {
+		_, _ = fmt.Fprintln(stderr, "mabari: WARNING: listening on all interfaces, with no login. "+
+			"Publish this port on 127.0.0.1 only, as deploy/docker/compose.yaml does.")
+	}
 	if err := httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

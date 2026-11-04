@@ -13,12 +13,13 @@ import {
   POKE_GESTURES,
   veeFrame,
 } from '../office/vee.ts';
-import { useVee } from '../office/veeStore.ts';
+import { detect } from '../office/voice.ts';
+import { listen, type Listener } from '../office/speech.ts';
+import { useVee, VEE_HELLO } from '../office/veeStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
-import { LATER } from './parts.tsx';
 
 const LOOK_EASE = 0.08;
 const IDLE_MIN_MS = 7000;
@@ -301,10 +302,107 @@ function GestureMenu({ close }: { close: () => void }) {
   );
 }
 
+/**
+ * Hold the mic, or Space when not typing, to talk to Vee. Speech stays on this computer. On
+ * release a question goes straight to Vee, and an instruction waits in the box for Enter or
+ * Send (decisions 15 and 16), so nothing is sent to an agent by voice alone.
+ */
+function useHomeMic(setText: (text: string) => void, send: (text: string) => void) {
+  const toast = useOfficeStore((state) => state.toast);
+  const [listening, setListening] = useState(false);
+  const listener = useRef<Listener | null>(null);
+  const heard = useRef('');
+  const active = useRef(false);
+  const finish = useRef(() => {});
+  const start = () => {
+    if (active.current) return;
+    active.current = true;
+    heard.current = '';
+    setListening(true);
+    listener.current = listen({
+      onText: (text) => {
+        heard.current = text;
+        setText(text);
+      },
+      onError: (message) => {
+        toast(message);
+        active.current = false;
+        setListening(false);
+        listener.current = null;
+      },
+      onEnd: () => finish.current(),
+    });
+  };
+  useEffect(() => {
+    finish.current = () => {
+      if (!active.current) return;
+      active.current = false;
+      setListening(false);
+      listener.current?.stop();
+      listener.current = null;
+      const text = heard.current.trim();
+      heard.current = '';
+      if (!text) {
+        useVee.getState().say({
+          ...VEE_HELLO,
+          text: "I didn't catch that. Hold the mic and try again.",
+          gesture: 'shrug',
+        });
+        return;
+      }
+      const office = useOfficeStore.getState().office;
+      if (detect(text, office?.agents ?? [], null).mode === 'query') {
+        setText('');
+        send(text);
+      } else {
+        setText(text);
+        toast('Press Enter to send it, or edit it first.');
+      }
+    };
+  });
+  useEffect(() => {
+    const up = () => finish.current();
+    const down = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return;
+      const focused = document.activeElement as HTMLElement | null;
+      if (focused?.id === 'hcText' && (focused as HTMLTextAreaElement).value) return;
+      if (
+        focused &&
+        focused.id !== 'hcText' &&
+        /INPUT|TEXTAREA|SELECT|BUTTON/.test(focused.tagName)
+      )
+        return;
+      event.preventDefault();
+      start();
+    };
+    const keyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.code === 'Space') finish.current();
+    };
+    window.addEventListener('pointerup', up);
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', keyUp, true);
+    return () => {
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', keyUp, true);
+    };
+  });
+  // Leaving Home stops listening. Only on leaving: the effect above runs after every render.
+  useEffect(
+    () => () => {
+      active.current = false;
+      listener.current?.abort();
+    },
+    [],
+  );
+  return { listening, start };
+}
+
 function ChatBox({ spoken }: { spoken: boolean }) {
   const hear = useVee((state) => state.hear);
   const [text, setText] = useState('');
   const [gestures, setGestures] = useState(false);
+  const mic = useHomeMic(setText, (heard) => void hear(heard));
   const send = () => {
     const message = text.trim();
     if (!message) return;
@@ -357,11 +455,15 @@ function ChatBox({ spoken }: { spoken: boolean }) {
         <span style={{ flex: 1 }} />
         <button
           type="button"
-          className="h2ic"
           id="hcMic"
+          className={mic.listening ? 'h2ic on' : 'h2ic'}
           aria-label="Hold to talk"
-          disabled
-          title={LATER}
+          aria-pressed={mic.listening}
+          title="Hold to talk"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            mic.start();
+          }}
         >
           <Icon>
             <rect x="9" y="3" width="6" height="11" rx="3" />
@@ -436,7 +538,7 @@ function HomeScreen({ office }: { office: Snapshot }) {
           ) : null}
           <ChatBox spoken={office.settings.spokenReplies} />
           <div className="h2under">
-            <span>Enter to send</span>
+            <span>Enter to send · hold the mic or Space to talk</span>
             <span id="voiceLbl">{office.settings.spokenReplies ? 'Voice on' : 'Voice off'}</span>
           </div>
         </div>

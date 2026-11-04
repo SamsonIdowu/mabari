@@ -578,7 +578,7 @@ func pendingFor(t *testing.T, engine *events.Engine, agentID string) []models.Ap
 // An agent waits on one approval at a time. A stop, or a second request, settles the earlier one,
 // and a restart restores the newest.
 func TestNoApprovalIsLeftBehind(t *testing.T) {
-	sim, engine, _ := restartedDemo(t, func(sim *Simulator, engine *events.Engine) {
+	sim, engine, _ := restartedDemo(t, func(_ *Simulator, engine *events.Engine) {
 		atlas := engine.AgentByName("Atlas")
 		engine.RequestApproval(atlas, models.Approval{Type: models.ApprovalCommand,
 			Title: "Run a command", Detail: models.ApprovalDetail{Cmd: "npm test"}})

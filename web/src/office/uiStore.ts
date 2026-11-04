@@ -25,6 +25,8 @@ interface OfficeUi extends OfficeFilters {
   autoBanner: boolean;
   /** The Create a new agent dialog, with the desk or project it was opened for. */
   newAgent: { desk?: number; project?: string } | null;
+  /** The New project chat. */
+  newProject: boolean;
   mode: MessageMode;
   /** "auto", "selected", "everyone" or an agent id. */
   target: string;
@@ -68,6 +70,7 @@ const FRESH_VIEW = {
   follow: false,
   autoBanner: false,
   newAgent: null,
+  newProject: false,
   target: 'auto',
   panelTab: 'live',
   highlight: null,

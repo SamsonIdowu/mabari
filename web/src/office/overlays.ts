@@ -123,7 +123,13 @@ function renderBoard(board: HTMLElement, scene: OfficeScene, agents: LiveAgent[]
   );
   const items = waiting.map((agent) => {
     const { detail, type } = agent.approval ?? { detail: { cmd: '', path: '' }, type: '' };
-    const summary = type === 'command' ? detail.cmd : `Edit ${detail.path}`;
+    // The prototype's apSum: the command, the plan's project, or the file.
+    const summary =
+      type === 'command'
+        ? detail.cmd
+        : type === 'plan'
+          ? `Approve the plan for ${detail.project ?? ''}`
+          : `Edit ${detail.path}`;
     return `<button class="bitem" type="button" data-review="${esc(agent.approval?.id ?? '')}"><i></i><span><b>${esc(agent.name)}</b>: ${esc(summary ?? '')}</span>Review</button>`;
   });
   setHtml(

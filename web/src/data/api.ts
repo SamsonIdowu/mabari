@@ -127,6 +127,68 @@ export interface ClaudePlan {
   backup: string;
 }
 
+export interface PlanMember {
+  role: string;
+  label: string;
+  name: string;
+  task: string;
+  on: boolean;
+  minutes: number;
+}
+
+/** A proposed team, from the planner. Its minutes come from the server. */
+export interface ProjectPlan {
+  name: string;
+  color: string;
+  account: AccountKind;
+  leadName: string;
+  leadModel: string;
+  subModel: string;
+  leadTask: string;
+  members: PlanMember[];
+  minutes: number;
+}
+
+export interface PlanRequest {
+  said: string[];
+  previous: ProjectPlan | null;
+  instructions: string;
+  files: { name: string; text: string }[];
+  repo: { name: string; lang: string; files: number } | null;
+}
+
+export interface FolderScan {
+  root: string;
+  path: string;
+  count: number;
+  markers: string[];
+  lang: string;
+  manifest: string;
+  tests: string;
+  instructions: string;
+  instructionsFrom: string;
+}
+
+export interface FolderCheck {
+  path: string;
+  url: boolean;
+  name: string;
+  hint: string;
+  scan: FolderScan | null;
+  error: string;
+}
+
+export interface ProjectStart {
+  plan: ProjectPlan;
+  name: string;
+  instructions: string;
+  files: string[];
+  folder: string;
+  branch: string;
+  mode: 'plan' | 'go';
+  brief: string;
+}
+
 export interface Scope {
   projectId: string;
   teamId: string;
@@ -161,6 +223,16 @@ export const api = {
   revokeHubToken: () => send<{ ok: boolean }>('DELETE', '/api/accounts/hub/token'),
   codexLogin: () => send<{ authUrl: string }>('POST', '/api/accounts/codex/login'),
   codexLogout: () => send<{ ok: boolean }>('POST', '/api/accounts/codex/logout'),
+  plan: (body: PlanRequest) =>
+    send<{ plan: ProjectPlan; reply: string }>('POST', '/api/planner', body),
+  estimatePlan: (plan: ProjectPlan) =>
+    send<{ minutes: number }>('POST', '/api/planner/estimate', plan),
+  startProject: (body: ProjectStart) =>
+    send<{ project: Project; leadId: string; notice: string }>('POST', '/api/projects/start', body),
+  checkFolder: (path: string, allowUrl: boolean) =>
+    send<FolderCheck>('POST', '/api/folders/check', { path, allowUrl }),
+  pickFolder: () => send<{ path: string }>('POST', '/api/folders/pick'),
+  recentFolders: () => request<string[]>('/api/folders/recent'),
   claudePlan: () => request<ClaudePlan>('/api/accounts/claude'),
   connectClaude: () =>
     send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),

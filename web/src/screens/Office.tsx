@@ -17,7 +17,6 @@ import { AgentPanel } from './AgentPanel.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { CommandBar } from './CommandBar.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
-import { LATER } from './parts.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
 
@@ -102,6 +101,20 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
         );
       })}
       <div className="msep" />
+      <button
+        type="button"
+        className="mi"
+        role="menuitem"
+        onClick={() => {
+          close();
+          useOfficeUi.getState().set({ newProject: true });
+        }}
+      >
+        <Icon>
+          <path d="M12 5v14M5 12h14" />
+        </Icon>
+        New project from a description
+      </button>
       <a className="mi" href="#projects" role="menuitem" onClick={close}>
         <Icon>
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -787,7 +800,11 @@ export function Office() {
             </div>
             <div className="ohact">
               <AutoApproveButton settings={office.settings} />
-              <button type="button" className="btn" disabled title={LATER}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => useOfficeUi.getState().set({ newProject: true })}
+              >
                 <Icon>
                   <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
                 </Icon>

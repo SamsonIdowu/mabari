@@ -443,6 +443,22 @@ export const RiskLow: RiskLevel = "low";
  */
 export const RiskHigh: RiskLevel = "high";
 /**
+ * Decisions on an approval, and who made them.
+ */
+export const DecisionAllowed = "allowed";
+/**
+ * Decisions on an approval, and who made them.
+ */
+export const DecisionDenied = "denied";
+/**
+ * Decisions on an approval, and who made them.
+ */
+export const DecidedByUser = "user";
+/**
+ * Decisions on an approval, and who made them.
+ */
+export const DecidedByAuto = "auto";
+/**
  * Approval is a risky action waiting for a decision.
  */
 export interface Approval {

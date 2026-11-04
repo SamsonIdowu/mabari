@@ -12,11 +12,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/config"
+	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
+	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/server"
+	"github.com/SamsonIdowu/mabari/internal/store"
 	"github.com/SamsonIdowu/mabari/web"
 )
 
@@ -73,10 +77,21 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	office, err := openOffice(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer office.close(stderr)
 	httpServer := &http.Server{
-		Handler:           server.New(version, web.Files()),
+		Handler: server.New(server.Options{
+			Version:   version,
+			Engine:    office.engine,
+			Simulator: office.simulator,
+			WebFiles:  web.Files(),
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	go office.engine.Run(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -93,6 +108,46 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+type office struct {
+	store     *store.Store
+	engine    *events.Engine
+	simulator *simulator.Simulator
+}
+
+func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create data folder: %w", err)
+	}
+	// A folder needs its execute bit, so gosec's 0600 advice doesn't apply here.
+	if err := os.Chmod(cfg.DataDir, 0o700); err != nil { // #nosec G302
+		return nil, fmt.Errorf("protect data folder: %w", err)
+	}
+	database, err := store.Open(ctx, filepath.Join(cfg.DataDir, "mabari.db"))
+	if err != nil {
+		return nil, err
+	}
+	engine, err := events.New(ctx, database, nil)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	sim := simulator.New(engine, nil, time.Second)
+	demo, err := database.Meta(ctx, store.MetaDemo)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	sim.Resume(demo == "1")
+	return &office{store: database, engine: engine, simulator: sim}, nil
+}
+
+func (o *office) close(stderr io.Writer) {
+	o.simulator.Stop()
+	if err := o.store.Close(); err != nil {
+		_, _ = fmt.Fprintln(stderr, "mabari: close database:", err)
+	}
 }
 
 func listen(ctx context.Context, cfg config.Config) (net.Listener, error) {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -90,6 +91,13 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 	if !body.Confirm {
 		writeError(w, http.StatusBadRequest, "wiping needs confirm: true")
 		return
+	}
+	// A wipe also takes Mabari's hooks out of Claude Code's settings.
+	if a.claude != nil && claudecode.Attached(a.claude.ConfigDir) {
+		if err := a.detachClaude(); err != nil {
+			internalError(w, err)
+			return
+		}
 	}
 	if err := a.engine.Do(a.engine.Wipe); err != nil {
 		internalError(w, err)

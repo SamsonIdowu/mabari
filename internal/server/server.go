@@ -25,22 +25,31 @@ type Options struct {
 	Simulator *simulator.Simulator
 	// WebFiles is the built web app, or nil in development, where Vite serves it instead.
 	WebFiles fs.FS
+	// Claude connects Claude Code sessions, or is nil.
+	Claude *ClaudeOptions
 }
 
 type api struct {
 	engine    *events.Engine
 	simulator *simulator.Simulator
 	router    dispatch.Router
+	claude    *ClaudeOptions
 }
 
 // New builds the handler. It is separate from listening so tests can drive it directly.
 func New(options Options) http.Handler {
-	a := &api{engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{}}
+	a := &api{
+		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
+		claude: options.Claude,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": options.Version})
 	})
 	a.routes(mux)
+	if a.claude != nil {
+		a.claudeRoutes(mux)
+	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

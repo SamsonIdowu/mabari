@@ -144,6 +144,9 @@ func TestDetachRestoresTheOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := read(t, filepath.Join(dir, "settings.json"))
+	if after != existing {
+		t.Errorf("the original bytes did not come back:\n%s", after)
+	}
 	var want, got any
 	_ = json.Unmarshal([]byte(existing), &want)
 	_ = json.Unmarshal([]byte(after), &got)

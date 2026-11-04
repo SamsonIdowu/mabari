@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/config"
+	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
@@ -34,8 +35,11 @@ var version = "dev"
 const usage = `Mabari shows your AI agents at work, in a little office.
 
 Usage:
-  mabari serve [flags]   Start Mabari (the default)
-  mabari version         Print the version
+  mabari serve [flags]        Start Mabari (the default)
+  mabari connect claude       Add Mabari's hooks to Claude Code, after showing the change
+  mabari disconnect claude    Take Mabari's hooks out of Claude Code again
+  mabari hook <event>         Run by Claude Code itself; not for typing
+  mabari version              Print the version
 `
 
 func main() {
@@ -56,6 +60,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	case "version":
 		_, err := fmt.Fprintln(stdout, version)
 		return err
+	case "hook":
+		return runHook(args, os.Stdin, stdout)
+	case "connect", "disconnect":
+		if len(args) == 0 || args[0] != "claude" {
+			return fmt.Errorf("usage: mabari %s claude", command)
+		}
+		if command == "connect" {
+			return connectClaude(args[1:], os.Stdin, stdout)
+		}
+		return disconnectClaude(stdout)
 	case "help":
 		_, err := fmt.Fprint(stdout, usage)
 		return err
@@ -95,10 +109,12 @@ func serve(args []string, stdout, stderr io.Writer) error {
 			Engine:    office.engine,
 			Simulator: office.simulator,
 			WebFiles:  web.Files(),
+			Claude:    claudeOptions(cfg, office),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go office.engine.Run(ctx)
+	go watchClaude(ctx, office)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -126,6 +142,7 @@ type office struct {
 	engine    *events.Engine
 	simulator *simulator.Simulator
 	secrets   secrets.Store
+	claude    *claudecode.Connector
 }
 
 func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
@@ -166,7 +183,9 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 		_ = database.Close()
 		return nil, err
 	}
-	return &office{store: database, engine: engine, simulator: sim, secrets: vault}, nil
+	claude := claudecode.New(engine)
+	engine.AddConnector(claudecode.Source, claude)
+	return &office{store: database, engine: engine, simulator: sim, secrets: vault, claude: claude}, nil
 }
 
 func (o *office) close(stderr io.Writer) {

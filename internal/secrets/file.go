@@ -25,7 +25,7 @@ const FileName = "secrets.enc"
 const MinMasterKey = 32
 
 // DockerSecretPath is where Docker mounts a secret named mabari_master_key.
-const DockerSecretPath = "/run/secrets/mabari_master_key"
+const DockerSecretPath = "/run/secrets/mabari_master_key" // #nosec G101 -- a path, not a credential
 
 // ErrNoMasterKey means the encrypted file was chosen without a master key.
 var ErrNoMasterKey = errors.New("the encrypted-file secrets backend needs a master key: " +

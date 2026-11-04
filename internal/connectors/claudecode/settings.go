@@ -156,9 +156,12 @@ func PlanDetach(configDir string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	// Nothing of Mabari's was there, so the file is left exactly as it is.
+	// Nothing of Mabari's was there, so the file is left exactly as it is. If what is left matches
+	// the backup, the backup's own bytes go back, formatting and all.
 	if bytes.Equal(pretty(before), after) {
 		after = before
+	} else if backup, err := os.ReadFile(path + BackupSuffix); err == nil && sameJSON(backup, after) {
+		after = backup
 	}
 	return Plan{Path: path, Before: before, After: after, Diff: Diff(pretty(before), after),
 		Existed: true}, nil
@@ -466,4 +469,11 @@ func Diff(before, after []byte) []models.DiffLine {
 		}
 	}
 	return shown
+}
+
+// sameJSON reports whether two documents hold the same values, ignoring spacing.
+func sameJSON(a, b []byte) bool {
+	var left, right bytes.Buffer
+	return json.Compact(&left, a) == nil && json.Compact(&right, b) == nil &&
+		bytes.Equal(left.Bytes(), right.Bytes())
 }

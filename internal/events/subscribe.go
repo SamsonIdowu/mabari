@@ -88,3 +88,7 @@ func (e *Engine) broadcast(message models.ServerMessage) {
 		}
 	}
 }
+
+// HasViewers reports whether any page is open on Mabari. With none, nobody could answer an
+// approval, so a real agent falls back to its own prompt at once. Call inside Do.
+func (e *Engine) HasViewers() bool { return len(e.subs) > 0 }

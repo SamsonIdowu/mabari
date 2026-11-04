@@ -8,7 +8,7 @@ test.beforeEach(async ({ request }) => {
 async function loadDemo(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Explore a demo office' }).click();
-  await expect(page.locator('h1')).toHaveText('Office');
+  await expect(page.locator('h1')).toHaveText('All projects');
 }
 
 const go = (page: Page, route: string) =>
@@ -31,7 +31,7 @@ test('first run turns into the office once the demo loads', async ({ page }) => 
   await loadDemo(page);
   await expect(page.getByText('Demo office loaded.')).toBeVisible();
   await page.goto('/');
-  await expect(page.locator('h1')).toHaveText('Office');
+  await expect(page.locator('h1')).toHaveText('All projects');
 });
 
 test('every screen renders in both themes without errors', async ({ page }) => {

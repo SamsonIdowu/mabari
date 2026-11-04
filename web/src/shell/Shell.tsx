@@ -8,7 +8,7 @@ import { Accounts } from '../screens/Accounts.tsx';
 import { Activity } from '../screens/Activity.tsx';
 import { ComponentSheet } from '../screens/ComponentSheet.tsx';
 import { Conversations } from '../screens/Conversations.tsx';
-import { PageHead } from '../screens/parts.tsx';
+import { Office } from '../screens/Office.tsx';
 import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
 import { StatusScreens } from '../screens/StatusScreens.tsx';
@@ -38,13 +38,7 @@ function Screen({ route }: { route: Route }) {
     case 'states':
       return <StatusScreens />;
     case 'office':
-      return (
-        <section data-screen="office">
-          <div className="page">
-            <PageHead title="Office" />
-          </div>
-        </section>
-      );
+      return <Office />;
   }
 }
 

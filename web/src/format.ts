@@ -49,6 +49,31 @@ export function etaShort(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
   }
 }
 
+/** The long form in the panel and spotlight, from the server's estimate. */
+export function etaLong(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
+  switch (agent.state) {
+    case 'approval':
+      return 'Paused until you decide on the approval';
+    case 'idle':
+      return 'No task right now';
+    case 'done':
+      return 'Finished';
+    case 'error':
+      return 'Stopped by an error';
+    case 'paused':
+      return 'Interrupted, waiting for your instruction';
+  }
+  const seconds = agent.estimate?.secondsLeft ?? 0;
+  const left = seconds < 60 ? 'Under a minute left' : `About ${minsText(seconds)} left`;
+  return `${left}, done around ${clockText(agent.estimate?.finishAt ?? 0)}`;
+}
+
+/** The short model name on tags: "sonnet-4.5" for "claude-sonnet-4-5". */
+export function modelLabel(model: string): string {
+  const short = model.replace(/^claude-/, '').replace(/-(\d)-(\d)$/, '-$1.$2');
+  return short.split(' · ')[0] ?? short;
+}
+
 export const STATE_LABELS: Record<AgentState, string> = {
   thinking: 'Thinking',
   reading: 'Reading files',
@@ -62,6 +87,8 @@ export const STATE_LABELS: Record<AgentState, string> = {
   error: 'Error',
   paused: 'Interrupted',
 };
+
+export const stateLabel = (state: AgentState): string => STATE_LABELS[state] ?? state;
 
 export const STATE_CHIPS: Partial<Record<AgentState, string>> = {
   approval: 'red',

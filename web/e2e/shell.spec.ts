@@ -7,7 +7,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 const NAV: [name: string, label: string, heading: string][] = [
-  ['Office', 'Office', 'Office'],
+  ['Office', 'Office', 'All projects'],
   ['Projects', 'Projects', 'Projects'],
   ['Conversations', 'Chats', 'Conversations'],
   ['Accounts', 'Accounts', 'Accounts'],
@@ -49,7 +49,7 @@ test('the top bar brand goes to the office', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.bm-tag')).toHaveText('Your AI agents at work');
   await page.getByRole('link', { name: 'Mabari, go to the office' }).click();
-  await expect(page.locator('h1')).toHaveText('Office');
+  await expect(page.locator('h1')).toHaveText('All projects');
 });
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {

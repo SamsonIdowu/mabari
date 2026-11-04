@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { agoText, etaShort, filterLog, minsText } from './format.ts';
+import { agoText, etaLong, etaShort, filterLog, minsText, modelLabel } from './format.ts';
 import type { AgentState, Estimate, LogEntry } from './gen/models.ts';
 
 const estimate = (secondsLeft: number) => ({ secondsLeft }) as Estimate;
@@ -43,6 +43,33 @@ describe('etaShort', () => {
     ['error', 'stopped'],
   ] as [AgentState, string][])('has fixed wording for %s', (state, short) => {
     expect(etaShort({ state, estimate: null })).toBe(short);
+  });
+});
+
+describe('etaLong', () => {
+  it('gives the time left and when it should finish', () => {
+    const text = etaLong({ state: 'editing', estimate: { ...estimate(360), finishAt: 0 } });
+    expect(text).toMatch(/^About 6 min left, done around \d\d:\d\d$/);
+  });
+
+  it('says so near the end', () => {
+    expect(etaLong({ state: 'running', estimate: estimate(30) })).toContain('Under a minute left');
+  });
+
+  it('explains why there is no estimate', () => {
+    expect(etaLong({ state: 'approval', estimate: null })).toBe(
+      'Paused until you decide on the approval',
+    );
+  });
+});
+
+describe('modelLabel', () => {
+  it.each([
+    ['claude-sonnet-4-5', 'sonnet-4.5'],
+    ['gpt-5-codex', 'gpt-5-codex'],
+    ['qwen2.5-coder · local', 'qwen2.5-coder'],
+  ])('shortens %s', (model, label) => {
+    expect(modelLabel(model)).toBe(label);
   });
 });
 

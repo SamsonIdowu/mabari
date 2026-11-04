@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useEffect, useRef } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
+import { paintHero } from '../office/scene.ts';
+import { useThemeStore } from '../theme/themeStore.ts';
 
 export function Welcome() {
+  const hero = useRef<HTMLCanvasElement>(null);
+  const theme = useThemeStore((state) => state.theme);
+
+  useEffect(() => {
+    const context = hero.current?.getContext('2d');
+    if (!context) return;
+    paintHero(context, theme);
+  }, [theme]);
+
   const loadDemo = async () => {
     await api.loadDemo();
     window.location.hash = '#office';
@@ -60,6 +72,7 @@ export function Welcome() {
           <div className="herowrap">
             <canvas
               id="heroCanvas"
+              ref={hero}
               width="960"
               height="576"
               aria-label="Preview of the pixel office"

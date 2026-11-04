@@ -11,9 +11,10 @@ import {
   minsText,
   projectStatus,
   STATE_CHIPS,
-  STATE_LABELS,
+  stateLabel,
 } from '../format.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
+import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { LATER, PageHead } from './parts.tsx';
 
@@ -33,6 +34,7 @@ function AgentRow({ agent, sub }: { agent: LiveAgent; sub: boolean }) {
     <a
       className={`subrow p-${agent.provider}`}
       href="#office"
+      onClick={() => useOfficeUi.getState().set({ selected: agent.id })}
       style={{
         ['--ac' as string]: agent.hue,
         textDecoration: 'none',
@@ -57,7 +59,7 @@ function AgentRow({ agent, sub }: { agent: LiveAgent; sub: boolean }) {
         <b>{agent.name}</b> <span className="help mono">{agent.model}</span>
       </span>
       <span className="pdot" />
-      <span className={`chip ${STATE_CHIPS[agent.state] ?? ''}`}>{STATE_LABELS[agent.state]}</span>
+      <span className={`chip ${STATE_CHIPS[agent.state] ?? ''}`}>{stateLabel(agent.state)}</span>
       {eta ? <span className="help num">{eta}</span> : null}
     </a>
   );
@@ -251,7 +253,11 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
             Mark as complete
           </button>
         ) : null}
-        <a className={done || canComplete ? 'btn sm' : 'btn sm primary'} href="#office">
+        <a
+          className={done || canComplete ? 'btn sm' : 'btn sm primary'}
+          href="#office"
+          onClick={() => useOfficeUi.getState().set({ project: project.id, team: null })}
+        >
           Open in office
         </a>
         {done ? (

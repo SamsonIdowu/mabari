@@ -48,7 +48,7 @@ function Screen({ route }: { route: Route }) {
 
 export function Shell() {
   useOfficeSync();
-  const firstRun = useOfficeStore((state) => state.office?.firstRun ?? true);
+  const firstRun = useOfficeStore((state) => state.office?.firstRun ?? null);
   const route = useHashRoute(firstRun);
   const collapsed = useRailStore((state) => state.collapsed);
   const screenRef = useRef<HTMLElement>(null);
@@ -64,7 +64,7 @@ export function Shell() {
       <Topbar />
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef}>
-        <Screen route={route} />
+        {route ? <Screen route={route} /> : null}
       </main>
       <NewAgentDialog />
       <Toasts />

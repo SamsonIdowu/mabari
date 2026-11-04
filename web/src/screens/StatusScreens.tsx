@@ -1,6 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from 'react';
+import { api } from '../data/api.ts';
+import { useOfficeStore } from '../data/officeStore.ts';
+import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { LATER, PageHead } from './parts.tsx';
+
+/** Shows Mori's error on the floor, loading the demo office first if Mori isn't there. */
+async function seeMori() {
+  const store = useOfficeStore.getState();
+  let office = store.office;
+  if (!office || office.firstRun || !office.agents.some((agent) => agent.name === 'Mori')) {
+    await api.loadDemo();
+    office = await api.snapshot();
+    store.setSnapshot(office);
+  }
+  const mori = office.agents.find((agent) => agent.name === 'Mori');
+  if (mori) openAgent(mori, office.agents);
+}
 
 const showLive = (
   <button type="button" className="btn sm" disabled title={LATER}>
@@ -29,7 +45,11 @@ const CARDS: { title: string; when: string; mock: ReactNode }[] = [
       <>
         <h3>No agents running yet</h3>
         <p className="muted">Start one here or in your terminal.</p>
-        <button type="button" className="btn primary sm" disabled title={LATER}>
+        <button
+          type="button"
+          className="btn primary sm"
+          onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
+        >
           New agent
         </button>
       </>
@@ -84,9 +104,17 @@ const CARDS: { title: string; when: string; mock: ReactNode }[] = [
           Error
         </span>
         <p className="muted">Lost connection to the embedding service.</p>
-        <a className="btn sm" href="#office">
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => {
+            seeMori().catch((error: unknown) => {
+              useOfficeStore.getState().toast(error instanceof Error ? error.message : 'Try again');
+            });
+          }}
+        >
           See Mori on the floor
-        </a>
+        </button>
       </>
     ),
   },

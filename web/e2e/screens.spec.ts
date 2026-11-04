@@ -186,3 +186,52 @@ test('the completion sound has a switch and can be played', async ({ page }) => 
   await page.reload();
   await expect(page.getByLabel('Ding when a task is completed')).not.toBeChecked();
 });
+
+test('a wipe forgets the filtered view, so the next demo shows everyone', async ({ page }) => {
+  await loadDemo(page);
+  await page.getByRole('link', { name: 'Projects', exact: true }).click();
+  await page
+    .locator('article', { hasText: 'Test coverage' })
+    .getByRole('link', { name: 'Open in office' })
+    .click();
+  await expect(page.locator('.dd').first()).toContainText('Test coverage');
+  await go(page, '#preferences');
+  await page.getByRole('button', { name: 'Wipe all data…' }).click();
+  await page.getByRole('button', { name: 'Yes, wipe all data' }).click();
+  await page.getByRole('button', { name: 'Explore a demo office' }).click();
+  await expect(page.locator('.dd').first()).toContainText('All projects');
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(10);
+});
+
+test('All projects opens the whole office, even after a project was opened', async ({ page }) => {
+  await loadDemo(page);
+  await page.getByRole('link', { name: 'Projects', exact: true }).click();
+  await page
+    .locator('article', { hasText: 'Test coverage' })
+    .getByRole('link', { name: 'Open in office' })
+    .click();
+  await page.getByRole('link', { name: 'Projects', exact: true }).click();
+  await page
+    .locator('article', { hasText: 'All projects' })
+    .getByRole('link', { name: 'Open in office' })
+    .click();
+  await expect(page.locator('.dd').first()).toContainText('All projects');
+});
+
+test('a fresh install starts with My first project', async ({ page }) => {
+  await page.goto('/#projects');
+  await expect(page.locator('article', { hasText: 'My first project' })).toContainText(
+    'No agents yet. Start one and choose this project.',
+  );
+});
+
+test('the status screens open New agent and show Mori on the floor', async ({ page }) => {
+  await page.goto('/#states');
+  await page.getByRole('button', { name: 'New agent' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Create a new agent');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'See Mori on the floor' }).click();
+  await expect(page.locator('h1')).toHaveText('Agents');
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel.getByRole('heading', { name: 'Mori', exact: true })).toBeVisible();
+});

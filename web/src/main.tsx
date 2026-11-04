@@ -15,12 +15,18 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shell } from './shell/Shell.tsx';
 
+// Mabari only talks to this computer, so a lost internet connection must not pause requests. If it
+// did, the status dot could stay green after the local server stopped.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { networkMode: 'always' }, mutations: { networkMode: 'always' } },
+});
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
 createRoot(root).render(
   <StrictMode>
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <Shell />
     </QueryClientProvider>
   </StrictMode>,

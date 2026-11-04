@@ -28,7 +28,7 @@ function LiveBadge() {
   return live ? <span className="badge amber">live</span> : null;
 }
 
-function NavLink({ item, current }: { item: NavItem; current: Route }) {
+function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
   const isCurrent = item.route === current;
   return (
     <a
@@ -46,7 +46,7 @@ function NavLink({ item, current }: { item: NavItem; current: Route }) {
   );
 }
 
-export function Rail({ current }: { current: Route }) {
+export function Rail({ current }: { current: Route | null }) {
   return (
     <aside className="rail" aria-label="Main">
       {navGroups.map((group, index) => (

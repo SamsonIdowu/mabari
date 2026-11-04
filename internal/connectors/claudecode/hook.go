@@ -53,7 +53,13 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 	if err != nil {
 		return
 	}
-	request.Header.Set("Authorization", "Bearer "+secret)
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(nonce); err != nil {
+		return
+	}
+	nonceText := hex.EncodeToString(nonce)
+	request.Header.Set(NonceHeader, nonceText)
+	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, event, body))
 	request.Header.Set("Content-Type", "application/json")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -65,6 +71,10 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 	}
 	reply, err := io.ReadAll(io.LimitReader(response.Body, maxHookInput))
 	if err != nil || len(bytes.TrimSpace(reply)) == 0 || !json.Valid(reply) {
+		return
+	}
+	// Only a reply signed with the token, for this call, is printed.
+	if !Verify(SignReply(secret, nonceText, reply), response.Header.Get(SignatureHeader)) {
 		return
 	}
 	_, _ = stdout.Write(reply)

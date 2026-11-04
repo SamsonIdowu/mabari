@@ -60,7 +60,9 @@ func (o *claudeOffice) hook(t *testing.T, token, event, body string) *httptest.R
 	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4317"+claudecode.HookPath+event,
 		strings.NewReader(body))
 	if token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
+		nonce := "0123456789abcdef0123"
+		request.Header.Set(claudecode.NonceHeader, nonce)
+		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, event, []byte(body)))
 	}
 	recorder := httptest.NewRecorder()
 	o.handler.ServeHTTP(recorder, request)
@@ -112,8 +114,25 @@ func TestHooksNeedTheInstallToken(t *testing.T) {
 			t.Errorf("%s = %d", name, response.Code)
 		}
 	}
-	if response := o.hook(t, token, "SessionStart", body); response.Code != http.StatusOK {
+	// A call signed for another event is refused too.
+	if response := o.hook(t, token, "Stop", body); response.Code != http.StatusOK {
 		t.Fatalf("hook = %d", response.Code)
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4317"+claudecode.HookPath+"SessionStart",
+		strings.NewReader(body))
+	request.Header.Set(claudecode.NonceHeader, "0123456789abcdef0123")
+	request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, "0123456789abcdef0123", "Stop", []byte(body)))
+	recorder := httptest.NewRecorder()
+	o.handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Errorf("a signature for another event = %d", recorder.Code)
+	}
+	response := o.hook(t, token, "SessionStart", body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("hook = %d", response.Code)
+	}
+	if want := claudecode.SignReply(token, "0123456789abcdef0123", response.Body.Bytes()); response.Header().Get(claudecode.SignatureHeader) != want {
+		t.Error("the reply is not signed")
 	}
 	snapshot := decode[models.Snapshot](t, o.do(t, http.MethodGet, "/api/snapshot", ""))
 	if len(snapshot.Agents) != 1 || snapshot.Agents[0].Source != claudecode.Source {

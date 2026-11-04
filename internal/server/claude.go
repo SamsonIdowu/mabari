@@ -3,11 +3,9 @@
 package server
 
 import (
-	"crypto/subtle"
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -33,14 +31,12 @@ func (a *api) claudeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/accounts/claude/disconnect", a.claudeDisconnect)
 }
 
-// claudeHook takes one hook call. Only a caller with the install's token gets in, because a hook
-// reply can steer Claude.
+// claudeHook takes one hook call. Only a call signed with the install's token gets in, because a
+// hook reply can steer Claude, and the reply is signed so the hook knows it came from here.
 func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
-	want, err := a.claude.Secrets.Get(claudecode.TokenName)
-	given, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if err != nil || want == "" || !found ||
-		subtle.ConstantTimeCompare([]byte(given), []byte(want)) != 1 {
-		writeError(w, http.StatusUnauthorized, "this hook token is not valid")
+	token, err := a.claude.Secrets.Get(claudecode.TokenName)
+	if err != nil || token == "" {
+		writeError(w, http.StatusUnauthorized, "Claude Code is not connected")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHookBody))
@@ -48,8 +44,15 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, "request is too large")
 		return
 	}
+	nonce := r.Header.Get(claudecode.NonceHeader)
+	want := claudecode.SignRequest(token, nonce, r.PathValue("event"), body)
+	if len(nonce) < 16 || !claudecode.Verify(want, r.Header.Get(claudecode.SignatureHeader)) {
+		writeError(w, http.StatusUnauthorized, "this hook call is not signed with the install's token")
+		return
+	}
 	reply := a.claude.Connector.Handle(r.Context(), body)
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(claudecode.SignatureHeader, claudecode.SignReply(token, nonce, reply))
 	w.WriteHeader(http.StatusOK)
 	if len(reply) > 0 {
 		_, _ = w.Write(reply)

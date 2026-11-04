@@ -404,30 +404,40 @@ func (c *Connector) takePause(session string) bool {
 	return paused
 }
 
-// approvalFor describes a permission request for the approval card, with its risk.
+// approvalFor describes a permission request for the approval card, with its risk. Risk follows
+// the tool's name, never the shape of its arguments, so an unknown tool with a "command" field
+// can't pass as a shell command (an MCP tool, for one). Only known tools get a low risk rule.
 func approvalFor(in input) models.Approval {
 	var args toolInput
 	_ = json.Unmarshal(in.ToolInput, &args)
-	switch {
-	case args.Command != "":
+	switch in.ToolName {
+	case "Bash", "PowerShell":
 		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: args.Command, Folder: in.Cwd})
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Run a command",
 			Detail: models.ApprovalDetail{Cmd: redact.Text(args.Command)},
 			Risk:   verdict.Reason, RiskLevel: verdict.Level,
 		}
-	case args.FilePath != "":
-		verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: args.FilePath, Folder: in.Cwd})
+	case "Edit", "Write", "MultiEdit", "NotebookEdit":
+		path := args.FilePath
+		verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: path, Folder: in.Cwd})
 		return models.Approval{
 			Type: models.ApprovalFile, Title: "Change a file",
-			Detail: models.ApprovalDetail{Path: args.FilePath, Lines: diffOf(args)},
+			Detail: models.ApprovalDetail{Path: path, Lines: diffOf(args)},
+			Risk:   verdict.Reason, RiskLevel: verdict.Level,
+		}
+	case "Read":
+		verdict := risk.Classify(risk.Action{Kind: risk.KindRead, Path: args.FilePath, Folder: in.Cwd})
+		return models.Approval{
+			Type: models.ApprovalFile, Title: "Read a file",
+			Detail: models.ApprovalDetail{Path: args.FilePath},
 			Risk:   verdict.Reason, RiskLevel: verdict.Level,
 		}
 	default:
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Use " + in.ToolName,
 			Detail: models.ApprovalDetail{Cmd: summaryOf(in.ToolName, in.ToolInput)},
-			Risk:   "Mabari doesn't know this tool, so it always asks.", RiskLevel: models.RiskHigh,
+			Risk:   "Mabari has no rule for this tool, so it always asks.", RiskLevel: models.RiskHigh,
 		}
 	}
 }

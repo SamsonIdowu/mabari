@@ -407,12 +407,17 @@ func (c *Connector) takePause(session string) bool {
 // approvalFor describes a permission request for the approval card, with its risk. Risk follows
 // the tool's name, never the shape of its arguments, so an unknown tool with a "command" field
 // can't pass as a shell command (an MCP tool, for one). Only known tools get a low risk rule.
-func approvalFor(in input) models.Approval {
+// The folder is the agent's own, from its first event, so a session that moved elsewhere is
+// judged against where it started.
+func approvalFor(in input, folder string) models.Approval {
 	var args toolInput
 	_ = json.Unmarshal(in.ToolInput, &args)
 	switch in.ToolName {
 	case "Bash":
-		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: args.Command, Folder: in.Cwd})
+		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: args.Command, Folder: folder})
+		if in.Cwd != "" && in.Cwd != folder && !within(in.Cwd, folder) {
+			verdict = risk.Verdict{Level: models.RiskHigh, Reason: "It runs outside the agent's folder, in " + in.Cwd + "."}
+		}
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Run a command",
 			Detail: models.ApprovalDetail{Cmd: redact.Text(args.Command)},
@@ -420,14 +425,14 @@ func approvalFor(in input) models.Approval {
 		}
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
 		path := args.FilePath
-		verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: path, Folder: in.Cwd})
+		verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: path, Folder: folder})
 		return models.Approval{
 			Type: models.ApprovalFile, Title: "Change a file",
 			Detail: models.ApprovalDetail{Path: path, Lines: diffOf(args)},
 			Risk:   verdict.Reason, RiskLevel: verdict.Level,
 		}
 	case "Read":
-		verdict := risk.Classify(risk.Action{Kind: risk.KindRead, Path: args.FilePath, Folder: in.Cwd})
+		verdict := risk.Classify(risk.Action{Kind: risk.KindRead, Path: args.FilePath, Folder: folder})
 		return models.Approval{
 			Type: models.ApprovalFile, Title: "Read a file",
 			Detail: models.ApprovalDetail{Path: args.FilePath},
@@ -491,7 +496,7 @@ func (c *Connector) permission(ctx context.Context, in input) []byte {
 		if agent == nil {
 			return
 		}
-		approval := approvalFor(in)
+		approval := approvalFor(in, agent.Folder)
 		auto := c.engine.Settings().AutoApprove
 		covered := auto.On && (auto.Scope == "all" || approval.RiskLevel == models.RiskLow)
 		if !covered && !c.engine.HasViewers() {

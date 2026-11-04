@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -435,49 +437,120 @@ func (c *Connector) itemStarted(agent *models.LiveAgent, e event) {
 	}
 }
 
-// Request handles approvals Codex asks for. Anything else is declined, so Codex never waits on
-// a question Mabari doesn't understand.
-func (c *Connector) Request(method string, params json.RawMessage, reply func(any)) {
-	var e event
-	_ = json.Unmarshal(params, &e)
-	var approval models.Approval
+// shellSpecial marks words that only mean something once a shell reads them.
+const shellSpecial = " \t\n'\"`$\\|&;<>(){}*?[]#~"
+
+// commandWords turns a command into one string for the risk rules. A list of words is joined
+// only when no word needs quoting; otherwise the join could read differently to a shell, so the
+// command counts as risky.
+func commandWords(command any) (string, bool) {
+	words, isList := command.([]any)
+	if !isList {
+		text, _ := command.(string)
+		return text, true
+	}
+	parts := make([]string, 0, len(words))
+	for _, word := range words {
+		text, ok := word.(string)
+		if !ok || text == "" || strings.ContainsAny(text, shellSpecial) {
+			return commandText(command), false
+		}
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, " "), true
+}
+
+// risky is the verdict for anything Mabari can't judge.
+func risky(reason string) risk.Verdict { return risk.Verdict{Level: models.RiskHigh, Reason: reason} }
+
+// inFolder reports whether a path is inside the agent's own folder.
+func inFolder(path, folder string) bool {
+	if folder == "" || path == "" {
+		return false
+	}
+	relative, err := filepath.Rel(folder, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+// approvalFor describes an approval request against the agent's own folder, never the folder
+// Codex names, so a request can't move the goalposts. It returns false when the request can't be
+// shown truthfully, and is then declined.
+func (c *Connector) approvalFor(method string, e event, folder string) (models.Approval, bool) {
 	switch method {
 	case "item/commandExecution/requestApproval":
-		command := commandText(e.Command)
-		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: command, Folder: e.Cwd})
-		approval = models.Approval{
-			Type: models.ApprovalCommand, Title: "Run a command",
-			Detail: models.ApprovalDetail{Cmd: redact.Text(command)},
-			Risk:   verdict.Reason, RiskLevel: verdict.Level,
+		command, plain := commandWords(e.Command)
+		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: command, Folder: folder})
+		switch {
+		case !plain:
+			verdict = risky("The command has quoted or special words, so Mabari can't judge it.")
+		case e.Cwd != "" && e.Cwd != folder && !inFolder(e.Cwd, folder):
+			verdict = risky("It runs outside the agent's folder, in " + e.Cwd + ".")
 		}
+		return models.Approval{
+			Type: models.ApprovalCommand, Title: "Run a command",
+			Detail: models.ApprovalDetail{Cmd: redact.Text(commandText(e.Command))},
+			Risk:   verdict.Reason, RiskLevel: verdict.Level,
+		}, true
 	case "item/fileChange/requestApproval":
 		c.mu.Lock()
 		changes := c.changes[e.ItemID]
 		c.mu.Unlock()
-		approval = models.Approval{
-			Type: models.ApprovalFile, Title: "Change a file",
-			Detail: models.ApprovalDetail{Lines: diffLines(changes)},
-			Risk:   "Codex wants to change files.", RiskLevel: models.RiskHigh,
+		if len(changes) == 0 {
+			return models.Approval{}, false
 		}
-		if len(changes) > 0 {
-			approval.Detail.Path = changes[0].Path
-			verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: changes[0].Path, Folder: e.Cwd})
-			if len(changes) == 1 {
-				approval.Risk, approval.RiskLevel = verdict.Reason, verdict.Level
+		paths := make([]string, 0, len(changes))
+		verdict := risk.Verdict{Level: models.RiskLow}
+		for _, changed := range changes {
+			paths = append(paths, changed.Path)
+			one := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: changed.Path, Folder: folder})
+			if one.Level != models.RiskLow || verdict.Reason == "" {
+				verdict = one
+			}
+			if one.Level != models.RiskLow {
+				break
 			}
 		}
-	default:
-		reply(map[string]string{"decision": "decline"})
-		return
+		lines, cut := diffLines(changes)
+		if cut {
+			verdict = risky("The change is longer than the card can show.")
+		}
+		if len(changes) > 1 && verdict.Level == models.RiskLow {
+			verdict.Reason = "Changes " + strconv.Itoa(len(changes)) + " files in the working folder."
+		}
+		return models.Approval{
+			Type: models.ApprovalFile, Title: "Change " + strconv.Itoa(len(changes)) + " file" + plural(len(changes)),
+			Detail: models.ApprovalDetail{Path: strings.Join(paths, ", "), Lines: lines},
+			Risk:   verdict.Reason, RiskLevel: verdict.Level,
+		}, true
 	}
-	if e.Reason != "" {
-		approval.Risk = clip(e.Reason, 160) + " " + approval.Risk
+	return models.Approval{}, false
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
 	}
+	return "s"
+}
+
+// Request handles approvals Codex asks for. Anything Mabari can't show truthfully is declined,
+// so Codex never waits on something nobody can judge.
+func (c *Connector) Request(method string, params json.RawMessage, reply func(any)) {
+	var e event
+	_ = json.Unmarshal(params, &e)
 	_ = c.engine.Do(func() {
 		agent, _ := c.agentFor(e.ThreadID)
 		if agent == nil {
 			reply(map[string]string{"decision": "decline"})
 			return
+		}
+		approval, ok := c.approvalFor(method, e, agent.Folder)
+		if !ok {
+			reply(map[string]string{"decision": "decline"})
+			return
+		}
+		if e.Reason != "" {
+			approval.Risk = clip(e.Reason, 160) + " " + approval.Risk
 		}
 		c.mu.Lock()
 		c.replies[agent.ID] = reply
@@ -489,12 +562,13 @@ func (c *Connector) Request(method string, params json.RawMessage, reply func(an
 // maxDiffLines keeps an approval card readable.
 const maxDiffLines = 40
 
-func diffLines(changes []change) []models.DiffLine {
+// diffLines shows the changes, and reports whether they were cut short.
+func diffLines(changes []change) ([]models.DiffLine, bool) {
 	var lines []models.DiffLine
 	for _, changed := range changes {
 		for _, line := range strings.Split(redact.Text(changed.Diff), "\n") {
 			if len(lines) >= maxDiffLines {
-				return lines
+				return lines, true
 			}
 			kind := "ctx"
 			switch {
@@ -510,7 +584,7 @@ func diffLines(changes []change) []models.DiffLine {
 			lines = append(lines, models.DiffLine{Kind: kind, Text: line})
 		}
 	}
-	return lines
+	return lines, false
 }
 
 func (c *Connector) takeReply(agentID string) func(any) {

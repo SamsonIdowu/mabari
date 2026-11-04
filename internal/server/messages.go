@@ -158,40 +158,45 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Text = text
-	result := messageResult{Agents: []string{}}
-	var nobody bool
-	err := a.engine.Do(func() {
-		agents, routed := a.targets(body)
-		if len(agents) == 0 {
-			nobody = true
-			return
-		}
-		for _, agent := range agents {
-			result.Agents = append(result.Agents, agent.ID)
-		}
-		if routed != nil {
-			result.Routed = routed
-			kind := models.LogInstruction
-			if body.Mode == string(models.ModeQuery) {
-				kind = models.LogQuery
-			}
-			a.engine.Log("Dispatcher", kind, text, "Routed to "+routed.Name, "")
-			a.engine.Toast("Dispatcher sent it to " + routed.Name + ": " + routed.Reason)
-		}
-		if body.Mode == string(models.ModeQuery) {
-			a.ask(agents, text, &result)
-			return
-		}
-		a.instruct(agents, text)
-	})
+	var result messageResult
+	var delivered bool
+	err := a.engine.Do(func() { result, delivered = a.deliver(body) })
 	switch {
 	case err != nil:
 		internalError(w, err)
-	case nobody:
+	case !delivered:
 		writeError(w, http.StatusBadRequest, "Pick an agent first. Click one on the floor or choose it in Send to.")
 	default:
 		writeJSON(w, http.StatusOK, result)
 	}
+}
+
+// deliver is the one way a message reaches an agent. It runs inside engine.Do, and reports false
+// when nobody could take the message.
+func (a *api) deliver(body messageBody) (messageResult, bool) {
+	result := messageResult{Agents: []string{}}
+	agents, routed := a.targets(body)
+	if len(agents) == 0 {
+		return result, false
+	}
+	for _, agent := range agents {
+		result.Agents = append(result.Agents, agent.ID)
+	}
+	if routed != nil {
+		result.Routed = routed
+		kind := models.LogInstruction
+		if body.Mode == string(models.ModeQuery) {
+			kind = models.LogQuery
+		}
+		a.engine.Log("Dispatcher", kind, body.Text, "Routed to "+routed.Name, "")
+		a.engine.Toast("Dispatcher sent it to " + routed.Name + ": " + routed.Reason)
+	}
+	if body.Mode == string(models.ModeQuery) {
+		a.ask(agents, body.Text, &result)
+	} else {
+		a.instruct(agents, body.Text)
+	}
+	return result, true
 }
 
 func (a *api) autoApprove(w http.ResponseWriter, r *http.Request) {

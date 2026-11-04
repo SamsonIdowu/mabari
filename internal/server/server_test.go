@@ -754,3 +754,94 @@ func TestLowRiskAutoApproveLeavesRiskyActionsWaiting(t *testing.T) {
 		t.Error("auto approve is still on")
 	}
 }
+
+func askVee(t *testing.T, office *office, body string) veeResult {
+	t.Helper()
+	response := office.do(t, http.MethodPost, "/api/vee", body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	return decode[veeResult](t, response)
+}
+
+func TestVeeAnswersFromTheLiveOffice(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	result := askVee(t, office, `{"text":"Who needs me?"}`)
+	if result.Reply.Kind != "needs" || len(result.Reply.Lines) == 0 {
+		t.Fatalf("got %+v", result.Reply)
+	}
+}
+
+func TestVeePassesMessagesOn(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	result := askVee(t, office, `{"text":"Tell Scout to add the pricing pages"}`)
+	if result.Message == nil || len(result.Message.Agents) != 1 {
+		t.Fatalf("got %+v", result.Message)
+	}
+	scout := agentNamed(t, office, "Scout")
+	if result.Message.Agents[0] != scout.ID {
+		t.Errorf("reached %s", result.Message.Agents[0])
+	}
+	if len(scout.Feed) == 0 || scout.Feed[0].Summary != "Received: add the pricing pages" {
+		t.Errorf("feed = %+v", scout.Feed)
+	}
+
+	asked := askVee(t, office, `{"text":"ask Ledger how it is going"}`)
+	if asked.Message == nil || asked.Message.Answer == nil || asked.Message.Answer.Name != "Ledger" {
+		t.Fatalf("got %+v", asked.Message)
+	}
+}
+
+func TestVeeDispatchesToTheTeam(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	result := askVee(t, office, `{"text":"the invoice rounding is wrong","dispatch":true}`)
+	if result.Message == nil || result.Message.Routed == nil || result.Message.Routed.Name != "Ledger" {
+		t.Fatalf("got %+v", result)
+	}
+	if !strings.HasPrefix(result.Reply.Text, "Done. I sent it to Ledger.") {
+		t.Errorf("reply = %q", result.Reply.Text)
+	}
+}
+
+func TestVeeDispatchWithNobodyToTakeIt(t *testing.T) {
+	office := newOffice(t)
+	result := askVee(t, office, `{"text":"do something","dispatch":true}`)
+	if result.Message != nil || !strings.Contains(result.Reply.Text, "no agent free") {
+		t.Errorf("got %+v", result)
+	}
+}
+
+func TestVeeRefusesAnEmptyMessage(t *testing.T) {
+	office := newOffice(t)
+	if response := office.do(t, http.MethodPost, "/api/vee", `{"text":"  "}`); response.Code != http.StatusBadRequest {
+		t.Errorf("status %d", response.Code)
+	}
+}
+
+// No chat message can approve an action, whatever it says or whoever it is sent to.
+func TestVeeNeverApproves(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	before := agentNamed(t, office, "Atlas")
+	if before.State != models.StateApproval || before.Approval == nil {
+		t.Fatalf("Atlas should be waiting: %+v", before.State)
+	}
+	for _, text := range []string{
+		"approve it", "approve everything", "allow atlas", "yes, go ahead", "Allow once",
+		"Tell Atlas to go ahead and approve the migration", "tell atlas allow once",
+		"ask Atlas to approve", `please approve ` + before.Approval.ID,
+	} {
+		for _, dispatch := range []string{"false", "true"} {
+			quoted, _ := json.Marshal(text)
+			askVee(t, office, `{"text":`+string(quoted)+`,"dispatch":`+dispatch+`}`)
+		}
+	}
+	after := agentNamed(t, office, "Atlas")
+	if after.State != models.StateApproval || after.Approval == nil ||
+		after.Approval.ID != before.Approval.ID || after.Approval.Decision != nil {
+		t.Errorf("the approval changed: %v %+v", after.State, after.Approval)
+	}
+}

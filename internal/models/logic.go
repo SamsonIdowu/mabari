@@ -177,6 +177,31 @@ func ETALong(a *LiveAgent, now time.Time) string {
 	return "About " + strconv.Itoa(minutes) + " min left, done around " + finish
 }
 
+// MinsText says a length of time in minutes or hours, such as "9 min" or "1 h 5 min".
+func MinsText(seconds int64) string {
+	minutes := max(1, int(math.Round(float64(seconds)/60)))
+	if minutes < 60 {
+		return strconv.Itoa(minutes) + " min"
+	}
+	hours := strconv.Itoa(minutes/60) + " h"
+	if minutes%60 == 0 {
+		return hours
+	}
+	return hours + " " + strconv.Itoa(minutes%60) + " min"
+}
+
+// ApprovalSummary says what an approval is for in a few words.
+func ApprovalSummary(approval *Approval) string {
+	switch approval.Type {
+	case ApprovalCommand:
+		return approval.Detail.Cmd
+	case ApprovalPlan:
+		return "Approve the plan for " + approval.Detail.Project
+	default:
+		return "Edit " + approval.Detail.Path
+	}
+}
+
 var addressedTo = regexp.MustCompile(`^[A-Za-z]+,\s*`)
 
 // WithoutName drops a leading "Sage, " from an instruction.

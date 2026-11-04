@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AccountKind, Agent, Estimate, Project, Settings, Snapshot } from '../gen/models.ts';
+import type {
+  AccountKind,
+  Agent,
+  DiffLine,
+  Estimate,
+  Project,
+  Settings,
+  Snapshot,
+} from '../gen/models.ts';
 
 export interface NewAgentBody {
   name: string;
@@ -108,6 +116,14 @@ export interface VeeResult {
   message: MessageResult | null;
 }
 
+/** What Connect would change in Claude Code's settings, from GET /api/accounts/claude. */
+export interface ClaudePlan {
+  attached: boolean;
+  path: string;
+  diff: DiffLine[];
+  backup: string;
+}
+
 export interface Scope {
   projectId: string;
   teamId: string;
@@ -135,4 +151,8 @@ export const api = {
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),
+  claudePlan: () => request<ClaudePlan>('/api/accounts/claude'),
+  connectClaude: () =>
+    send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),
+  disconnectClaude: () => send<{ ok: boolean }>('POST', '/api/accounts/claude/disconnect'),
 };

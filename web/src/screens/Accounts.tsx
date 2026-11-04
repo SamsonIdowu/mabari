@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { api } from '../data/api.ts';
 import type { Account, AccountKind, AccountStatus } from '../gen/models.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
@@ -102,8 +105,28 @@ function ChatGptCard({ account }: { account: Account }) {
   );
 }
 
+const DIFF_MARK = { add: '+ ', del: '- ', ctx: '  ' } as const;
+
 function ClaudeCard({ account }: { account: Account }) {
-  const connected = account.status === 'connected';
+  const queryClient = useQueryClient();
+  const toast = useOfficeStore((state) => state.toast);
+  const plan = useQuery({ queryKey: ['claudePlan', account.status], queryFn: api.claudePlan });
+  const [busy, setBusy] = useState(false);
+  const [showCommand, setShowCommand] = useState(false);
+  const connected = account.status === 'connected' || account.status === 'stale';
+  const stale = account.status === 'stale';
+  const run = (work: () => Promise<unknown>) => {
+    setBusy(true);
+    work()
+      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'))
+      .finally(() => {
+        setBusy(false);
+        void queryClient.invalidateQueries({ queryKey: ['claudePlan'] });
+      });
+  };
+  const attach = () => run(api.connectClaude);
+  const detach = () => run(api.disconnectClaude);
+  const path = plan.data?.path ?? '~/.claude/settings.json';
   return (
     <article className="card eqcard">
       <div className="acchead">
@@ -122,55 +145,98 @@ function ClaudeCard({ account }: { account: Account }) {
         <StatusChip status={account.status} />
       </div>
       <div className="scroll">
-        <div className="field">
-          <span className="flabel">
-            These lines will be added to <code>~/.claude/settings.json</code>
-          </span>
-          <div className="codebox">
-            <span className="ctx">{'{'}</span>
-            {'\n'}
-            <span className="ctx">{'  "model": "claude-sonnet-4-5",'}</span>
-            {'\n'}
-            <span className="add">{'+ "hooks": {'}</span>
-            <span className="add">
-              {
-                '+   "PreToolUse":  [{ "matcher": "*", "hooks": [{ "type": "command", "command": "mabari-hook pre" }] }],'
-              }
+        {plan.data?.attached ? null : (
+          <div className="field">
+            <span className="flabel">
+              These lines will be added to <code>{path}</code>
             </span>
-            <span className="add">
-              {
-                '+   "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "mabari-hook post" }] }],'
-              }
-            </span>
-            <span className="add">
-              {
-                '+   "Stop":        [{ "hooks": [{ "type": "command", "command": "mabari-hook stop" }] }]'
-              }
-            </span>
-            <span className="add">{'+ }'}</span>
-            <span className="ctx">{'}'}</span>
+            <div className="codebox" data-testid="claudeDiff">
+              {plan.isError ? (
+                <span className="ctx">{plan.error.message}</span>
+              ) : (
+                (plan.data?.diff ?? []).map((line, index) => (
+                  <span className={line.kind} key={index}>
+                    {DIFF_MARK[line.kind as keyof typeof DIFF_MARK] ?? '  '}
+                    {line.text}
+                    {'\n'}
+                  </span>
+                ))
+              )}
+            </div>
+            <p className="help">
+              <Icon>
+                <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+              </Icon>{' '}
+              A backup is saved first, to{' '}
+              <code>{plan.data?.backup ?? path + '.mabari-backup'}</code>. Detaching takes
+              Mabari&apos;s lines out again.
+            </p>
           </div>
-          <p className="help">
-            <Icon>
-              <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
-            </Icon>{' '}
-            A backup is saved first, to <code>~/.claude/settings.json.mabari-backup</code>. Detaching
-            puts the backup back.
-          </p>
-        </div>
+        )}
         <div className="field">
           <span className="flabel">Models</span>
           <Models models={account.models} />
         </div>
-        {connected ? <p className="help">Hook reporting. Last event a moment ago.</p> : null}
+        {stale ? (
+          <div className="banner amber" style={{ padding: '10px 12px' }}>
+            <Icon>
+              <path d="M12 8v5M12 16h.01" />
+            </Icon>
+            <span className="grow">
+              The hook stopped reporting. Claude Code may have been updated.
+            </span>
+          </div>
+        ) : null}
+        {account.status === 'connected' ? (
+          <p className="help">Hook reporting. Mabari never sees your Claude sign-in.</p>
+        ) : null}
+        {showCommand ? (
+          <div className="field">
+            <span className="flabel">Run this in your project folder</span>
+            <div className="codebox">
+              <span className="ctx">claude</span>
+            </div>
+            <p className="help">The session takes a desk as soon as it starts.</p>
+          </div>
+        ) : null}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn primary" disabled title={LATER}>
-          {connected ? 'Start a Claude Code session' : 'Attach Claude Code'}
-        </button>
-        <button type="button" className="btn" disabled title={LATER}>
-          {connected ? 'Detach and restore backup' : 'Attach and start a session'}
-        </button>
+        {stale ? (
+          <button type="button" className="btn primary" disabled={busy} onClick={attach}>
+            Reattach the hook
+          </button>
+        ) : connected ? (
+          <>
+            <button type="button" className="btn primary" onClick={() => setShowCommand(true)}>
+              Start a Claude Code session
+            </button>
+            <button type="button" className="btn" disabled={busy} onClick={detach}>
+              Detach and restore backup
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy || !plan.data}
+              onClick={attach}
+            >
+              Attach Claude Code
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !plan.data}
+              onClick={() => {
+                attach();
+                setShowCommand(true);
+              }}
+            >
+              Attach and start a session
+            </button>
+          </>
+        )}
       </div>
     </article>
   );

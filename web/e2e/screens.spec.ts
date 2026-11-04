@@ -103,6 +103,18 @@ test('accounts show connections without pretending to connect', async ({ page })
   await expect(page.getByLabel('Key').first()).toBeDisabled();
 });
 
+test('Attach Claude Code shows the real change first, and never runs from go run', async ({ page }) => {
+  await page.goto('/#accounts');
+  const diff = page.getByTestId('claudeDiff');
+  await expect(diff).toContainText('"PermissionRequest"');
+  await expect(diff).toContainText('"onFailure"', { timeout: 100 }).catch(() => undefined);
+  await expect(diff).not.toContainText('onFailure');
+  await expect(page.locator('.card', { hasText: 'Attach Claude Code' })).toContainText('.mabari-backup');
+  // The test server runs under go run, so there is no binary for the hook to call.
+  await page.getByRole('button', { name: 'Attach Claude Code', exact: true }).click();
+  await expect(page.getByText('start Mabari from its built binary')).toBeVisible();
+});
+
 test('settings are saved on the server', async ({ page, request }) => {
   await page.goto('/#preferences');
   await page.getByLabel('Keep events for').selectOption('90');

@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
-// Tests never touch real data.
+// Tests never touch real data: not Mabari's, not Claude Code's settings, not the keychain.
 const dataDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
+const claudeDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-claude-'));
 // MABARI_WEB_PORT and MABARI_API_PORT move the test servers off 4317 and 4327, for when Mabari is running.
 const webPort = process.env.MABARI_WEB_PORT ?? '4317';
 const apiPort = process.env.MABARI_API_PORT ?? '4327';
@@ -30,7 +31,12 @@ export default defineConfig({
     {
       command: `go run ./cmd/mabari serve --port ${apiPort}`,
       cwd: '..',
-      env: { MABARI_DATA_DIR: dataDir },
+      env: {
+        MABARI_DATA_DIR: dataDir,
+        CLAUDE_CONFIG_DIR: claudeDir,
+        MABARI_SECRETS: 'encrypted-file',
+        MABARI_MASTER_KEY: 'end-to-end-tests-only-master-key-0123456789',
+      },
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: true,
       timeout: 120_000,

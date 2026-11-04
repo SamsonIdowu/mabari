@@ -36,7 +36,10 @@ pass "answers /api/health"
 status=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/snapshot")
 [ "$status" = 401 ] || fail "the office answered without a sign in ($status)"
 pass "asks for the access key"
-key=$(compose exec -T mabari /mabari access-key 2>/dev/null || compose exec -T mabari mabari access-key)
+# The default image keeps the binary at /mabari; the agents image has it on PATH.
+bin=mabari
+if compose exec -T mabari /mabari version >/dev/null 2>&1; then bin=/mabari; fi
+key=$(compose exec -T mabari "$bin" access-key)
 token=$(curl -fsS -H "Origin: $base" -H "Content-Type: application/json" \
   -d "{\"key\":\"$key\"}" "$base/api/login" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 [ -n "$token" ] || fail "sign in with the key"

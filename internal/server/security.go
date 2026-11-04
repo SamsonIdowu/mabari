@@ -25,15 +25,17 @@ func isLocalHost(host string) bool {
 	}
 }
 
-// isLocalOrigin reports whether a request came from a page on this computer. Mabari's own pages are
-// the only local ones served here. Browsers always send Origin on writes and WebSocket upgrades,
-// so another website can't pass this. "null" comes from sandboxed frames and is refused.
-func isLocalOrigin(origin string) bool {
+// isOwnOrigin reports whether a request came from one of Mabari's own pages: a local origin whose
+// host and port are the ones the request was sent to. Other local servers, such as a dev server an
+// agent started on another port, are refused too. Browsers always send Origin on writes and
+// WebSocket upgrades, so another website can't pass this. "null" comes from sandboxed frames and is
+// refused. In dev the Vite proxy keeps the browser's Host, so it still matches.
+func isOwnOrigin(origin, host string) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return false
 	}
-	return isLocalHost(parsed.Host)
+	return isLocalHost(parsed.Host) && strings.EqualFold(parsed.Host, host)
 }
 
 // localOnly refuses anything that didn't come from this computer. It runs on every request,
@@ -44,7 +46,7 @@ func localOnly(next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "this host is not allowed")
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !isLocalOrigin(origin) {
+		if origin := r.Header.Get("Origin"); origin != "" && !isOwnOrigin(origin, r.Host) {
 			writeError(w, http.StatusForbidden, "this origin is not allowed")
 			return
 		}

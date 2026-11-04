@@ -97,10 +97,31 @@ test('conversations list threads and open one', async ({ page }) => {
 
 test('accounts show connections without pretending to connect', async ({ page }) => {
   await page.goto('/#accounts');
-  await expect(page.locator('.chip', { hasText: 'Not connected' })).toHaveCount(2);
+  await expect(page.locator('.chip', { hasText: 'Not connected' })).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Sign in with ChatGPT' })).toBeDisabled();
+});
+
+test('API keys are checked, saved without being shown, and removed', async ({ page }) => {
+  await page.goto('/#accounts');
   await page.getByText('API keys (optional)').click();
-  await expect(page.getByLabel('Key').first()).toBeDisabled();
+  const card = page.locator('.card', { hasText: 'Anthropic API key' });
+  await card.getByLabel('Key').fill('not-a-key');
+  await card.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText("that doesn't look like an Anthropic API key")).toBeVisible();
+  await card.getByLabel('Key').fill('sk-ant-api03-' + 'a'.repeat(40));
+  await card.getByRole('button', { name: 'Save' }).click();
+  await expect(card.locator('.chip')).toHaveText('Saved');
+  await expect(card.getByLabel('Key')).toHaveValue('');
+  await card.getByRole('button', { name: 'Remove' }).click();
+  await expect(card.locator('.chip')).toHaveText('Not set');
+});
+
+test('a hub token is shown once and can be revoked', async ({ page }) => {
+  await page.goto('/#accounts');
+  await page.getByRole('button', { name: 'Generate a token' }).click();
+  await expect(page.getByTestId('hubToken')).toContainText(/^mab_[0-9a-f]{48}$/);
+  await page.getByRole('button', { name: 'Revoke' }).click();
+  await expect(page.getByTestId('hubToken')).toHaveCount(0);
 });
 
 test('Attach Claude Code shows the real change first, and never runs from go run', async ({ page }) => {

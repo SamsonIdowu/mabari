@@ -151,6 +151,11 @@ export const api = {
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),
+  saveKey: (kind: AccountKind, key: string) =>
+    send<{ ok: boolean }>('PUT', `/api/accounts/${kind}/key`, { key }),
+  deleteKey: (kind: AccountKind) => send<{ ok: boolean }>('DELETE', `/api/accounts/${kind}/key`),
+  newHubToken: () => send<{ token: string }>('POST', '/api/accounts/hub/token'),
+  revokeHubToken: () => send<{ ok: boolean }>('DELETE', '/api/accounts/hub/token'),
   claudePlan: () => request<ClaudePlan>('/api/accounts/claude'),
   connectClaude: () =>
     send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),

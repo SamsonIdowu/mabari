@@ -260,6 +260,72 @@ const KEYS: { id: string; kind: AccountKind; title: string; placeholder: string;
     },
   ];
 
+function KeyCard({ spec, account }: { spec: (typeof KEYS)[number]; account: Account | undefined }) {
+  const toast = useOfficeStore((state) => state.toast);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = account?.status === 'connected';
+  const run = (work: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    work()
+      .then(() => {
+        setValue('');
+        toast(done);
+      })
+      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="card" style={{ padding: 18, background: 'var(--surface2)' }}>
+      <div className="acchead" style={{ justifyContent: 'space-between' }}>
+        <h3>{spec.title}</h3>
+        <span className={set ? 'chip ok' : 'chip'}>
+          <i />
+          {set ? 'Saved' : 'Not set'}
+        </span>
+      </div>
+      <form
+        className="field"
+        onSubmit={(event) => {
+          event.preventDefault();
+          run(() => api.saveKey(spec.kind, value.trim()), `${spec.title} saved`);
+        }}
+      >
+        <label htmlFor={`key-${spec.id}`}>Key</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="in mono"
+            type="password"
+            id={`key-${spec.id}`}
+            placeholder={set ? 'Saved. Paste a new key to replace it.' : spec.placeholder}
+            autoComplete="off"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+          <button type="submit" className="btn" disabled={busy || !value.trim()}>
+            Save
+          </button>
+          {set ? (
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={busy}
+              onClick={() => run(() => api.deleteKey(spec.kind), `${spec.title} removed`)}
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+        <span className="help">Stored encrypted on this computer. {spec.note}</span>
+      </form>
+      <div className="field">
+        <span className="flabel">Models</span>
+        <Models models={account?.models ?? []} />
+      </div>
+    </div>
+  );
+}
+
 function ApiKeys({ accounts }: { accounts: Account[] }) {
   return (
     <details className="keys">
@@ -274,44 +340,18 @@ function ApiKeys({ accounts }: { accounts: Account[] }) {
       </summary>
       <div className="keysbody">
         {KEYS.map((key) => (
-          <div className="card" style={{ padding: 18, background: 'var(--surface2)' }} key={key.id}>
-            <div className="acchead" style={{ justifyContent: 'space-between' }}>
-              <h3>{key.title}</h3>
-              <span className="chip">
-                <i />
-                Not set
-              </span>
-            </div>
-            <div className="field">
-              <label htmlFor={`key-${key.id}`}>Key</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="in mono"
-                  type="password"
-                  id={`key-${key.id}`}
-                  placeholder={key.placeholder}
-                  autoComplete="off"
-                  disabled
-                  title={LATER}
-                />
-                <button type="button" className="btn" disabled title={LATER}>
-                  Save
-                </button>
-              </div>
-              <span className="help">Stored encrypted on this computer. {key.note}</span>
-            </div>
-            <div className="field">
-              <span className="flabel">Models</span>
-              <Models models={accounts.find((a) => a.kind === key.kind)?.models ?? []} />
-            </div>
-          </div>
+          <KeyCard key={key.id} spec={key} account={accounts.find((a) => a.kind === key.kind)} />
         ))}
       </div>
     </details>
   );
 }
 
-function HubCard() {
+function HubCard({ account }: { account: Account | undefined }) {
+  const toast = useOfficeStore((state) => state.toast);
+  const [token, setToken] = useState('');
+  const connected = account?.status === 'connected';
+  const fail = (error: unknown) => toast(error instanceof Error ? error.message : 'Try again');
   return (
     <div className="card">
       <div className="acchead">
@@ -329,11 +369,47 @@ function HubCard() {
             Let your own scripts and agents report to the office. They show up in blue.
           </p>
         </div>
+        <StatusChip status={account?.status ?? 'off'} />
       </div>
+      {token ? (
+        <div className="field">
+          <span className="flabel">Copy it now. Mabari won&apos;t show it again.</span>
+          <div className="codebox" data-testid="hubToken">
+            <span className="ctx">{token}</span>
+          </div>
+          <span className="help">
+            Send it as <code>Authorization: Bearer …</code> to <code>/hub/v1/events</code>. See
+            docs/HUB_API.md.
+          </span>
+        </div>
+      ) : null}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" className="btn primary" disabled title={LATER}>
-          Generate a token
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() =>
+            api
+              .newHubToken()
+              .then((made) => setToken(made.token))
+              .catch(fail)
+          }
+        >
+          {connected ? 'Make a new token' : 'Generate a token'}
         </button>
+        {connected ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              api
+                .revokeHubToken()
+                .then(() => setToken(''))
+                .catch(fail)
+            }
+          >
+            Revoke
+          </button>
+        ) : null}
         <span className="help">You can revoke it at any time.</span>
       </div>
     </div>
@@ -393,7 +469,7 @@ export function Accounts() {
           {claude ? <ClaudeCard account={claude} /> : null}
         </div>
         <ApiKeys accounts={office.accounts} />
-        <HubCard />
+        <HubCard account={account('hub')} />
       </div>
     </section>
   );

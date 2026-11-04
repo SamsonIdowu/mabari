@@ -76,10 +76,6 @@ function ChatGptCard({ account }: { account: Account }) {
         <StatusChip status={account.status} />
       </div>
       <div className="scroll">
-        <p style={{ color: 'var(--fg2)' }}>
-          A browser tab opens on ChatGPT so you can sign in there. Mabari never sees your password and
-          only receives a token it stores on this computer.
-        </p>
         {connected && account.email ? (
           <div className="banner" style={{ padding: '10px 12px' }}>
             <Icon>
@@ -94,13 +90,6 @@ function ChatGptCard({ account }: { account: Account }) {
           <span className="flabel">Models this account gives you</span>
           <Models models={account.models} />
           {connected ? null : <span className="help">Available after you sign in.</span>}
-        </div>
-        <div className="field">
-          <span className="flabel">What appears in the office</span>
-          <p className="help">
-            Every Codex session you start, from the terminal or from Mabari. Codex agents get
-            instructions right away.
-          </p>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -132,10 +121,6 @@ function ClaudeCard({ account }: { account: Account }) {
         <StatusChip status={account.status} />
       </div>
       <div className="scroll">
-        <p style={{ color: 'var(--fg2)' }}>
-          Mabari adds a small hook to your Claude Code settings so each session reports what it is
-          doing. Your Claude sign in stays where it is.
-        </p>
         <div className="field">
           <span className="flabel">
             These lines will be added to <code>~/.claude/settings.json</code>
@@ -177,9 +162,6 @@ function ClaudeCard({ account }: { account: Account }) {
           <Models models={account.models} />
         </div>
         {connected ? <p className="help">Hook reporting. Last event a moment ago.</p> : null}
-        <p className="help">
-          Claude Code picks up instructions at its next checkpoint, after the current step finishes.
-        </p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className="btn primary" disabled title={LATER}>
@@ -309,29 +291,32 @@ export function Accounts() {
             Start an agent
           </button>
         </PageHead>
-        {codex?.status === 'connected' && office.agents.length === 0 ? (
-          <div className="banner ok">
-            <Icon>
-              <path d="M5 12l5 5L20 7" />
-            </Icon>
-            <span className="grow">
-              ChatGPT is connected. Your Codex sessions will appear in the office.
-            </span>
-            <a className="btn primary sm" href="#office">
-              Go to the office
-            </a>
-          </div>
-        ) : null}
-        {codex?.status === 'expired' ? (
-          <div className="banner red">
-            <Icon>
-              <path d="M12 8v5M12 16h.01" />
-            </Icon>
-            <span className="grow">
-              Your ChatGPT sign in expired. Codex agents can&apos;t report until you sign in again.
-            </span>
-          </div>
-        ) : null}
+        <div id="accBanner">
+          {codex?.status === 'connected' && office.agents.length === 0 ? (
+            <div className="banner ok">
+              <Icon>
+                <path d="M5 12l5 5L20 7" />
+              </Icon>
+              <span className="grow">
+                ChatGPT is connected. Your Codex sessions will appear in the office.
+              </span>
+              <a className="btn primary sm" href="#office">
+                Go to the office
+              </a>
+            </div>
+          ) : null}
+          {codex?.status === 'expired' ? (
+            <div className="banner red">
+              <Icon>
+                <path d="M12 8v5M12 16h.01" />
+              </Icon>
+              <span className="grow">
+                Your ChatGPT sign in expired. Codex agents can&apos;t report until you sign in
+                again.
+              </span>
+            </div>
+          ) : null}
+        </div>
         <div className="grid2">
           {codex ? <ChatGptCard account={codex} /> : null}
           {claude ? <ClaudeCard account={claude} /> : null}

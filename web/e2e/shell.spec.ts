@@ -76,6 +76,14 @@ test('the theme button switches themes and remembers the choice', async ({ page 
   await expect(page.getByRole('button', { name: 'Light' })).toBeVisible();
 });
 
+test('the calmer page styles win over the older ones', async ({ page }) => {
+  await page.goto('/#preferences');
+  const heading = page.locator('.phead h1');
+  await expect(heading).toHaveCSS('font-size', '34px');
+  await expect(page.locator('.phead p')).toBeHidden();
+  await expect(page.locator('.page').first()).toHaveCSS('max-width', '1120px');
+});
+
 test('shows the local only status', async ({ page }) => {
   await page.goto('/');
   const status = page.locator('.localpill');

@@ -473,11 +473,11 @@ func SameFolder(cwd, folder string) bool {
 	if folder == "" {
 		return false
 	}
-	real := func(path string) string {
+	actual := func(path string) string {
 		if resolvedPath, err := filepath.EvalSymlinks(path); err == nil {
 			return filepath.Clean(resolvedPath)
 		}
 		return filepath.Clean(path)
 	}
-	return real(cwd) == real(folder)
+	return actual(cwd) == actual(folder)
 }

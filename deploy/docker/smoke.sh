@@ -37,18 +37,18 @@ status=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/snapshot")
 [ "$status" = 401 ] || fail "the office answered without a sign in ($status)"
 pass "asks for the access key"
 key=$(compose exec -T mabari /mabari access-key 2>/dev/null || compose exec -T mabari mabari access-key)
-jar=$(mktemp)
-curl -fsS -c "$jar" -H "Origin: $base" -H "Content-Type: application/json" \
-  -d "{\"key\":\"$key\"}" "$base/api/login" >/dev/null || fail "sign in with the key"
+token=$(curl -fsS -H "Origin: $base" -H "Content-Type: application/json" \
+  -d "{\"key\":\"$key\"}" "$base/api/login" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+[ -n "$token" ] || fail "sign in with the key"
 pass "signs in with the key from mabari access-key"
-api() { curl -fsS -b "$jar" -H "Origin: $base" "$@"; }
+api() { curl -fsS -H "Authorization: Bearer $token" -H "Origin: $base" "$@"; }
 
 api -X POST "$base/api/demo/load" >/dev/null || fail "demo load"
 agents=$(api "$base/api/snapshot" | grep -o '"state":' | wc -l | tr -d ' ')
 [ "$agents" -gt 0 ] || fail "the demo office has no agents"
 pass "demo office has $agents agents"
 
-status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -b "$jar" \
+status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -H "Sec-WebSocket-Protocol: mabari, mabari.session.$token" \
   -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Origin: $base" "$base/ws" || true)
 [ "$status" = 101 ] || fail "WebSocket upgrade answered $status"

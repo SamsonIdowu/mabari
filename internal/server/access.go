@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -25,8 +26,9 @@ import (
 const AccessKeyName = "access_key"
 
 const (
-	sessionCookie = "mabari_session"
 	sessionLength = 30 * 24 * time.Hour
+	// sessionProtocol carries the session on a WebSocket, which can't send headers from a browser.
+	sessionProtocol = "mabari.session."
 )
 
 // Access is the sign in that guards Mabari whenever a request might not be the person at this
@@ -42,6 +44,7 @@ type Access struct {
 	requireLogin atomic.Bool
 	mu           sync.Mutex
 	addresses    []string
+	keyMu        sync.Mutex
 	now          func() time.Time
 }
 
@@ -71,17 +74,29 @@ func (x *Access) clock() time.Time {
 	return time.Now()
 }
 
-// Key returns the access key, making one the first time.
+// Key returns the access key, making one the first time. Any other error from the secret store
+// is returned, never answered with a new key, so a locked keychain can't replace the key.
 func (x *Access) Key() (string, error) {
+	x.keyMu.Lock()
+	defer x.keyMu.Unlock()
 	key, err := x.Secrets.Get(AccessKeyName)
-	if err == nil && key != "" {
+	switch {
+	case err == nil && key != "":
 		return key, nil
+	case err != nil && !errors.Is(err, secrets.ErrNotFound):
+		return "", err
 	}
-	return x.Rotate()
+	return x.rotate()
 }
 
 // Rotate makes a new access key. Everyone signed in with the old one is signed out.
 func (x *Access) Rotate() (string, error) {
+	x.keyMu.Lock()
+	defer x.keyMu.Unlock()
+	return x.rotate()
+}
+
+func (x *Access) rotate() (string, error) {
 	raw := make([]byte, 20)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -98,12 +113,29 @@ func session(key string, expiry int64) string {
 	return strconv.FormatInt(expiry, 10) + "." + hex.EncodeToString(mac.Sum(nil))
 }
 
+// sessionOf finds the session a request carries: in the Authorization header, or for a
+// WebSocket in its protocol list. Not a cookie, because browsers send cookies to every port on
+// a host, so another local server could collect it.
+func sessionOf(r *http.Request) string {
+	if value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		return strings.TrimSpace(value)
+	}
+	for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, protocol := range strings.Split(header, ",") {
+			if value, ok := strings.CutPrefix(strings.TrimSpace(protocol), sessionProtocol); ok {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
 func (x *Access) signedIn(r *http.Request) bool {
-	cookie, err := r.Cookie(sessionCookie)
-	if err != nil {
+	value := sessionOf(r)
+	if value == "" {
 		return false
 	}
-	expiryText, _, ok := strings.Cut(cookie.Value, ".")
+	expiryText, _, ok := strings.Cut(value, ".")
 	expiry, err := strconv.ParseInt(expiryText, 10, 64)
 	if !ok || err != nil || x.clock().Unix() > expiry {
 		return false
@@ -112,7 +144,7 @@ func (x *Access) signedIn(r *http.Request) bool {
 	if err != nil || key == "" {
 		return false
 	}
-	return hmac.Equal([]byte(cookie.Value), []byte(session(key, expiry)))
+	return hmac.Equal([]byte(value), []byte(session(key, expiry)))
 }
 
 func loopbackRemote(r *http.Request) bool {
@@ -127,6 +159,15 @@ func loopbackRemote(r *http.Request) bool {
 // needsLogin says whether this request has to come from someone signed in.
 func (x *Access) needsLogin(r *http.Request) bool {
 	return x.requireLogin.Load() || !loopbackRemote(r) || !isLocalHost(r.Host)
+}
+
+// allowed re-checks a request that is still open, such as a WebSocket, after the key, LAN access
+// or the shared computer setting changed.
+func (x *Access) allowed(r *http.Request, anyHost bool) bool {
+	if !anyHost && !isLocalHost(r.Host) {
+		return false
+	}
+	return !x.needsLogin(r) || x.signedIn(r)
 }
 
 // open lists what anyone may reach: health for Docker, the sign in itself, and the hook and hub
@@ -168,6 +209,8 @@ type sessionInfo struct {
 	// Needed is true when this browser has to sign in.
 	Needed   bool `json:"needed"`
 	SignedIn bool `json:"signedIn"`
+	// Token is the session, given once at sign in. The page sends it as a Bearer token.
+	Token string `json:"token,omitempty"`
 }
 
 func (a *api) sessionStatus(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +228,14 @@ func (a *api) signIn(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
-	key, err := a.access.Key()
+	// Signing in never makes a key: only the person at the computer can, by opening Settings
+	// or running mabari access-key.
+	key, err := a.access.Secrets.Get(AccessKeyName)
+	if errors.Is(err, secrets.ErrNotFound) || (err == nil && key == "") {
+		time.Sleep(loginDelay)
+		writeError(w, http.StatusUnauthorized, "There is no access key yet. On the computer running Mabari, open Settings or run mabari access-key.")
+		return
+	}
 	if err != nil {
 		internalError(w, err)
 		return
@@ -196,16 +246,11 @@ func (a *api) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expiry := a.access.clock().Add(sessionLength).Unix()
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: session(key, expiry), Path: "/",
-		Expires: time.Unix(expiry, 0), HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: r.TLS != nil,
-	})
-	writeJSON(w, http.StatusOK, sessionInfo{SignedIn: true})
+	writeJSON(w, http.StatusOK, sessionInfo{SignedIn: true, Token: session(key, expiry)})
 }
 
+// logout is for the page: it forgets its own token. Sessions end for everyone with a new key.
 func (a *api) logout(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	writeJSON(w, http.StatusOK, sessionInfo{})
 }
 
@@ -215,11 +260,13 @@ type accessInfo struct {
 	Addresses []string `json:"addresses"`
 	// LANControl is false in Docker, where compose.yaml chooses the published address.
 	LANControl bool `json:"lanControl"`
+	// Token is a fresh session after a new key, so whoever made it stays signed in.
+	Token string `json:"token,omitempty"`
 }
 
 // accessInfo shows the key, to the person at this computer or someone already signed in. It is
 // never shown to a request that could be from another device without a sign in.
-func (a *api) accessInfo(w http.ResponseWriter, r *http.Request) {
+func (a *api) accessInfo(w http.ResponseWriter, _ *http.Request) {
 	key, err := a.access.Key()
 	if err != nil {
 		internalError(w, err)
@@ -231,7 +278,7 @@ func (a *api) accessInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, accessInfo{Key: key, Addresses: addresses, LANControl: a.access.SetLAN != nil})
 }
 
-func (a *api) rotateAccess(w http.ResponseWriter, r *http.Request) {
+func (a *api) rotateAccess(w http.ResponseWriter, _ *http.Request) {
 	key, err := a.access.Rotate()
 	if err != nil {
 		internalError(w, err)
@@ -239,10 +286,5 @@ func (a *api) rotateAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	// The person who asked stays signed in with the new key.
 	expiry := a.access.clock().Add(sessionLength).Unix()
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: session(key, expiry), Path: "/",
-		Expires: time.Unix(expiry, 0), HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: r.TLS != nil,
-	})
-	writeJSON(w, http.StatusOK, accessInfo{Key: key, LANControl: a.access.SetLAN != nil})
+	writeJSON(w, http.StatusOK, accessInfo{Key: key, LANControl: a.access.SetLAN != nil, Token: session(key, expiry)})
 }

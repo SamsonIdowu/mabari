@@ -6,6 +6,7 @@ import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { api } from './api.ts';
 import { useOfficeStore } from './officeStore.ts';
+import { socketProtocols } from './session.ts';
 
 const RETRY_MS = 1000;
 
@@ -50,7 +51,10 @@ export function useOfficeSync(): void {
       const office = useOfficeStore.getState().office;
       const resume = office ? `?boot=${office.bootId}&since=${office.seq}` : '';
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      socket = new WebSocket(`${protocol}://${window.location.host}/ws${resume}`);
+      socket = new WebSocket(
+        `${protocol}://${window.location.host}/ws${resume}`,
+        socketProtocols(),
+      );
       socket.onmessage = (incoming: MessageEvent<string>) => {
         const message = JSON.parse(incoming.data) as ServerMessage;
         if (message.type === 'hello') return;

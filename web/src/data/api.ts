@@ -9,6 +9,7 @@ import type {
   Snapshot,
   WhisperStatus,
 } from '../gen/models.ts';
+import { keepSession, sessionHeaders } from './session.ts';
 
 export interface NewAgentBody {
   name: string;
@@ -36,13 +37,18 @@ export interface AgentPatch {
 export const SIGN_IN_EVENT = 'mabari:sign-in';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const headers = new Headers(init?.headers);
+  for (const [name, value] of Object.entries(sessionHeaders())) headers.set(name, value);
+  const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
       login?: boolean;
     } | null;
-    if (response.status === 401 && body?.login) window.dispatchEvent(new Event(SIGN_IN_EVENT));
+    if (response.status === 401 && body?.login) {
+      keepSession('');
+      window.dispatchEvent(new Event(SIGN_IN_EVENT));
+    }
     throw new Error(body?.error ?? `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
@@ -213,6 +219,7 @@ export interface LoginStatus {
 export interface SessionInfo {
   needed: boolean;
   signedIn: boolean;
+  token?: string;
 }
 
 /** The access key and where other devices reach Mabari. Mirrors internal/server accessInfo. */
@@ -220,14 +227,24 @@ export interface AccessInfo {
   key: string;
   addresses: string[] | null;
   lanControl: boolean;
+  token?: string;
 }
 
 export const api = {
   session: () => request<SessionInfo>('/api/session'),
-  signIn: (key: string) => send<SessionInfo>('POST', '/api/login', { key }),
+  signIn: (key: string) =>
+    send<SessionInfo>('POST', '/api/login', { key }).then((info) => {
+      keepSession(info.token ?? '');
+      return info;
+    }),
   signOut: () => send<SessionInfo>('POST', '/api/logout'),
   access: () => request<AccessInfo>('/api/access'),
-  rotateAccess: () => send<AccessInfo>('POST', '/api/access/rotate'),
+  rotateAccess: () =>
+    send<AccessInfo>('POST', '/api/access/rotate').then((info) => {
+      // Whoever made the new key stays signed in with it.
+      if (info.token) keepSession(info.token);
+      return info;
+    }),
   snapshot: () => request<Snapshot>('/api/snapshot'),
   loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),

@@ -11,8 +11,16 @@ let knownKey = '';
 // If a test stops half way with the shared computer setting on, sign in and turn it off, so the
 // other tests aren't asked for the key.
 test.afterEach(async ({ request }) => {
-  if (knownKey) await request.post('/api/login', { data: { key: knownKey } });
-  await request.patch('/api/settings', { data: { requireLogin: false } });
+  let headers = {};
+  if (knownKey) {
+    const signedIn = (await (
+      await request.post('/api/login', { data: { key: knownKey } })
+    ).json()) as {
+      token?: string;
+    };
+    if (signedIn.token) headers = { Authorization: `Bearer ${signedIn.token}` };
+  }
+  await request.patch('/api/settings', { data: { requireLogin: false }, headers });
   knownKey = '';
 });
 

@@ -17,10 +17,14 @@ import (
 
 const writeTimeout = 5 * time.Second
 
+// recheckEvery is how often an open WebSocket checks it is still allowed. Tests shorten it.
+var recheckEvery = 2 * time.Second
+
 func (a *api) websocket(w http.ResponseWriter, r *http.Request) {
 	// localOnly has already checked Host and Origin. This library's own check compares them with
 	// each other, which also holds here, so it stays on as a second lock.
-	conn, err := websocket.Accept(w, r, nil)
+	// "mabari" is offered beside the session protocol, so the browser accepts the answer.
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"mabari"}})
 	if err != nil {
 		slog.Debug("websocket upgrade failed", "error", err)
 		return
@@ -54,10 +58,19 @@ func (a *api) websocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A new key, LAN access turned off or the shared computer setting turned on ends a
+	// connection that no longer qualifies, rather than letting it watch until it leaves.
+	recheck := time.NewTicker(recheckEvery)
+	defer recheck.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-recheck.C:
+			if a.access != nil && !a.access.allowed(r, a.anyHost()) {
+				_ = conn.Close(websocket.StatusPolicyViolation, "sign in again")
+				return
+			}
 		case message, open := <-joined.Sub.C:
 			if !open {
 				// This client fell too far behind. It reconnects and resumes.

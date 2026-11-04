@@ -24,7 +24,9 @@ type lan struct {
 	listeners []net.Listener
 }
 
-// networkAddresses are this computer's addresses that other devices can reach.
+// networkAddresses are this computer's addresses on a private network: 10/8, 172.16/12,
+// 192.168/16, IPv6 unique local, and link local. A public address is skipped, so turning on LAN
+// access never puts Mabari on the internet.
 func networkAddresses() []net.IP {
 	var found []net.IP
 	interfaces, err := net.Interfaces()
@@ -40,12 +42,24 @@ func networkAddresses() []net.IP {
 			continue
 		}
 		for _, address := range addresses {
-			if network, ok := address.(*net.IPNet); ok && network.IP.IsGlobalUnicast() {
+			network, ok := address.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if lanAddress(network.IP) {
 				found = append(found, network.IP)
+			} else if network.IP.IsGlobalUnicast() {
+				slog.Info("LAN access skips a public address", "address", network.IP)
 			}
 		}
 	}
 	return found
+}
+
+// lanAddress says whether Mabari may listen on ip for LAN access. IPv6 link local is left out
+// because listening on it needs a zone, which the address doesn't carry.
+func lanAddress(ip net.IP) bool {
+	return ip.IsPrivate() || (ip.IsLinkLocalUnicast() && ip.To4() != nil)
 }
 
 // set starts or stops the network listeners and returns the addresses to show in Settings.
@@ -86,7 +100,7 @@ func (l *lan) set(on bool) ([]string, error) {
 		}()
 	}
 	if len(l.listeners) == 0 {
-		return nil, fmt.Errorf("no network address to listen on, on port %d", l.port)
+		return nil, fmt.Errorf("no private network address to listen on, on port %d", l.port)
 	}
 	slog.Info("LAN access on", "addresses", shown)
 	return shown, nil

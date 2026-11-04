@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -132,9 +133,16 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		login = s
 	}
 	inContainer := os.Getenv("MABARI_IN_CONTAINER") == "1"
-	var handler http.Handler
+	// The LAN listeners can start inside server.New, before it returns the handler, so they read
+	// it through an atomic pointer.
+	var handler atomic.Pointer[http.Handler]
 	access := &server.Access{Secrets: office.secrets}
-	network := &lan{port: cfg.Port, handler: func() http.Handler { return handler }}
+	network := &lan{port: cfg.Port, handler: func() http.Handler {
+		if h := handler.Load(); h != nil {
+			return *h
+		}
+		return nil
+	}}
 	if !inContainer && config.IsLoopback(cfg.Bind) {
 		access.SetLAN = network.set
 		// Browser tests switch LAN access without opening this computer to the network.
@@ -148,7 +156,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	defer func() { _, _ = network.set(false) }()
-	handler = server.New(server.Options{
+	built := server.New(server.Options{
 		Version:   version,
 		Engine:    office.engine,
 		Simulator: office.simulator,
@@ -161,7 +169,8 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		Login:     login, LoginReason: loginReason,
 		Access: access, AnyHost: !config.IsLoopback(cfg.Bind),
 	})
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	handler.Store(&built)
+	httpServer := &http.Server{Handler: built, ReadHeaderTimeout: 10 * time.Second}
 	go office.engine.Run(ctx)
 	go watchClaude(ctx, office)
 	go func() {

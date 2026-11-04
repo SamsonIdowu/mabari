@@ -66,6 +66,7 @@ type api struct {
 	login       LoginService
 	loginReason string
 	access      *Access
+	anyHost     func() bool
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -112,14 +113,16 @@ func New(options Options) http.Handler {
 	if options.WebFiles != nil {
 		mux.Handle("/", http.FileServerFS(options.WebFiles))
 	}
+	a.anyHost = func() bool { return false }
 	if a.access == nil {
-		return localOnly(mux, func() bool { return false })
+		return localOnly(mux, a.anyHost)
 	}
+	a.anyHost = func() bool { return options.AnyHost || a.access.lan.Load() }
 	a.accessRoutes(mux)
 	if err := a.engine.Do(func() { _ = a.access.apply(a.engine.Settings()) }); err != nil {
 		slog.Warn("could not read the access settings", "error", err)
 	}
-	return localOnly(a.access.guard(mux), func() bool { return options.AnyHost || a.access.lan.Load() })
+	return localOnly(a.access.guard(mux), a.anyHost)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

@@ -89,11 +89,10 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 	if cfg.Port < 1 || cfg.Port > 65535 {
 		return Config{}, fmt.Errorf("port must be between 1 and 65535, got %d", cfg.Port)
 	}
-	// The Host and Origin checks stop browsers, but other clients can fake those headers, so Mabari
-	// stays off the network until LAN access has its token in Stage 12. Docker needs 0.0.0.0, so
-	// deploy/docker/compose.yaml publishes the port on 127.0.0.1 only, and main warns at startup.
-	if !IsLoopback(cfg.Bind) && getenv("MABARI_IN_CONTAINER") != "1" {
-		return Config{}, fmt.Errorf("binding to %s is not supported yet: use 127.0.0.1", cfg.Bind)
+	// Binding beyond loopback is allowed: every request that doesn't come from this computer under
+	// a local name has to sign in with the access key. LAN access in Settings is the usual way.
+	if net.ParseIP(cfg.Bind) == nil && cfg.Bind != "localhost" {
+		return Config{}, fmt.Errorf("bind must be an IP address, got %q", cfg.Bind)
 	}
 	if _, err := cfg.Level(); err != nil {
 		return Config{}, err

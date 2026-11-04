@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,6 +46,7 @@ Usage:
   mabari service <action>     Run Mabari at login: install, uninstall, start, stop,
                               restart, status or logs
   mabari healthcheck          Ask a running Mabari whether it is well
+  mabari access-key           Print the key browsers sign in with (--rotate makes a new one)
   mabari version              Print the version
 `
 
@@ -68,6 +70,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	case "healthcheck":
 		return healthcheck(args, stdout, stderr)
+	case "access-key":
+		return accessKey(args, stdout, stderr)
 	case "service":
 		return runService(args, os.Stdin, stdout)
 	case "hook":
@@ -127,21 +131,37 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	} else {
 		login = s
 	}
-	httpServer := &http.Server{
-		Handler: server.New(server.Options{
-			Version:   version,
-			Engine:    office.engine,
-			Simulator: office.simulator,
-			WebFiles:  web.Files(),
-			Claude:    claudeOptions(cfg, office),
-			Secrets:   office.secrets,
-			Hub:       office.hub,
-			Codex:     office.codex,
-			Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
-			Login:     login, LoginReason: loginReason,
-		}),
-		ReadHeaderTimeout: 10 * time.Second,
+	inContainer := os.Getenv("MABARI_IN_CONTAINER") == "1"
+	var handler http.Handler
+	access := &server.Access{Secrets: office.secrets}
+	network := &lan{port: cfg.Port, handler: func() http.Handler { return handler }}
+	if !inContainer && config.IsLoopback(cfg.Bind) {
+		access.SetLAN = network.set
+		// Browser tests switch LAN access without opening this computer to the network.
+		if os.Getenv("MABARI_TEST_FAKE_LAN") == "1" {
+			access.SetLAN = func(on bool) ([]string, error) {
+				if on {
+					return []string{"http://192.0.2.10:" + strconv.Itoa(cfg.Port)}, nil
+				}
+				return nil, nil
+			}
+		}
 	}
+	defer func() { _, _ = network.set(false) }()
+	handler = server.New(server.Options{
+		Version:   version,
+		Engine:    office.engine,
+		Simulator: office.simulator,
+		WebFiles:  web.Files(),
+		Claude:    claudeOptions(cfg, office),
+		Secrets:   office.secrets,
+		Hub:       office.hub,
+		Codex:     office.codex,
+		Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
+		Login:     login, LoginReason: loginReason,
+		Access: access, AnyHost: !config.IsLoopback(cfg.Bind),
+	})
+	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go office.engine.Run(ctx)
 	go watchClaude(ctx, office)
 	go func() {
@@ -162,8 +182,12 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if !config.IsLoopback(cfg.Bind) {
-		_, _ = fmt.Fprintln(stderr, "mabari: WARNING: listening on all interfaces, with no login. "+
-			"Publish this port on 127.0.0.1 only, as deploy/docker/compose.yaml does.")
+		how := "mabari access-key"
+		if inContainer {
+			how = "docker compose exec mabari /mabari access-key"
+		}
+		_, _ = fmt.Fprintln(stderr, "mabari: listening beyond this computer, so browsers sign in with the access key. "+
+			"See it with: "+how)
 	}
 	if err := httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 		return err

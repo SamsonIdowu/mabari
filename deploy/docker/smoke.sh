@@ -32,12 +32,23 @@ pass "healthy, by its own healthcheck"
 curl -fsS "$base/api/health" | grep -q '"ok":true' || fail "health"
 pass "answers /api/health"
 
-curl -fsS -X POST -H "Origin: $base" "$base/api/demo/load" >/dev/null || fail "demo load"
-agents=$(curl -fsS "$base/api/snapshot" | grep -o '"state":' | wc -l | tr -d ' ')
+# Through Docker every browser signs in with the access key.
+status=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/snapshot")
+[ "$status" = 401 ] || fail "the office answered without a sign in ($status)"
+pass "asks for the access key"
+key=$(compose exec -T mabari /mabari access-key 2>/dev/null || compose exec -T mabari mabari access-key)
+jar=$(mktemp)
+curl -fsS -c "$jar" -H "Origin: $base" -H "Content-Type: application/json" \
+  -d "{\"key\":\"$key\"}" "$base/api/login" >/dev/null || fail "sign in with the key"
+pass "signs in with the key from mabari access-key"
+api() { curl -fsS -b "$jar" -H "Origin: $base" "$@"; }
+
+api -X POST "$base/api/demo/load" >/dev/null || fail "demo load"
+agents=$(api "$base/api/snapshot" | grep -o '"state":' | wc -l | tr -d ' ')
 [ "$agents" -gt 0 ] || fail "the demo office has no agents"
 pass "demo office has $agents agents"
 
-status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -b "$jar" \
   -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Origin: $base" "$base/ws" || true)
 [ "$status" = 101 ] || fail "WebSocket upgrade answered $status"

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shell } from './shell/Shell.tsx';
+import { SessionGate } from './shell/SignIn.tsx';
 
 // Mabari only talks to this computer, so a lost internet connection must not pause requests. If it
 // did, the status dot could stay green after the local server stopped.
@@ -27,7 +28,9 @@ if (!root) throw new Error('Missing #root element');
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Shell />
+      <SessionGate>
+        <Shell />
+      </SessionGate>
     </QueryClientProvider>
   </StrictMode>,
 );

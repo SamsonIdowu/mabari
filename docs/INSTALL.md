@@ -81,7 +81,13 @@ docker compose -f deploy/docker/compose.yaml up -d
 
 Keep `mabari_master_key` safe. Without it the stored keys can't be read.
 
-The container publishes the port on `127.0.0.1` only. Inside, Mabari listens on all of the container's addresses, which Docker needs, and still refuses requests that don't name `localhost` or `127.0.0.1`. The container runs as a user without privileges, on a read-only file system, with every capability dropped.
+Through Docker, every browser signs in with the access key, because Mabari can't tell your browser from another device once Docker's networking is in between. Print it with:
+
+```sh
+docker compose -f deploy/docker/compose.yaml exec mabari /mabari access-key
+```
+
+The container publishes the port on `127.0.0.1` only. Inside, Mabari listens on all of the container's addresses, which Docker needs. To reach it from other devices, publish it on another address in `compose.yaml`, such as `0.0.0.0:4317:4317`; they sign in with the same access key. The container runs as a user without privileges, on a read-only file system, with every capability dropped.
 
 **Project folders.** Mount each one under `/workspace` in `compose.yaml`, for example `- ~/code/shop:/workspace/shop`. There is no native folder picker in Docker, so New project lists what is mounted.
 

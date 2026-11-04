@@ -563,6 +563,10 @@ export interface Settings {
   completionSound: boolean;
   retentionDays: number /* int */;
   lanAccess: boolean;
+  /**
+   * RequireLogin asks for the access key on this computer too, for a computer shared with others.
+   */
+  requireLogin: boolean;
   defaults: { [key: string]: string};
   autoApprove: AutoApprove;
 }

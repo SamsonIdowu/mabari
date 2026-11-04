@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
@@ -113,7 +114,7 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 	if a.secrets != nil {
 		for _, name := range []string{
 			string(models.AccountAnthropicKey), string(models.AccountOpenAIKey), secretHubToken,
-			claudecode.TokenName,
+			claudecode.TokenName, AccessKeyName,
 		} {
 			if err := a.secrets.Delete(name); err != nil {
 				internalError(w, err)
@@ -124,6 +125,13 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 	if err := a.engine.Do(a.engine.Wipe); err != nil {
 		internalError(w, err)
 		return
+	}
+	if a.access != nil {
+		var settings models.Settings
+		_ = a.engine.Do(func() { settings = a.engine.Settings() })
+		if err := a.access.apply(settings); err != nil {
+			slog.Warn("could not stop LAN access after a wipe", "error", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -646,6 +654,19 @@ func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if problem != "" {
 		writeError(w, http.StatusBadRequest, problem)
 		return
+	}
+	if a.access != nil {
+		if err := a.access.apply(settings); err != nil {
+			// LAN access couldn't start, so it is saved as off again.
+			slog.Warn("LAN access failed", "error", err)
+			_ = a.engine.Do(func() {
+				settings = a.engine.Settings()
+				settings.LANAccess = false
+				a.engine.SaveSettings(settings)
+			})
+			writeError(w, http.StatusConflict, "Mabari couldn't listen on your network: "+err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, settings)
 }

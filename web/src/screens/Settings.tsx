@@ -282,6 +282,100 @@ function RunAtLogin() {
   );
 }
 
+/** Lets other devices on the network open Mabari. Each of them signs in with the access key. */
+function LanAccess({ settings }: { settings: SettingsModel }) {
+  const access = useQuery({ queryKey: ['access', settings.lanAccess], queryFn: api.access });
+  const control = access.data?.lanControl ?? true;
+  const addresses = access.data?.addresses ?? [];
+  return (
+    <div className="field">
+      <label
+        className="switch"
+        title={control ? undefined : 'In Docker, choose the published address in compose.yaml.'}
+      >
+        <input
+          type="checkbox"
+          id="pLan"
+          disabled={!control}
+          checked={settings.lanAccess}
+          onChange={(event) => save({ lanAccess: event.target.checked })}
+        />
+        Allow other devices on my network
+      </label>
+      {settings.lanAccess ? (
+        <div className="banner amber" style={{ padding: '10px 12px' }}>
+          <Icon>
+            <path d="M12 8v5M12 16h.01" />
+          </Icon>
+          <span className="grow" id="lanAddresses">
+            Other devices on your network can open{' '}
+            {addresses.length
+              ? addresses.map((address) => <code key={address}>{address} </code>)
+              : 'Mabari'}{' '}
+            and sign in with the access key. Turn this off on shared or public networks.
+          </span>
+        </div>
+      ) : (
+        <span className="help">Off. Mabari only answers on localhost.</span>
+      )}
+    </div>
+  );
+}
+
+/** The key other devices, Docker and shared computers sign in with. */
+function AccessKey() {
+  const queryClient = useQueryClient();
+  const access = useQuery({ queryKey: ['access'], queryFn: api.access });
+  const [shown, setShown] = useState(false);
+  const toast = useOfficeStore((state) => state.toast);
+  const key = access.data?.key ?? '';
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input
+        className="in mono"
+        id="pAccessKey"
+        aria-label="Access key"
+        readOnly
+        type={shown ? 'text' : 'password'}
+        value={key}
+        style={{ width: 360, maxWidth: '100%' }}
+      />
+      <button type="button" className="btn ghost" onClick={() => setShown(!shown)}>
+        {shown ? 'Hide' : 'Show'}
+      </button>
+      <button
+        type="button"
+        className="btn ghost"
+        onClick={() =>
+          void navigator.clipboard
+            ?.writeText(key)
+            .then(() => toast('Access key copied'))
+            .catch(() => toast('Copy it by hand: the browser refused the clipboard.'))
+        }
+      >
+        Copy
+      </button>
+      <button
+        type="button"
+        className="btn ghost"
+        title="Makes a new key. Every other device has to sign in again."
+        onClick={() =>
+          void api
+            .rotateAccess()
+            .then((next) => {
+              queryClient.setQueryData(['access'], next);
+              void queryClient.invalidateQueries({ queryKey: ['access'] });
+              toast('New access key made. Other devices sign in again with it.');
+            })
+            .catch((error: Error) => toast(error.message))
+        }
+      >
+        New key
+      </button>
+    </div>
+  );
+}
+
 function DataCard({ settings }: { settings: SettingsModel }) {
   return (
     <div className="card">
@@ -307,30 +401,19 @@ function DataCard({ settings }: { settings: SettingsModel }) {
           <span className="help">Older tool calls and log entries are deleted automatically.</span>
         </div>
         <span className="flabel">LAN access</span>
-        <div className="field">
-          <label className="switch">
-            <input
-              type="checkbox"
-              id="pLan"
-              checked={settings.lanAccess}
-              onChange={(event) => save({ lanAccess: event.target.checked })}
-            />
-            Allow other devices on my network
-          </label>
-          {settings.lanAccess ? (
-            <div className="banner amber" style={{ padding: '10px 12px' }}>
-              <Icon>
-                <path d="M12 8v5M12 16h.01" />
-              </Icon>
-              <span className="grow">
-                Anyone on your network who can reach this computer on port <code>4317</code> can see
-                your agents and send them instructions. Turn this off on shared or public networks.
-              </span>
-            </div>
-          ) : (
-            <span className="help">Off. Mabari only answers on localhost.</span>
-          )}
-        </div>
+        <LanAccess settings={settings} />
+        <span className="flabel">Access key</span>
+        <AccessKey />
+        <span className="flabel">Shared computer</span>
+        <label className="switch">
+          <input
+            type="checkbox"
+            id="pRequireLogin"
+            checked={settings.requireLogin}
+            onChange={(event) => save({ requireLogin: event.target.checked })}
+          />
+          Ask for the access key on this computer too
+        </label>
         <span className="flabel">Run at login</span>
         <RunAtLogin />
       </div>

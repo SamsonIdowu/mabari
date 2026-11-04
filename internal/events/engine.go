@@ -784,7 +784,8 @@ func (e *Engine) ClearOffice() {
 
 // Wipe removes everything Mabari stores and returns to first run, with one empty project as on a
 // fresh install. Preferences stay, as in the prototype, except auto approve, which is turned off so
-// nothing is approved without a click after a wipe. Restoring settings backups joins this in
+// nothing is approved without a click after a wipe, and LAN access, so the network is closed until
+// someone opens it again. Asking for the key on a shared computer stays on. Restoring settings backups joins this in
 // Stage 7. Call inside Do.
 func (e *Engine) Wipe() {
 	for _, connector := range e.connectors {
@@ -792,6 +793,7 @@ func (e *Engine) Wipe() {
 	}
 	settings := e.settings.Clone()
 	settings.AutoApprove.On = false
+	settings.LANAccess = false
 	e.record(e.store.Wipe(context.Background()))
 	e.resetMemory()
 	e.settings = settings

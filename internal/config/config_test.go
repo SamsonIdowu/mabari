@@ -66,8 +66,7 @@ func TestRejectsBadValues(t *testing.T) {
 		"port zero":          {args: []string{"--port", "0"}},
 		"unknown secrets":    {env: map[string]string{"MABARI_SECRETS": "plain"}},
 		"unknown flag":       {args: []string{"--nope"}},
-		"all interfaces":     {args: []string{"--bind", "0.0.0.0"}},
-		"a network host":     {env: map[string]string{"MABARI_BIND": "192.168.1.24"}},
+		"a name, not an IP":  {args: []string{"--bind", "example.com"}},
 		"unknown level":      {env: map[string]string{"MABARI_LOG_LEVEL": "loud"}},
 		"unknown flag level": {args: []string{"--log-level", "verbose"}},
 	}
@@ -106,5 +105,15 @@ func TestContainerDefaultsToTheEncryptedFile(t *testing.T) {
 	}
 	if desktop.Secrets != "keychain" {
 		t.Errorf("desktop secrets = %q", desktop.Secrets)
+	}
+}
+
+// Listening beyond loopback is allowed now that those requests must sign in.
+func TestBindingBeyondLoopback(t *testing.T) {
+	for _, bind := range []string{"0.0.0.0", "192.168.1.24", "::"} {
+		cfg, err := Load([]string{"--bind", bind}, env(nil), io.Discard)
+		if err != nil || cfg.Bind != bind {
+			t.Errorf("%s: %v %v", bind, cfg.Bind, err)
+		}
 	}
 }

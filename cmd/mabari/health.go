@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/config"
+	"github.com/SamsonIdowu/mabari/internal/server"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -67,4 +69,33 @@ func openLogFile(path string, stderr io.Writer) (io.Closer, error) {
 	file := &lumberjack.Logger{Filename: path, MaxSize: 10, MaxBackups: 3, MaxAge: 28}
 	log.SetOutput(io.MultiWriter(stderr, file))
 	return file, nil
+}
+
+// accessKey is `mabari access-key [--rotate]`: it prints the key browsers sign in with, which
+// they need from another device, through Docker, or on a shared computer.
+func accessKey(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("access-key", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	rotate := flags.Bool("rotate", false, "make a new key, signing everyone out")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(nil, os.Getenv, io.Discard)
+	if err != nil {
+		return err
+	}
+	store, err := openSecrets(cfg)
+	if err != nil {
+		return err
+	}
+	access := &server.Access{Secrets: store}
+	key, err := access.Key()
+	if *rotate {
+		key, err = access.Rotate()
+	}
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, key)
+	return err
 }

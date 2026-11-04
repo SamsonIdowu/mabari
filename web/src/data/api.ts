@@ -32,10 +32,17 @@ export interface AgentPatch {
   allowedTools?: string[];
 }
 
+/** Sent on window when Mabari asks for the access key, so the sign in can show. */
+export const SIGN_IN_EVENT = 'mabari:sign-in';
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+      login?: boolean;
+    } | null;
+    if (response.status === 401 && body?.login) window.dispatchEvent(new Event(SIGN_IN_EVENT));
     throw new Error(body?.error ?? `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
@@ -203,7 +210,24 @@ export interface LoginStatus {
   detail: string;
 }
 
+export interface SessionInfo {
+  needed: boolean;
+  signedIn: boolean;
+}
+
+/** The access key and where other devices reach Mabari. Mirrors internal/server accessInfo. */
+export interface AccessInfo {
+  key: string;
+  addresses: string[] | null;
+  lanControl: boolean;
+}
+
 export const api = {
+  session: () => request<SessionInfo>('/api/session'),
+  signIn: (key: string) => send<SessionInfo>('POST', '/api/login', { key }),
+  signOut: () => send<SessionInfo>('POST', '/api/logout'),
+  access: () => request<AccessInfo>('/api/access'),
+  rotateAccess: () => send<AccessInfo>('POST', '/api/access/rotate'),
   snapshot: () => request<Snapshot>('/api/snapshot'),
   loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),

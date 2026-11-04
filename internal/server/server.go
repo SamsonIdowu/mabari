@@ -43,6 +43,11 @@ type Options struct {
 	Answerer func(key string) QueryAnswerer
 	// Whisper turns recordings into text on this computer. With nil, those routes aren't served.
 	Whisper *whisper.Whisper
+	// Access asks for the access key whenever a request might not be the person at this computer.
+	// With nil, as in most tests, Mabari answers only under local names and asks for nothing.
+	Access *Access
+	// AnyHost is true when Mabari listens beyond loopback, as in Docker or with --bind.
+	AnyHost bool
 	// Login runs Mabari at login. With nil, Settings shows LoginReason instead.
 	Login       LoginService
 	LoginReason string
@@ -60,6 +65,7 @@ type api struct {
 	whisper     *whisper.Whisper
 	login       LoginService
 	loginReason string
+	access      *Access
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -73,7 +79,7 @@ func New(options Options) http.Handler {
 		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
-		login: options.Login, loginReason: options.LoginReason,
+		login: options.Login, loginReason: options.LoginReason, access: options.Access,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -106,7 +112,14 @@ func New(options Options) http.Handler {
 	if options.WebFiles != nil {
 		mux.Handle("/", http.FileServerFS(options.WebFiles))
 	}
-	return localOnly(mux)
+	if a.access == nil {
+		return localOnly(mux, func() bool { return false })
+	}
+	a.accessRoutes(mux)
+	if err := a.engine.Do(func() { _ = a.access.apply(a.engine.Settings()) }); err != nil {
+		slog.Warn("could not read the access settings", "error", err)
+	}
+	return localOnly(a.access.guard(mux), func() bool { return options.AnyHost || a.access.lan.Load() })
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

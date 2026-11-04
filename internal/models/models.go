@@ -352,11 +352,13 @@ type Settings struct {
 	VoiceEngine   string `json:"voiceEngine"`
 	SpokenReplies bool   `json:"spokenReplies"`
 	// CompletionSound plays a short ding when an agent finishes a task.
-	CompletionSound bool              `json:"completionSound"`
-	RetentionDays   int               `json:"retentionDays"`
-	LANAccess       bool              `json:"lanAccess"`
-	Defaults        map[string]string `json:"defaults"`
-	AutoApprove     AutoApprove       `json:"autoApprove"`
+	CompletionSound bool `json:"completionSound"`
+	RetentionDays   int  `json:"retentionDays"`
+	LANAccess       bool `json:"lanAccess"`
+	// RequireLogin asks for the access key on this computer too, for a computer shared with others.
+	RequireLogin bool              `json:"requireLogin"`
+	Defaults     map[string]string `json:"defaults"`
+	AutoApprove  AutoApprove       `json:"autoApprove"`
 }
 
 // Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.

@@ -6,7 +6,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Tests never touch real data: not Mabari's, not Claude Code's settings, not the keychain.
 const dataDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
-const claudeDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-claude-'));
+// Workers load this file again, so they reuse the folder the runner made. Tests that write agent
+// files by hand find it in MABARI_E2E_CLAUDE_DIR.
+const claudeDir =
+  process.env.MABARI_E2E_CLAUDE_DIR ?? mkdtempSync(join(tmpdir(), 'mabari-e2e-claude-'));
+process.env.MABARI_E2E_CLAUDE_DIR = claudeDir;
 // MABARI_WEB_PORT and MABARI_API_PORT move the test servers off 4317 and 4327, for when Mabari is running.
 const webPort = process.env.MABARI_WEB_PORT ?? '4317';
 const apiPort = process.env.MABARI_API_PORT ?? '4327';

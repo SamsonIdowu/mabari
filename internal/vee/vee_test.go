@@ -49,9 +49,11 @@ func TestRules(t *testing.T) {
 		{"eta as a word", "what's the eta", "nod", KindWhen, "will be last."},
 		{"how long", "how long until it's all done", "nod", KindWhen, "will be last."},
 		{"finish", "will they finish soon?", "nod", KindWhen, "will be last."},
-		{"new agent for", "add an agent for the docs", "point", KindNewAgent, "Pick a role"},
+		{"new agent for", "add an agent for the docs", "point", KindNewAgent, ""},
 		{"project", "Start a new project", "shrug", KindPlain, "later stage"},
-		{"new agent", "Create a new agent", "point", KindNewAgent, "Pick a role"},
+		{"new agent", "Create a new agent", "point", KindNewAgent, ""},
+		{"improve", "improve the code reviewer", "nod", KindImprove, ""},
+		{"builder", "open my agents", "point", KindBuilder, "agent builder"},
 		{"office", "show me the floor", "point", KindOffice, "office floor"},
 		{"status", "What's happening?", "point", KindStatus, "2 agents are working and 2 need you."},
 		{"catch me up", "catch me up", "point", KindStatus, "2 agents are working"},
@@ -258,5 +260,15 @@ func TestDispatched(t *testing.T) {
 	}
 	if got := Dispatched(nil, "", Where{}, nil, now).Text; !strings.Contains(got, "no agent free") {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuilderRequests(t *testing.T) {
+	if reply := Answer("Improve the code-reviewer agent", office(), now); reply.Kind != KindImprove || reply.Target != "code-reviewer" {
+		t.Errorf("improve: %+v", reply)
+	}
+	if reply := Answer("create an agent that reviews pull requests for security", office(), now); reply.Kind != KindNewAgent ||
+		reply.Target != "reviews pull requests for security" {
+		t.Errorf("create: %q %q", reply.Kind, reply.Target)
 	}
 }

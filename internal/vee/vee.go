@@ -30,6 +30,10 @@ const (
 	KindEmpty    Kind = "empty"
 	KindNewAgent Kind = "newAgent"
 	KindReplies  Kind = "replies"
+	// KindImprove asks the page to open Target in the builder with Mabari's suggestions.
+	KindImprove Kind = "improve"
+	// KindBuilder opens the agent builder.
+	KindBuilder Kind = "builder"
 )
 
 // Line is one agent in a reply.
@@ -80,6 +84,8 @@ type Reply struct {
 	Working  int              `json:"working"`
 	Total    int              `json:"total"`
 	Need     int              `json:"need"`
+	// Target is what a builder reply works on: the agent to improve, or what a new agent should do.
+	Target string `json:"target"`
 	// Relay is set when Mabari passed an instruction on and will relay the reply.
 	Relay *Relay `json:"relay"`
 	// Send is set when the reply passes a message to a named agent.
@@ -118,8 +124,11 @@ var (
 	asking   = regexp.MustCompile(`^(can you|could you|do a|give me a|show me a|let's see a)\b`)
 	newAgent = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:add|create|make|hire|start|build)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?agent(?:\s+(?:for|to|that|who|which|called|named|please)\b.*)?[.!]?$`)
 	// deciding is an order to decide an approval. Mabari never does, so it lists what waits instead.
-	deciding = regexp.MustCompile(`^(?:please\s+)?(?:approve|allow|deny|reject)\b`)
-	newProj  = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
+	deciding  = regexp.MustCompile(`^(?:please\s+)?(?:approve|allow|deny|reject)\b`)
+	improving = regexp.MustCompile(`^(?:please\s+)?(?:can you\s+)?(?:improve|tune|upgrade|make better)\s+(?:the\s+)?([a-z0-9 -]+?)(?:\s+agent)?[.!?]*$`)
+	whatFor   = regexp.MustCompile(`(?i)^.*?\bagent\b\s*(?:that|to|for|which|who|called|named)?\s*`)
+	builder   = regexp.MustCompile(`\b(builder|reusable agents|manage agents|my agents)\b`)
+	newProj   = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
 )
 
 // shortWords is the most a message can have and still be small talk or a gesture.
@@ -227,9 +236,17 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 		return office.needs()
 	case isQ && eta.MatchString(q):
 		return office.when()
+	case improving.MatchString(q):
+		reply := office.reply("", "nod", KindImprove)
+		reply.Target = strings.TrimSpace(improving.FindStringSubmatch(q)[1])
+		return reply
 	case newAgent.MatchString(q):
-		return office.reply("Let's add someone to the team. Pick a role and I'll fill in the rest.",
-			"point", KindNewAgent)
+		reply := office.reply("", "point", KindNewAgent)
+		reply.Target = strings.TrimSpace(whatFor.ReplaceAllString(text, ""))
+		return reply
+	case builder.MatchString(q) && !has(q, "create", "new", "make"):
+		return office.reply("Opening the agent builder. You can build agents for one project or for your whole "+
+			"Claude account.", "point", KindBuilder)
 	case newProj.MatchString(q):
 		return office.reply("The project chat arrives in a later stage, so I can't open it yet.", "shrug", KindPlain)
 	case isQ && has(q, "office", "floor") || q == "office":

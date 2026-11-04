@@ -3,6 +3,7 @@ export const ROUTES = [
   'home',
   'welcome',
   'projects',
+  'builder',
   'conversations',
   'accounts',
   'office',

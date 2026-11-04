@@ -11,6 +11,7 @@ import { Home } from '../screens/Home.tsx';
 import { NewAgentDialog } from '../screens/NewAgentDialog.tsx';
 import { NewProjectDialog } from '../screens/NewProjectDialog.tsx';
 import { Office } from '../screens/Office.tsx';
+import { Builder } from '../screens/Builder.tsx';
 import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
 import { StatusScreens } from '../screens/StatusScreens.tsx';
@@ -30,6 +31,8 @@ function Screen({ route }: { route: Route }) {
       return <Welcome />;
     case 'projects':
       return <Projects />;
+    case 'builder':
+      return <Builder />;
     case 'conversations':
       return <Conversations />;
     case 'accounts':

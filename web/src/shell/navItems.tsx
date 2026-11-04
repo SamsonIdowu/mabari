@@ -49,6 +49,15 @@ const workNav: NavItem[] = [
     icon: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
   },
   {
+    route: 'builder',
+    label: 'Builder',
+    name: 'Agent builder',
+    title: 'Agent builder: build and manage reusable agents',
+    icon: (
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" />
+    ),
+  },
+  {
     route: 'conversations',
     label: 'Chats',
     name: 'Conversations',

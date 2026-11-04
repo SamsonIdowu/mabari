@@ -3,8 +3,10 @@ import type { Relay } from '../office/relay.ts';
 import type {
   AccountKind,
   Agent,
+  AgentDef,
   DiffLine,
   Estimate,
+  LiveAgent,
   Project,
   Settings,
   Snapshot,
@@ -99,6 +101,13 @@ export interface TeamLine {
   task: string;
 }
 
+/** What Reload from disk found. Mirrors internal/agentdefs.Report. */
+export interface DefsReport {
+  account: number;
+  projects: Record<string, number> | null;
+  problems: string[] | null;
+}
+
 export interface MessageResult {
   agents: string[];
   answer: Answer | null;
@@ -124,12 +133,25 @@ export interface VeeLine {
 export interface VeeReply {
   text: string;
   gesture: string;
-  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'newAgent' | 'replies' | 'relayed';
+  kind:
+    | ''
+    | 'needs'
+    | 'when'
+    | 'status'
+    | 'office'
+    | 'empty'
+    | 'newAgent'
+    | 'replies'
+    | 'relayed'
+    | 'improve'
+    | 'builder';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
   total: number;
   need: number;
+  /** What a builder reply works on: the agent to improve, or what a new agent should do. */
+  target?: string;
   /** Set when Mabari passed an instruction on and will relay the reply. */
   relay: Relay | null;
   /** What is read aloud, when it differs from the text. */
@@ -307,6 +329,13 @@ export const api = {
     send<FolderCheck>('POST', '/api/folders/check', { path, allowUrl }),
   pickFolder: () => send<{ path: string }>('POST', '/api/folders/pick'),
   recentFolders: () => request<string[]>('/api/folders/recent'),
+  saveDef: (def: AgentDef, previousId: string, by = '') =>
+    send<AgentDef>('POST', '/api/defs', { def, previousId, by }),
+  deleteDef: (id: string) => send<{ ok: boolean }>('DELETE', `/api/defs/${encodeURIComponent(id)}`),
+  enableDef: (id: string, on: boolean) =>
+    send<{ ok: boolean }>('POST', `/api/defs/${encodeURIComponent(id)}/enabled`, { on }),
+  runDef: (id: string) => send<LiveAgent>('POST', `/api/defs/${encodeURIComponent(id)}/run`),
+  rescanDefs: () => send<DefsReport>('POST', '/api/defs/rescan'),
   claudePlan: () => request<ClaudePlan>('/api/accounts/claude'),
   connectClaude: () =>
     send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),

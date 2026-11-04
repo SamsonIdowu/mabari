@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-import { BrandMark } from './BrandMark.tsx';
 import { Icon } from './Icon.tsx';
 import { LocalStatus } from './LocalStatus.tsx';
 import { RailToggle } from './RailToggle.tsx';
@@ -10,7 +9,6 @@ export function Topbar() {
     <header className="topbar">
       <RailToggle />
       <a className="brandmark" href="#home" aria-label="Mabari, go home">
-        <BrandMark />
         <span className="bm-name">Mabari</span>
       </a>
       <div className="topright">

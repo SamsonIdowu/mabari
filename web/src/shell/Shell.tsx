@@ -2,7 +2,6 @@
 import { useEffect, useRef } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { useOfficeSync } from '../data/useOfficeSync.ts';
-import { useMascots } from '../mascot/useMascots.ts';
 import type { Route } from '../routes.ts';
 import { Accounts } from '../screens/Accounts.tsx';
 import { Activity } from '../screens/Activity.tsx';
@@ -44,7 +43,6 @@ function Screen({ route }: { route: Route }) {
 
 export function Shell() {
   useOfficeSync();
-  useMascots();
   const firstRun = useOfficeStore((state) => state.office?.firstRun ?? true);
   const route = useHashRoute(firstRun);
   const collapsed = useRailStore((state) => state.collapsed);

@@ -306,14 +306,6 @@ function FloorMessage({ office }: { office: Snapshot }) {
   return (
     <div className="floormsg">
       <div className="card">
-        <canvas
-          data-mascot={connected ? 'think' : 'idle'}
-          data-scale="3"
-          width="96"
-          height="108"
-          style={{ alignSelf: 'center' }}
-          aria-hidden="true"
-        />
         {connected ? (
           <>
             <h2>Connected. No agents running yet.</h2>

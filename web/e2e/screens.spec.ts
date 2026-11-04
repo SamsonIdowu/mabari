@@ -48,16 +48,6 @@ test('every screen renders in both themes without errors', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('Vee greets people on the welcome screen', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('.veebub')).toContainText("Hi, I'm Vee.");
-  const drawn = await page.locator('.veehello canvas').evaluate((canvas: HTMLCanvasElement) => {
-    const pixels = canvas.getContext('2d')?.getImageData(0, 0, canvas.width, canvas.height).data;
-    return pixels?.some((value) => value !== 0) ?? false;
-  });
-  expect(drawn).toBe(true);
-});
-
 test('the nav badge counts agents that need you', async ({ page }) => {
   await loadDemo(page);
   await expect(page.locator('.rail .badge').first()).toHaveText('2');

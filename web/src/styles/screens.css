@@ -1942,8 +1942,8 @@ tr:last-child td {
   inset: 0;
   width: 100%;
   height: 100%;
-  image-rendering: pixelated;
   z-index: 1;
+  image-rendering: pixelated;
 }
 .fhshadow {
   position: absolute;
@@ -2004,10 +2004,10 @@ tr:last-child td {
 /* mascot */
 .brandvee {
   width: 32px;
-  height: 36px;
-  image-rendering: pixelated;
+  height: 40px;
+  image-rendering: auto;
   flex: none;
-  margin-top: -4px;
+  margin-top: -2px;
 }
 .fhname canvas {
   position: static !important;
@@ -2046,7 +2046,7 @@ tr:last-child td {
 .veehello {
   position: absolute;
   left: -28px;
-  bottom: -34px;
+  bottom: -30px;
   display: flex;
   align-items: flex-start;
   gap: 4px;
@@ -2054,8 +2054,8 @@ tr:last-child td {
 }
 .veehello canvas {
   width: 160px;
-  height: 180px;
-  image-rendering: pixelated;
+  height: 200px;
+  image-rendering: auto;
 }
 .veebub {
   margin-top: 18px;
@@ -2072,8 +2072,8 @@ tr:last-child td {
 .floormsg canvas[data-mascot] {
   position: static !important;
   width: 96px;
-  height: 108px;
-  image-rendering: pixelated;
+  height: 120px;
+  image-rendering: auto;
   margin: -6px auto 2px;
   display: block;
 }
@@ -2094,13 +2094,300 @@ tr:last-child td {
 }
 .veerow canvas {
   width: 96px;
-  height: 108px;
-  image-rendering: pixelated;
+  height: 120px;
+  image-rendering: auto;
 }
 .veerow figcaption {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--fg2);
+}
+
+/* home: chat with Vee */
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  gap: 24px;
+  height: 100%;
+  padding: 24px 28px;
+  min-height: 0;
+}
+section[data-screen='home'] {
+  height: 100%;
+}
+.homestage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  gap: 10px;
+}
+.homehead {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.homehead h1 {
+  font-size: 30px;
+}
+.homesum {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.veestage {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+#veeHome {
+  height: 100%;
+  max-height: 560px;
+  aspect-ratio: 40/50;
+  cursor: pointer;
+  touch-action: none;
+}
+.veesay {
+  position: absolute;
+  top: 2%;
+  left: calc(50% + 120px);
+  max-width: 300px;
+  padding: 12px 16px;
+  border-radius: 18px 18px 18px 6px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  box-shadow: var(--shadow);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  z-index: 2;
+  animation: rise 0.25s ease;
+}
+.veestatus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--fg2);
+  min-height: 28px;
+}
+.vsdot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.vsdot.ok {
+  background: var(--ok);
+}
+.vsdot.red {
+  background: var(--red);
+  animation: pulse 1s infinite;
+}
+.veestatus .wave {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  height: 18px;
+}
+.veestatus .wave i {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--red);
+  animation: wv 0.8s ease-in-out infinite;
+}
+.veestatus .wave i:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.veestatus .wave i:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.veestatus .wave i:nth-child(4) {
+  animation-delay: 0.3s;
+}
+.veestatus .wave i:nth-child(5) {
+  animation-delay: 0.4s;
+}
+@keyframes wv {
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 18px;
+  }
+}
+.gestwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.chipbtn {
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--fg2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chipbtn:hover {
+  background: var(--surface2);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.homechat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.hchead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.hchead h2 {
+  font-size: 18px;
+}
+.hcspeak {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--fg2);
+  white-space: nowrap;
+}
+.hcspeak input {
+  accent-color: var(--accent);
+}
+.hcmsgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.hcm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 88%;
+}
+.hcm.you {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.hcb {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  background: var(--surface2);
+  color: var(--fg);
+}
+.hcm.vee .hcb {
+  border-top-left-radius: 6px;
+}
+.hcm.you .hcb {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-top-right-radius: 6px;
+}
+.hcb p {
+  margin: 0 0 6px;
+}
+.hcb p:last-child {
+  margin: 0;
+}
+.hclist {
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hclist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.linkbtn {
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 700;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+.hcb.typing {
+  display: flex;
+  gap: 4px;
+  padding: 14px;
+}
+.hcb.typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: pulse 1s infinite;
+}
+.hcb.typing i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.hcb.typing i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.hcsugg {
+  padding: 0 18px 10px;
+  gap: 6px;
+}
+.hcform {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--line);
+}
+.hcform .in {
+  flex: 1;
+}
+#hcMic.on {
+  background: var(--red);
+  color: #fff;
+  border-color: transparent;
+}
+@media (max-width: 1180px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+  .veesay {
+    left: auto;
+    right: 0;
+  }
 }
 @keyframes pulse {
   0%,

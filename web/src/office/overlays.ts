@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { clockText, etaLong, etaShort, modelLabel, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent } from '../gen/models.ts';
-import { drawMascot, mascotPose } from '../mascot/drawMascot.ts';
 import { decisionColors, decisionLabels, providers, type ProviderName } from '../shared/tokens.ts';
+import { R } from './background.ts';
 import { drawChar } from './character.ts';
 import type { OfficeScene, Walker } from './scene.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
@@ -171,10 +171,10 @@ function renderSpotlight(
   const steps = layer.querySelector<HTMLElement>('.fsteps')!;
   const { width: cw, height: ch } = scene.size;
 
-  // Vee presents the selected agent.
-  const unit = Math.max(4, Math.min(8, Math.floor(Math.min(ch * 0.46, 300) / 36)));
-  const heroW = 32 * unit;
-  const heroH = 36 * unit;
+  // The selected agent, drawn large and facing you.
+  const unit = Math.max(3, Math.min(7, Math.floor(Math.min(ch * 0.5, 320) / 48)));
+  const heroW = 48 * unit;
+  const heroH = 60 * unit;
   const canvas = hero.querySelector('canvas')!;
   if (canvas.width !== heroW || canvas.height !== heroH) {
     canvas.width = heroW;
@@ -185,11 +185,28 @@ function renderSpotlight(
   g.clearRect(0, 0, heroW, heroH);
   g.imageSmoothingEnabled = false;
   g.setTransform(unit, 0, 0, unit, 0, 0);
-  drawMascot(g, t, {
-    pose: mascotPose(walker.state),
-    scarf: walker.hue,
-    laptop: (providers[walker.provider as ProviderName] ?? providers.custom).color,
-  });
+  drawChar(
+    g,
+    { ...walker, x: 24, y: 54, path: [], front: true, popUntil: 0, dir: 0 },
+    t,
+    false,
+    false,
+  );
+  if (['editing', 'running', 'reading', 'browsing'].includes(walker.state)) {
+    const screen = (providers[walker.provider as ProviderName] ?? providers.custom).color;
+    R(g, 13, 36, 22, 2, '#3A3D4D');
+    R(g, 15, 27, 18, 10, '#4A4E61');
+    R(g, 16, 28, 16, 8, screen);
+    R(g, 16, 28, 16, 2, 'rgba(255,255,255,.25)');
+  }
+  if (walker.state === 'thinking') {
+    const phase = Math.floor(t / 350) % 3;
+    for (let dot = 0; dot < 3; dot++) {
+      g.globalAlpha = dot <= phase ? 1 : 0.25;
+      R(g, 30 + dot * 4, 4 - dot * 2, 3, 3, '#C8C4D6');
+    }
+    g.globalAlpha = 1;
+  }
 
   const heroX = Math.round(cw / 2 - heroW / 2);
   const heroY = Math.round(ch / 2 - heroH / 2 + 10);
@@ -203,24 +220,8 @@ function renderSpotlight(
   const name = hero.querySelector('.fhname')!;
   setHtml(
     name,
-    `<canvas class="spotav" width="24" height="24" aria-hidden="true"></canvas><b>${esc(walker.name)}</b><span class="muted">${esc(walker.model.split(' · ')[0] ?? '')}</span><span class="vee">with Vee</span>`,
+    `<span class="idot" style="--ac:${esc(walker.hue)}"></span><b>${esc(walker.name)}</b><span class="muted">${esc(walker.model.split(' · ')[0] ?? '')}</span>`,
   );
-  const avatar = name.querySelector('canvas')!.getContext('2d')!;
-  avatar.setTransform(1, 0, 0, 1, 0, 0);
-  avatar.clearRect(0, 0, 24, 24);
-  avatar.imageSmoothingEnabled = false;
-  avatar.save();
-  avatar.beginPath();
-  avatar.rect(0, 0, 24, 24);
-  avatar.clip();
-  drawChar(
-    avatar,
-    { ...walker, x: 12, y: 44, path: [], front: true, popUntil: 0, dir: 0 },
-    t,
-    false,
-    false,
-  );
-  avatar.restore();
 
   const label = walker.bubble || stateLabel(walker.state);
   const bubble = hero.querySelector('.fbubble')!;

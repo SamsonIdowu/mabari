@@ -118,7 +118,6 @@ test('selecting an agent opens the spotlight, and clicking away closes it', asyn
   const tag = (await page.locator('.tag', { hasText: 'Mori' }).boundingBox())!;
   await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   await expect(page.locator('.fhname')).toContainText('Mori');
-  await expect(page.locator('.fhname')).toContainText('with Vee');
   await expect(page.locator('.finfo')).toContainText('#A-0008');
   await expect(page.locator('.readout')).toContainText('Elapsed');
   await expect(page.locator('.fbubble')).toHaveText('Lost connection to the embedding service');

@@ -38,6 +38,11 @@ func TestThePlannerAnswersEachMessage(t *testing.T) {
 	if second.Plan.Name != "Bean" || len(second.Plan.Members) != 1 || !strings.HasPrefix(second.Reply, "Updated.") {
 		t.Errorf("second = %+v", second)
 	}
+	second.Plan.Members[0].On = false
+	unticked, _ := json.Marshal(second.Plan)
+	if got := decode[map[string]int](t, office.do(t, http.MethodPost, "/api/planner/estimate", string(unticked))); got["minutes"] != 40 {
+		t.Errorf("estimate = %v", got)
+	}
 	if response := office.do(t, http.MethodPost, "/api/planner", `{"said":[]}`); response.Code != http.StatusBadRequest {
 		t.Errorf("empty = %d", response.Code)
 	}

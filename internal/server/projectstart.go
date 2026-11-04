@@ -32,6 +32,7 @@ const (
 
 func (a *api) projectStartRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/planner", a.plan)
+	mux.HandleFunc("POST /api/planner/estimate", a.estimatePlan)
 	mux.HandleFunc("POST /api/projects/start", a.startProject)
 	mux.HandleFunc("POST /api/folders/check", a.checkFolder)
 	mux.HandleFunc("POST /api/folders/pick", a.pickFolder)
@@ -145,6 +146,16 @@ func (a *api) plan(w http.ResponseWriter, r *http.Request) {
 		read = append(read, "your instructions")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"plan": plan, "reply": planner.Reply(plan, first, read)})
+}
+
+// estimatePlan recomputes a plan's time to completion when people are ticked or unticked, so the
+// estimate always comes from the server.
+func (a *api) estimatePlan(w http.ResponseWriter, r *http.Request) {
+	var plan planner.Plan
+	if !readJSON(w, r, &plan) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"minutes": planner.Minutes(plan)})
 }
 
 func plural(n int) string {
@@ -339,6 +350,11 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 		}
 	}
 	notice := ""
+	realCodex := plan.Account == models.AccountCodex && a.codex != nil && !a.simulator.DemoActive()
+	// Codex threads start working as soon as they exist, so nothing could wait for the plan.
+	if realCodex && body.Mode == "plan" && len(team) > 0 {
+		return "Plan first isn't ready for Codex yet. Choose Start right away.", ""
+	}
 	// Claude Code sessions run in the person's own terminal. Outside the demo, Mabari makes the
 	// project and says how to start; the session joins it by its folder.
 	realClaude := plan.Account == models.AccountClaudeCode && !a.simulator.DemoActive()
@@ -403,9 +419,16 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 		steps = append(steps, member.Name+" ("+strings.ToLower(member.Label)+"): "+member.Task)
 	}
 	steps = append(steps, "Review everything together before calling it done")
-	a.simulator.StartTeam(created, members, body.Mode == "plan", name, steps)
-	if a.codex != nil && plan.Account == models.AccountCodex && !a.simulator.DemoActive() {
+	if realCodex {
+		// Each member is its own Codex thread, seated in the lead's office.
 		a.codex.StartAgent(created)
+		for _, member := range members {
+			if helper := a.simulator.AddSubagent(created, member.Name, member.Task, member.Model); helper != nil {
+				a.codex.StartAgent(helper)
+			}
+		}
+	} else {
+		a.simulator.StartTeam(created, members, body.Mode == "plan", name, steps)
 	}
 	a.engine.Toast(name + " created. " + created.Name + " is walking in" + bringing(len(members)) + ".")
 	return "", notice

@@ -170,7 +170,7 @@ var (
 // CheckGitURL allows only https and ssh URLs, with no options, transports or odd characters a
 // URL could use to make git run something.
 func CheckGitURL(raw string) error {
-	if strings.Contains(raw, "..") || !(httpsURL.MatchString(raw) || sshURL.MatchString(raw)) {
+	if strings.Contains(raw, "..") || (!httpsURL.MatchString(raw) && !sshURL.MatchString(raw)) {
 		return errors.New("use an https or ssh Git URL, such as https://github.com/you/shop")
 	}
 	return nil

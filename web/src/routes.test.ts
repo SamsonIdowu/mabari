@@ -14,7 +14,7 @@ describe('resolveRoute', () => {
   });
 
   it('falls back to the office after first run', () => {
-    expect(resolveRoute('', false)).toBe('office');
-    expect(resolveRoute('#nope', false)).toBe('office');
+    expect(resolveRoute('', false)).toBe('home');
+    expect(resolveRoute('#nope', false)).toBe('home');
   });
 });

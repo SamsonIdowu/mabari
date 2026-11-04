@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Agent, Project, Settings, Snapshot } from '../gen/models.ts';
+import type { Agent, Estimate, Project, Settings, Snapshot } from '../gen/models.ts';
 
 export interface AgentPatch {
   model?: string;
@@ -67,6 +67,34 @@ export interface MessageResult {
   routed: Decision | null;
 }
 
+export interface VeeLine {
+  agentId: string;
+  name: string;
+  hue: string;
+  state: string;
+  task: string;
+  estimate: Estimate | null;
+  summary: string;
+  approvalId: string;
+}
+
+export interface VeeReply {
+  text: string;
+  gesture: string;
+  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'dispatch';
+  lines: VeeLine[] | null;
+  estimate: Estimate | null;
+  working: number;
+  total: number;
+  need: number;
+  message: string;
+}
+
+export interface VeeResult {
+  reply: VeeReply;
+  message: MessageResult | null;
+}
+
 export interface Scope {
   projectId: string;
   teamId: string;
@@ -87,6 +115,7 @@ export const api = {
     send<{ applied: boolean }>('POST', `/api/approvals/${id}/decision`, { decision }),
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
+  vee: (text: string, dispatch: boolean) => send<VeeResult>('POST', '/api/vee', { text, dispatch }),
   agentAction: (id: string, action: 'interrupt' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),

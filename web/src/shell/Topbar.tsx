@@ -8,7 +8,7 @@ export function Topbar() {
   return (
     <header className="topbar">
       <RailToggle />
-      <a className="brandmark" href="#office" aria-label="Mabari, go to the office">
+      <a className="brandmark" href="#home" aria-label="Mabari, go home">
         <BrandMark />
         <span className="bm-name">Mabari</span>
       </a>

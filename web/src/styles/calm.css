@@ -206,3 +206,216 @@ section[data-screen='preferences'] p.muted {
 section[data-screen]:not([data-screen='office']) {
   zoom: 0.88;
 }
+
+/* home 2: Vee fills the page, replies come from its mouth, one simple box */
+section[data-screen='home'] {
+  height: 100%;
+  zoom: 1 !important;
+}
+.home2 {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 32px 18px;
+  gap: 6px;
+  min-height: 0;
+}
+.h2head {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.h2head h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.h2head p {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+.h2stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 1100px;
+}
+#veeHome {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.veesay2 {
+  position: absolute;
+  max-width: min(380px, 44%);
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--line2);
+  box-shadow: var(--shadow);
+  font-size: 15.5px;
+  line-height: 1.45;
+  z-index: 2;
+  animation: rise 0.25s ease;
+}
+.veesay2::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: var(--ty, 40px);
+  width: 16px;
+  height: 16px;
+  background: var(--surface);
+  border-left: 1px solid var(--line2);
+  border-bottom: 1px solid var(--line2);
+  transform: translateY(-50%) rotate(45deg);
+}
+.veesay2.left::before {
+  left: auto;
+  right: -9px;
+  border-left: 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--line2);
+  border-top: 1px solid var(--line2);
+}
+.veesay2 p {
+  margin: 0 0 6px;
+}
+.veesay2 p:last-child {
+  margin: 0;
+}
+.veesay2 .hclist {
+  margin: 6px 0;
+}
+.veesay2 .typing {
+  display: flex;
+  gap: 5px;
+  padding: 4px 2px;
+}
+.veesay2 .typing i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: pulse 1s infinite;
+}
+.veesay2 .typing i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.veesay2 .typing i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.h2bottom {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.yousaid {
+  align-self: center;
+  max-width: 90%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yousaid::before {
+  content: 'You: ';
+  color: var(--fg2);
+}
+.h2box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 14px 10px 18px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.h2box:focus-within {
+  border-color: var(--fg2);
+}
+.h2box.listening {
+  border-color: var(--red);
+}
+.h2box textarea {
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  min-height: 46px;
+}
+.h2box textarea::placeholder {
+  color: var(--muted);
+}
+.h2row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.h2ic {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--fg2);
+  cursor: pointer;
+}
+.h2ic:hover {
+  background: var(--surface2);
+  color: var(--fg);
+}
+.h2ic .ico {
+  width: 20px;
+  height: 20px;
+}
+.h2ic[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+#hcMic.on {
+  background: var(--red);
+  color: #fff;
+}
+.h2under {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.menu.up {
+  bottom: calc(100% + 8px);
+  top: auto;
+  left: 0;
+  min-width: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.gmhead {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 6px 10px;
+}

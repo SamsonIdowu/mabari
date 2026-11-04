@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef } from 'react';
-import { api } from '../data/api.ts';
-import { useOfficeStore } from '../data/officeStore.ts';
+import { exploreDemo } from '../data/demo.ts';
 import { paintHero } from '../office/scene.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 
@@ -14,12 +13,6 @@ export function Welcome() {
     if (!context) return;
     paintHero(context, theme);
   }, [theme]);
-
-  const loadDemo = async () => {
-    await api.loadDemo();
-    window.location.hash = '#office';
-    useOfficeStore.getState().toast('Demo office loaded. Every agent state is on the floor.');
-  };
 
   return (
     <section data-screen="welcome">
@@ -61,7 +54,7 @@ export function Welcome() {
               <a className="btn primary lg" href="#accounts">
                 Connect your first account
               </a>
-              <button type="button" className="btn lg" onClick={() => void loadDemo()}>
+              <button type="button" className="btn lg" onClick={() => void exploreDemo()}>
                 Explore a demo office
               </button>
             </div>

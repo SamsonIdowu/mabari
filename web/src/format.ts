@@ -33,6 +33,11 @@ export function dateText(time: number): string {
 }
 
 /** The short form on tags and rows, from the server's estimate. */
+/** Minutes left on a name tag, such as "~6m". */
+export function shortMinutes(seconds: number): string {
+  return `~${Math.max(1, Math.round(seconds / 60))}m`;
+}
+
 export function etaShort(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
   switch (agent.state) {
     case 'approval':
@@ -45,7 +50,7 @@ export function etaShort(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
     case 'error':
       return 'stopped';
     default:
-      return `~${Math.max(1, Math.round((agent.estimate?.secondsLeft ?? 0) / 60))}m`;
+      return shortMinutes(agent.estimate?.secondsLeft ?? 0);
   }
 }
 

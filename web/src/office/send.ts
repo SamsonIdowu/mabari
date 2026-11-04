@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-import { api, type MessageMode } from '../data/api.ts';
+import { api, type MessageMode, type MessageResult } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Snapshot } from '../gen/models.ts';
 import { useOfficeUi } from './uiStore.ts';
+
+/** Puts an answer where the user will look for it. */
+export function showResult(result: MessageResult, question: string) {
+  const ui = useOfficeUi.getState();
+  if (result.answer) {
+    ui.set({
+      selected: result.answer.agentId,
+      panelTab: 'live',
+      answers: { ...ui.answers, [result.answer.agentId]: result.answer },
+    });
+  }
+  if (result.team) ui.set({ teamAnswer: { question, lines: result.team } });
+}
 
 /** Sends a message and shows what came back. The panel and the command bar both use this. */
 export async function send(
@@ -20,15 +33,7 @@ export async function send(
       const agent = office.agents.find((item) => item.id === first);
       if (agent?.state !== 'approval') ui.set({ selected: first, target: 'selected' });
     }
-    if (result.answer) {
-      const { answers } = useOfficeUi.getState();
-      ui.set({
-        selected: result.answer.agentId,
-        panelTab: 'live',
-        answers: { ...answers, [result.answer.agentId]: result.answer },
-      });
-    }
-    if (result.team) ui.set({ teamAnswer: { question: text, lines: result.team } });
+    showResult(result, text);
   } catch (error) {
     useOfficeStore.getState().toast((error as Error).message);
   }

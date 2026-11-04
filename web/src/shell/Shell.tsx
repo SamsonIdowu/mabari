@@ -7,6 +7,7 @@ import { Accounts } from '../screens/Accounts.tsx';
 import { Activity } from '../screens/Activity.tsx';
 import { ComponentSheet } from '../screens/ComponentSheet.tsx';
 import { Conversations } from '../screens/Conversations.tsx';
+import { Home } from '../screens/Home.tsx';
 import { Office } from '../screens/Office.tsx';
 import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
@@ -20,6 +21,8 @@ import { Topbar } from './Topbar.tsx';
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
+    case 'home':
+      return <Home />;
     case 'welcome':
       return <Welcome />;
     case 'projects':

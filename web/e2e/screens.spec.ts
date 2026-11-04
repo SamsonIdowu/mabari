@@ -27,11 +27,12 @@ const SCREENS: [route: string, heading: string][] = [
   ['#states', 'Status screens'],
 ];
 
-test('first run turns into the office once the demo loads', async ({ page }) => {
+test('first run opens the office, and home is the start page after that', async ({ page }) => {
   await loadDemo(page);
+  await expect(page.locator('h1')).toHaveText('All projects');
   await expect(page.getByText('Demo office loaded.')).toBeVisible();
   await page.goto('/');
-  await expect(page.locator('h1')).toHaveText('All projects');
+  await expect(page.locator('#homeGreet')).toBeVisible();
 });
 
 test('every screen renders in both themes without errors', async ({ page }) => {

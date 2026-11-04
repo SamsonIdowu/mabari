@@ -54,10 +54,10 @@ test('every nav link routes and marks itself current', async ({ page }) => {
   }
 });
 
-test('the top bar brand goes to the office', async ({ page }) => {
+test('the top bar brand goes home', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Mabari, go to the office' }).click();
-  await expect(page.locator('h1')).toHaveText('All projects');
+  await page.getByRole('link', { name: 'Mabari, go home' }).click();
+  await expect(page.locator('#homeGreet')).toHaveText(/Morning|Afternoon|Evening/);
 });
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {

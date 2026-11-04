@@ -17,6 +17,17 @@ export interface NavItem {
 
 const workNav: NavItem[] = [
   {
+    route: 'home',
+    label: 'Home',
+    title: 'Home: chat with Vee',
+    icon: (
+      <>
+        <path d="M12 3c4.4 0 8 3.1 8 7.5S16.4 18 12 18c-.9 0-1.8-.1-2.6-.4L5 20l1-3.8C4.8 14.8 4 12.8 4 10.5 4 6.1 7.6 3 12 3z" />
+        <path d="M9 10h.01M15 10h.01M9.5 13.5c1.4 1 3.6 1 5 0" />
+      </>
+    ),
+  },
+  {
     route: 'office',
     label: 'Office',
     badge: 'needs',

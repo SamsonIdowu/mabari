@@ -370,6 +370,46 @@ function AutoBanner({ office }: { office: Snapshot }) {
   );
 }
 
+/** Connection problems the floor should mention: a quiet hook, or an expired sign in. */
+function AccountBanners({ office }: { office: Snapshot }) {
+  const toast = useOfficeStore((state) => state.toast);
+  const status = (kind: string) => office.accounts.find((item) => item.kind === kind)?.status;
+  const reattach = () =>
+    api
+      .connectClaude()
+      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'));
+  return (
+    <div id="hookBanner" style={{ padding: '0 20px' }}>
+      {status('claude_code') === 'stale' ? (
+        <div className="banner amber" style={{ marginTop: 12 }}>
+          <Icon>
+            <path d="M12 8v5M12 16h.01" />
+          </Icon>
+          <span className="grow">
+            The Claude Code hook stopped reporting. Claude agents on the floor may be out of date.
+          </span>
+          <button type="button" className="btn sm" onClick={reattach}>
+            Reattach the hook
+          </button>
+        </div>
+      ) : null}
+      {status('codex') === 'expired' ? (
+        <div className="banner red" style={{ marginTop: 12 }}>
+          <Icon>
+            <path d="M12 8v5M12 16h.01" />
+          </Icon>
+          <span className="grow">
+            Your ChatGPT sign in expired, so Codex agents stopped reporting.
+          </span>
+          <a className="btn sm" href="#accounts">
+            Sign in again
+          </a>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function FloorMessage({ office }: { office: Snapshot }) {
   const connected = office.accounts.some((account) => account.status !== 'off');
   if (office.agents.length) return null;
@@ -704,7 +744,12 @@ function Stage({ office }: { office: Snapshot }) {
         <div className="fnote note" style={{ left: '49%', top: '3%' }}>
           Approvals pin here. Click one to review it.
         </div>
-        <div className="fnote note" id="noteQueue" ref={queueNote} style={{ left: '2%', top: '40%' }}>
+        <div
+          className="fnote note"
+          id="noteQueue"
+          ref={queueNote}
+          style={{ left: '2%', top: '40%' }}
+        >
           Amber tag: an instruction is waiting for this Claude Code agent&apos;s next checkpoint.
         </div>
         <div className="fnote note" style={{ left: '2%', top: '58%' }}>
@@ -763,6 +808,7 @@ export function Office() {
           <FilterBar office={office} scoped={scoped} />
           {lead ? <TeamBanner lead={lead} agents={office.agents} /> : null}
           <AutoBanner office={office} />
+          <AccountBanners office={office} />
           <Stage office={office} />
           <CommandBar office={office} />
         </div>

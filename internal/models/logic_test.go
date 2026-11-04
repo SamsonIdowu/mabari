@@ -4,6 +4,7 @@ package models
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +23,11 @@ func TestAck(t *testing.T) {
 		"Sage, Also update the API docs.": "I'll also update the API docs.",
 		"Fix the bug":                     "I'll fix the bug.",
 		"Use the money helper instead of toFixed and also rewrite every test": "I'll do that next.",
+		// Characters that take more than one byte are kept whole and counted once.
+		"Écris le test":         "I'll écris le test.",
+		"修复登录问题":                "I'll 修复登录问题.",
+		strings.Repeat("é", 40): "I'll " + strings.Repeat("é", 40) + ".",
+		strings.Repeat("修", 24): "I'll " + strings.Repeat("修", 24) + ".",
 	}
 	for in, want := range cases {
 		if got := Ack(in); got != want {
@@ -118,5 +124,18 @@ func TestProjectState(t *testing.T) {
 				t.Errorf("got %s %v, want %s %v", status, progress, tc.status, tc.progress)
 			}
 		})
+	}
+}
+
+// Message colours match the prototype's CONV table, with no purple anywhere.
+func TestMessageColoursMatchThePrototype(t *testing.T) {
+	want := map[MessageKind]string{
+		MessageHandoff: "#1DD1A1", MessageQuestion: "#48DBFB", MessageAnswer: "#4FB3FF",
+		MessageReport: "#FF9F43", MessageReview: "#FF6B9A",
+	}
+	for kind, colour := range want {
+		if MessageColors[kind] != colour {
+			t.Errorf("%s = %s, want %s", kind, MessageColors[kind], colour)
+		}
 	}
 }

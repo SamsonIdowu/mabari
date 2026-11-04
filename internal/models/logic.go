@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Limits from the prototype.
@@ -62,10 +64,10 @@ var prices = map[string]float64{
 var MessageColors = map[MessageKind]string{
 	MessageHandoff:   "#1DD1A1",
 	MessageQuestion:  "#48DBFB",
-	MessageAnswer:    "#B794F6",
+	MessageAnswer:    "#4FB3FF",
 	MessageReport:    "#FF9F43",
 	MessageReview:    "#FF6B9A",
-	MessageBroadcast: "#C8B6FF",
+	MessageBroadcast: "#C9C9CE",
 }
 
 // FirstProject is the empty project a fresh install and a wipe start with.
@@ -224,13 +226,20 @@ func WithoutName(text string) string { return addressedTo.ReplaceAllString(text,
 // Ack is an agent's reply to an instruction, such as "I'll update the docs."
 func Ack(text string) string {
 	body := WithoutName(text)
-	if len(body) > 60 {
+	// Characters, not bytes, so an instruction in another language is measured fairly.
+	if utf8.RuneCountInString(body) > 60 {
 		return "I'll do that next."
 	}
-	if body != "" {
-		body = strings.ToLower(body[:1]) + body[1:]
+	return "I'll " + strings.TrimSuffix(LowerFirst(body), ".") + "."
+}
+
+// LowerFirst lowers the first character, which may take more than one byte.
+func LowerFirst(text string) string {
+	first, size := utf8.DecodeRuneInString(text)
+	if size == 0 || first == utf8.RuneError {
+		return text
 	}
-	return "I'll " + strings.TrimSuffix(body, ".") + "."
+	return string(unicode.ToLower(first)) + text[size:]
 }
 
 // ETAWords is the prototype's phrase for when an agent will be free, used in agent chat.

@@ -214,7 +214,7 @@ function renderSpotlight(
     const phase = Math.floor(t / 350) % 3;
     for (let dot = 0; dot < 3; dot++) {
       g.globalAlpha = dot <= phase ? 1 : 0.25;
-      R(g, 30 + dot * 4, 4 - dot * 2, 3, 3, '#C8C4D6');
+      R(g, 30 + dot * 4, 4 - dot * 2, 3, 3, '#C9C9CE');
     }
     g.globalAlpha = 1;
   }

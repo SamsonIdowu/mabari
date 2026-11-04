@@ -9,7 +9,7 @@ import { PageHead } from './parts.tsx';
 const KINDS: Record<string, { color: string; label: string }> = {
   handoff: { color: '#1DD1A1', label: 'Handoff' },
   question: { color: '#48DBFB', label: 'Question' },
-  answer: { color: '#B794F6', label: 'Answer' },
+  answer: { color: '#4FB3FF', label: 'Answer' },
   report: { color: '#FF9F43', label: 'Report' },
   review: { color: '#FF6B9A', label: 'Review' },
 };

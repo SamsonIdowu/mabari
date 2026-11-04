@@ -467,13 +467,6 @@ func (s *Simulator) stillHere(agent *models.LiveAgent) bool {
 	return s.engine.Agent(agent.ID) == agent
 }
 
-func lowerFirst(text string) string {
-	if text == "" {
-		return text
-	}
-	return strings.ToLower(text[:1]) + text[1:]
-}
-
 func subModelFor(lead *models.LiveAgent) string {
 	if lead.SubModel != "" && lead.SubModel != "inherit" {
 		return lead.SubModel
@@ -505,7 +498,7 @@ func (s *Simulator) spawnHelper(lead *models.LiveAgent) {
 		return
 	}
 	s.engine.AddEvent(lead, "spawn_agent", helper.Name+" took the next desk", nil)
-	s.talk(lead, helper, "Can you take this for me: "+lowerFirst(helper.Task)+"?",
+	s.talk(lead, helper, "Can you take this for me: "+models.LowerFirst(helper.Task)+"?",
 		models.MessageHandoff)
 	s.engine.Toast(helper.Name + " joined, next to " + lead.Name)
 	s.after(3500, func() {
@@ -822,7 +815,7 @@ func (s *Simulator) AddSubagent(lead *models.LiveAgent, name, task, model string
 	}
 	s.runtimeOf(lead).spawned = true
 	s.engine.AddEvent(lead, "spawn_agent", "Started "+helper.Name+" ("+helper.Model+")", nil)
-	s.talk(lead, helper, "Can you take this for me: "+lowerFirst(helper.Task)+"?",
+	s.talk(lead, helper, "Can you take this for me: "+models.LowerFirst(helper.Task)+"?",
 		models.MessageHandoff)
 	s.after(3000, func() {
 		s.talk(helper, lead, "On it. I'll report back when the first part is done.",

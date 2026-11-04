@@ -6,13 +6,16 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,7 +38,7 @@ Usage:
 `
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "mabari:", err)
 		os.Exit(1)
 	}
@@ -43,7 +46,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) error {
 	command := "serve"
-	if len(args) > 0 && args[0][0] != '-' {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		command, args = args[0], args[1:]
 	}
 	switch command {
@@ -68,6 +71,9 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	if cfg.PrintConfig {
 		_, err := fmt.Fprint(stdout, cfg.Printable())
 		return err
+	}
+	if level, err := cfg.Level(); err == nil {
+		slog.SetLogLoggerLevel(level)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

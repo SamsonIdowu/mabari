@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"flag"
 	"io"
 	"net"
 	"os"
@@ -28,6 +30,21 @@ func TestUnknownCommand(t *testing.T) {
 	err := run([]string{"nope"}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), `unknown command "nope"`) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// --help prints the flags and is not an error, and an empty argument is an unknown command.
+func TestHelpAndEmptyArgument(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"--help"}, io.Discard, &out); !errors.Is(err, flag.ErrHelp) {
+		t.Errorf("--help err = %v", err)
+	}
+	if !strings.Contains(out.String(), "-port") {
+		t.Errorf("--help output = %q", out.String())
+	}
+	if err := run([]string{""}, io.Discard, io.Discard); err == nil ||
+		!strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("empty argument err = %v", err)
 	}
 }
 

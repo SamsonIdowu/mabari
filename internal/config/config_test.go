@@ -61,13 +61,15 @@ func TestRejectsBadValues(t *testing.T) {
 		args []string
 		env  map[string]string
 	}{
-		"non-numeric port": {env: map[string]string{"MABARI_PORT": "abc"}},
-		"port too high":    {args: []string{"--port", "70000"}},
-		"port zero":        {args: []string{"--port", "0"}},
-		"unknown secrets":  {env: map[string]string{"MABARI_SECRETS": "plain"}},
-		"unknown flag":     {args: []string{"--nope"}},
-		"all interfaces":   {args: []string{"--bind", "0.0.0.0"}},
-		"a network host":   {env: map[string]string{"MABARI_BIND": "192.168.1.24"}},
+		"non-numeric port":   {env: map[string]string{"MABARI_PORT": "abc"}},
+		"port too high":      {args: []string{"--port", "70000"}},
+		"port zero":          {args: []string{"--port", "0"}},
+		"unknown secrets":    {env: map[string]string{"MABARI_SECRETS": "plain"}},
+		"unknown flag":       {args: []string{"--nope"}},
+		"all interfaces":     {args: []string{"--bind", "0.0.0.0"}},
+		"a network host":     {env: map[string]string{"MABARI_BIND": "192.168.1.24"}},
+		"unknown level":      {env: map[string]string{"MABARI_LOG_LEVEL": "loud"}},
+		"unknown flag level": {args: []string{"--log-level", "verbose"}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

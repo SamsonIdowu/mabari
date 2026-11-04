@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -90,10 +91,29 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 	if !IsLoopback(cfg.Bind) && getenv("MABARI_IN_CONTAINER") != "1" {
 		return Config{}, fmt.Errorf("binding to %s is not supported yet: use 127.0.0.1", cfg.Bind)
 	}
+	if _, err := cfg.Level(); err != nil {
+		return Config{}, err
+	}
 	if cfg.Secrets != "keychain" && cfg.Secrets != "encrypted-file" {
 		return Config{}, errors.New(`MABARI_SECRETS must be "keychain" or "encrypted-file"`)
 	}
 	return cfg, nil
+}
+
+// Level is the log level: debug, info, warn or error.
+func (c Config) Level() (slog.Level, error) {
+	switch c.LogLevel {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf(`log level must be "debug", "info", "warn" or "error", got %q`, c.LogLevel)
+	}
 }
 
 // IsLoopback reports whether an address is only reachable from this computer.

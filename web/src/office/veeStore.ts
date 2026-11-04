@@ -15,7 +15,7 @@ const TALK_PER_LETTER_MS = 38;
 const ACK_SHOWN_MS = 900;
 
 export const VEE_HELLO: VeeReply = {
-  text: "Hi, I'm Mabari, your dispatcher. Tell me what you need and I'll hand it to the right agent, then tell you what Claude, Codex or any other AI says back.",
+  text: "Hi, I'm Mabari, your office manager. Tell me what you need and I'll hand it to the right agent, then tell you what Claude, Codex or any other AI says back.",
   gesture: '',
   kind: '',
   lines: null,

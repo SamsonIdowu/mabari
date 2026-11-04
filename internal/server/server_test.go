@@ -667,7 +667,7 @@ func TestDispatchPreviewMatchesTheRealDecision(t *testing.T) {
 		t.Errorf("preview = %+v, sent = %+v", preview, sent.Routed)
 	}
 	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=Routed", ""))
-	if len(rows) != 1 || rows[0].Agent != "Dispatcher" {
+	if len(rows) != 1 || rows[0].Agent != "Mabari" {
 		t.Errorf("rows = %+v", rows)
 	}
 }

@@ -38,7 +38,7 @@ test('home greets and sums up the live office', async ({ page, request }) => {
   await expect(summary).toContainText('need you');
   await expect(summary).toContainText(/done around \d\d:\d\d/);
   await expect(page.locator('#veeSay')).toContainText(
-    "Hi, I'm Mabari, your dispatcher. Tell me what you need and I'll hand it to the right agent",
+    "Hi, I'm Mabari, your office manager. Tell me what you need and I'll hand it to the right agent",
   );
 });
 

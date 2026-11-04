@@ -120,7 +120,7 @@ export function rrect(c: Ctx, x: number, y: number, w: number, h: number, r: num
   c.closePath();
 }
 
-function blk(
+export function blk(
   c: Ctx,
   x: number,
   y: number,

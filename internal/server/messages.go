@@ -237,9 +237,9 @@ func (a *api) deliver(body messageBody) (messageResult, bool) {
 		if body.Mode == string(models.ModeQuery) {
 			kind = models.LogQuery
 		}
-		a.engine.Log("Dispatcher", kind, body.Text, "Routed to "+routed.Name, "")
+		a.engine.Log("Mabari", kind, body.Text, "Routed to "+routed.Name, "")
 		if !body.quiet {
-			a.engine.Toast("Dispatcher sent it to " + routed.Name + ": " + routed.Reason)
+			a.engine.Toast("Mabari sent it to " + routed.Name + ": " + routed.Reason)
 		}
 	}
 	if body.Mode == string(models.ModeQuery) {

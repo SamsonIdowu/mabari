@@ -3,10 +3,11 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
+import { blk, buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
 import { drawEnvelopes } from './talk.ts';
+import { drawMascot } from './vee.ts';
 import {
   deskSeat,
   DESKS,
@@ -510,6 +511,50 @@ export class OfficeScene {
       return walker && inView(walker) && !walker.leaving ? { x: walker.x, y: walker.y } : null;
     };
     drawEnvelopes(c, messages, where, Date.now(), reducedMotion());
+    this.drawMabariDesk(theme, t);
     c.setTransform(1, 0, 0, 1, 0, 0);
   }
+
+  /**
+   * Mabari, the office manager, at the reception desk by the door. It waves for a moment when it
+   * routes a request, and its label names who got it.
+   */
+  private drawMabariDesk(theme: 'dark' | 'light', t: number): void {
+    const c = this.context;
+    const P = PAL[theme];
+    const x = MABARI_DESK.x;
+    const y = MABARI_DESK.y;
+    blk(c, x - 46, y - 6, 92, 14, 14, P.desk, P.deskFront, P, P.deskEdge);
+    const routed = useOfficeStore
+      .getState()
+      .office?.log.find((row) => row.agent === 'Mabari' && row.outcome.startsWith('Routed to '));
+    const ping = !!routed && Date.now() - routed.time < MABARI_PING_MS;
+    const scale = 1.15;
+    c.save();
+    c.translate(x - 16 * scale, y - 44 * scale);
+    c.scale(scale, scale);
+    drawMascot(c, t, {
+      pose: ping ? 'wave' : 'idle',
+      rig: ping ? { eyes: 'happy' } : { look: { x: Math.sin(t / 3000) * 0.6, y: -0.2 } },
+      scarf: '#F4F4F4',
+      dark: theme === 'dark',
+    });
+    c.restore();
+    const label =
+      ping && routed
+        ? `Mabari · sent to ${routed.outcome.slice('Routed to '.length)}`
+        : 'Mabari · Manager';
+    c.font = '800 10px Nunito, sans-serif';
+    const width = c.measureText(label).width + 16;
+    c.fillStyle = 'rgba(14,13,18,.86)';
+    rrect(c, x - width / 2, y + 20, width, 16, 6);
+    c.fill();
+    c.fillStyle = '#F5F5F5';
+    c.fillText(label, x - width / 2 + 8, y + 31);
+  }
 }
+
+/** Where Mabari's reception desk stands, in world pixels, as in the prototype. */
+export const MABARI_DESK = { x: 608, y: 652 };
+/** How long Mabari waves and names the agent after routing a request. */
+const MABARI_PING_MS = 2200;

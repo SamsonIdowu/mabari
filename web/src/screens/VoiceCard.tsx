@@ -53,7 +53,7 @@ function Card() {
   const outcome = !instruct
     ? `Answered from the log. ${name} is not interrupted.`
     : !agent
-      ? 'The dispatcher picks the best agent for it.'
+      ? 'Mabari picks the best agent for it.'
       : agent.provider === 'claude'
         ? `Will be queued for ${agent.name}'s next checkpoint.`
         : `Goes straight into ${agent.name}'s session.`;

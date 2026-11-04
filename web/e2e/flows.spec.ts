@@ -164,7 +164,7 @@ test('flow f: auto dispatch sends to the best agent and says who', async ({ page
   await loadDemo(page);
   await message(page).fill('the invoice rounding is wrong');
   await page.getByRole('button', { name: 'Send instruction' }).click();
-  await expect(page.getByText(/Dispatcher sent it to Ledger/)).toBeVisible();
+  await expect(page.getByText(/Mabari sent it to Ledger/)).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Agent details' })).toContainText('Ledger');
   await expect(page.getByLabel('Send to')).toHaveValue('selected');
 });

@@ -59,6 +59,15 @@ func TestHarderShapes(t *testing.T) {
 	}
 }
 
+func TestUnterminatedQuotes(t *testing.T) {
+	for _, text := range []string{`password="hunter22 is cut off`, `--token "abcd efgh`, `secret='abcd efgh`} {
+		got := Text(text + "\nnext line")
+		if strings.Contains(got, "hunter22") || strings.Contains(got, "abcd") || !strings.Contains(got, "next line") {
+			t.Errorf("%q: got %q", text, got)
+		}
+	}
+}
+
 func TestPGPPrivateKeys(t *testing.T) {
 	got := Text("-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----")
 	if strings.Contains(got, "abc") {

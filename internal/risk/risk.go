@@ -165,19 +165,32 @@ func risky(reason string) Verdict { return Verdict{Level: models.RiskHigh, Reaso
 const maxLinks = 32
 
 // resolved finds where a path really lands. It walks one part at a time, so a link is followed
-// even when its target doesn't exist. It reports false for anything it can't be sure of.
+// even when its target doesn't exist, and a .. in a link target applies to where the link really
+// is. It reports false for anything it can't be sure of.
 func resolved(path string, links *int) (string, bool) {
 	volume := filepath.VolumeName(path)
-	current := volume + string(filepath.Separator)
-	parts := strings.Split(filepath.ToSlash(path[len(volume):]), "/")
+	return walk(volume+string(filepath.Separator), path[len(volume):], links)
+}
+
+// walk follows rest, one part at a time, starting from current, which is already resolved.
+func walk(current, rest string, links *int) (string, bool) {
+	parts := strings.Split(filepath.ToSlash(rest), "/")
 	for index, part := range parts {
-		if part == "" {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			current = filepath.Dir(current)
 			continue
 		}
 		next := filepath.Join(current, part)
 		info, err := os.Lstat(next)
 		if errors.Is(err, fs.ErrNotExist) {
-			return filepath.Join(append([]string{current}, parts[index:]...)...), true
+			remaining := parts[index:]
+			if slices.Contains(remaining, "..") {
+				return "", false
+			}
+			return filepath.Join(append([]string{current}, remaining...)...), true
 		}
 		if err != nil {
 			return "", false
@@ -193,10 +206,12 @@ func resolved(path string, links *int) (string, bool) {
 		if err != nil {
 			return "", false
 		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(current, target)
+		start := current
+		if filepath.IsAbs(target) {
+			start = filepath.VolumeName(target) + string(filepath.Separator)
+			target = target[len(filepath.VolumeName(target)):]
 		}
-		through, ok := resolved(target, links)
+		through, ok := walk(start, target, links)
 		if !ok {
 			return "", false
 		}
@@ -312,6 +327,11 @@ func allowed(words []string, cwd *string) bool {
 		return len(args) == 0
 	case name == "git" && subcommand == "commit":
 		return len(args) == 2 && args[0] == "-m"
+	case name == "git" && (subcommand == "diff" || subcommand == "show"):
+		// The full output can print a secret that is tracked or staged, so only summaries pass.
+		if !slices.Contains(args, "--stat") && !slices.Contains(args, "--name-only") {
+			return false
+		}
 	}
 	return argumentsAllowed(rule, subcommand, args, *cwd)
 }
@@ -321,26 +341,28 @@ func isPackageManager(name string) bool {
 }
 
 func moveTo(args []string, cwd *string) bool {
-	if len(args) != 1 {
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
 		return false
 	}
 	relative, ok := relativeTo(args[0], *cwd)
 	if !ok || sensitive.MatchString(relative) {
 		return false
 	}
-	*cwd = filepath.Join(*cwd, args[0])
+	if filepath.IsAbs(args[0]) {
+		*cwd = filepath.Clean(args[0])
+	} else {
+		*cwd = filepath.Join(*cwd, args[0])
+	}
 	return true
 }
 
 func argumentsAllowed(rule commandRule, subcommand string, args []string, cwd string) bool {
 	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			if !safePath(arg, cwd) {
+		if strings.HasPrefix(arg, "-") {
+			if !flagAllowed(rule, subcommand, arg) {
 				return false
 			}
-			continue
-		}
-		if !flagAllowed(rule, subcommand, arg) {
+		} else if !safePath(arg, cwd) {
 			return false
 		}
 	}
@@ -361,6 +383,9 @@ func flagAllowed(rule commandRule, subcommand, flag string) bool {
 // safePath checks a word that may be a path. It also looks after a colon, because git reads
 // HEAD:.env as a file.
 func safePath(arg, cwd string) bool {
+	if strings.HasPrefix(arg, "-") {
+		return false
+	}
 	for part := range strings.SplitSeq(arg, ":") {
 		if sensitive.MatchString(filepath.ToSlash(part)) {
 			return false

@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
+	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
 )
 
@@ -29,11 +30,12 @@ type Options struct {
 type api struct {
 	engine    *events.Engine
 	simulator *simulator.Simulator
+	router    dispatch.Router
 }
 
 // New builds the handler. It is separate from listening so tests can drive it directly.
 func New(options Options) http.Handler {
-	a := &api{engine: options.Engine, simulator: options.Simulator}
+	a := &api{engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": options.Version})

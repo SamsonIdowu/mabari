@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
+	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
@@ -416,12 +417,20 @@ func TestSettingsPartialUpdateAndValidation(t *testing.T) {
 		t.Errorf("stored = %+v", got)
 	}
 	for _, body := range []string{
-		`{"retentionDays":8}`, `{"voiceEngine":"cloud"}`, `{"autoApprove":{"on":true,"scope":"most"}}`,
-		`{"nope":1}`,
+		`{"retentionDays":8}`, `{"voiceEngine":"cloud"}`, `{"nope":1}`,
 	} {
 		if response := office.do(t, http.MethodPatch, "/api/settings", body); response.Code != http.StatusBadRequest {
 			t.Errorf("%s = %d", body, response.Code)
 		}
+	}
+}
+
+func TestSettingsCannotTurnOnAutoApprove(t *testing.T) {
+	office := newOffice(t)
+	body := `{"autoApprove":{"on":true,"scope":"all"}}`
+	updated := decode[models.Settings](t, office.do(t, http.MethodPatch, "/api/settings", body))
+	if updated.AutoApprove.On {
+		t.Error("the settings route turned on auto approve")
 	}
 }
 
@@ -587,5 +596,161 @@ func TestWebSocketRefusesOtherWebsites(t *testing.T) {
 	}
 	if response == nil || response.StatusCode != http.StatusForbidden {
 		t.Errorf("response = %+v", response)
+	}
+}
+
+func TestDispatchPreviewMatchesTheRealDecision(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	body := `{"text":"the invoice rounding is wrong"}`
+	preview := decode[map[string]dispatch.Decision](t, office.do(t, http.MethodPost, "/api/dispatch/preview", body))
+	sent := decode[messageResult](t, office.do(t, http.MethodPost, "/api/messages",
+		`{"text":"the invoice rounding is wrong","mode":"instruct","target":"auto"}`))
+	if preview["decision"].Name != "Ledger" || sent.Routed == nil || sent.Routed.AgentID != preview["decision"].AgentID {
+		t.Errorf("preview = %+v, sent = %+v", preview, sent.Routed)
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=Routed", ""))
+	if len(rows) != 1 || rows[0].Agent != "Dispatcher" {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestDispatchRespectsTheProjectInView(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	body := `{"text":"the invoice rounding is wrong","projectId":"docs"}`
+	preview := decode[map[string]dispatch.Decision](t, office.do(t, http.MethodPost, "/api/dispatch/preview", body))
+	if name := preview["decision"].Name; name != "Scout" && name != "Rune" {
+		t.Errorf("went to %s, outside the project", name)
+	}
+}
+
+func TestInstructionsQueueForBusyClaudeAgents(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	ledger := agentNamed(t, office, "Ledger")
+	body := `{"text":"Add a test","mode":"instruct","target":"` + ledger.ID + `"}`
+	if response := office.do(t, http.MethodPost, "/api/messages", body); response.Code != http.StatusOK {
+		t.Fatalf("send = %d", response.Code)
+	}
+	if got := agentNamed(t, office, "Ledger"); len(got.Queued) != 1 || got.Queued[0].Text != "Add a test" {
+		t.Errorf("queued = %+v", got.Queued)
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=Add%20a%20test", ""))
+	if len(rows) != 1 || rows[0].Outcome != "Waiting for checkpoint" || rows[0].Chip != "amber" {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestInstructionsReachOtherAgentsAtOnce(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	scout := agentNamed(t, office, "Scout")
+	body := `{"text":"Add the pricing pages","mode":"instruct","target":"` + scout.ID + `"}`
+	office.do(t, http.MethodPost, "/api/messages", body)
+	got := agentNamed(t, office, "Scout")
+	if len(got.Queued) != 0 || got.Feed[0].Summary != "Received: Add the pricing pages" ||
+		got.Reply != "Got it. I'll add the pricing pages." {
+		t.Errorf("Scout = %+v", got.SessionState)
+	}
+}
+
+func TestInstructingAFreeAgentGivesItTheTask(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	pixel := agentNamed(t, office, "Pixel")
+	body := `{"text":"Pixel, write the changelog","mode":"instruct","target":"` + pixel.ID + `"}`
+	office.do(t, http.MethodPost, "/api/messages", body)
+	got := agentNamed(t, office, "Pixel")
+	if got.Task != "write the changelog" || got.State != models.StateThinking || got.Progress != 0 {
+		t.Errorf("Pixel = %+v", got.SessionState)
+	}
+}
+
+func TestQueriesAreAnsweredFromTheLogWithoutInterrupting(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	ledger := agentNamed(t, office, "Ledger")
+	body := `{"text":"How is it going?","mode":"query","target":"` + ledger.ID + `"}`
+	result := decode[messageResult](t, office.do(t, http.MethodPost, "/api/messages", body))
+	if result.Answer == nil || result.Answer.Name != "Ledger" || len(result.Answer.Events) == 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	after := agentNamed(t, office, "Ledger")
+	if after.State != ledger.State || len(after.Queued) != 0 || after.Progress != ledger.Progress {
+		t.Errorf("the agent changed: %+v", after.SessionState)
+	}
+	if after.BubbleKind != "reply" {
+		t.Errorf("bubble kind = %q", after.BubbleKind)
+	}
+}
+
+func TestQuestionsToEveryoneSkipStoppedAgents(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	result := decode[messageResult](t, office.do(t, http.MethodPost, "/api/messages",
+		`{"text":"Status?","mode":"query","target":"everyone"}`))
+	if len(result.Team) != 9 {
+		t.Errorf("team = %d", len(result.Team))
+	}
+	for _, line := range result.Team {
+		if line.Name == "Mori" {
+			t.Error("Mori has an error and should be left out")
+		}
+	}
+}
+
+func TestMessageValidation(t *testing.T) {
+	office := newOffice(t)
+	cases := map[string]int{
+		`{"text":"","mode":"instruct","target":"auto"}`:     http.StatusBadRequest,
+		`{"text":"hi","mode":"shout","target":"auto"}`:      http.StatusBadRequest,
+		`{"text":"hi","mode":"instruct","target":"auto"}`:   http.StatusBadRequest,
+		`{"text":"hi","mode":"instruct","target":"nobody"}`: http.StatusBadRequest,
+	}
+	for body, want := range cases {
+		if response := office.do(t, http.MethodPost, "/api/messages", body); response.Code != want {
+			t.Errorf("%s = %d", body, response.Code)
+		}
+	}
+}
+
+func TestEverythingAutoApproveNeedsAnAcknowledgement(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	response := office.do(t, http.MethodPost, "/api/auto-approve", `{"on":true,"scope":"all"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if atlas := agentNamed(t, office, "Atlas"); atlas.Approval == nil {
+		t.Error("the risky approval was settled without an acknowledgement")
+	}
+	settled := decode[map[string]int](t, office.do(t, http.MethodPost, "/api/auto-approve",
+		`{"on":true,"scope":"all","acknowledged":true}`))
+	if settled["settled"] != 1 {
+		t.Errorf("settled = %+v", settled)
+	}
+	if atlas := agentNamed(t, office, "Atlas"); atlas.Approval != nil {
+		t.Error("the approval is still waiting")
+	}
+}
+
+func TestLowRiskAutoApproveLeavesRiskyActionsWaiting(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	settled := decode[map[string]int](t, office.do(t, http.MethodPost, "/api/auto-approve", `{"on":true,"scope":"safe"}`))
+	if settled["settled"] != 0 {
+		t.Errorf("settled = %+v", settled)
+	}
+	if atlas := agentNamed(t, office, "Atlas"); atlas.Approval == nil {
+		t.Error("a risky action was approved under the low risk scope")
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=auto%20approve", ""))
+	if len(rows) != 1 || rows[0].Outcome != "On" {
+		t.Errorf("rows = %+v", rows)
+	}
+	office.do(t, http.MethodPost, "/api/auto-approve", `{"on":false}`)
+	if got := decode[models.Settings](t, office.do(t, http.MethodGet, "/api/settings", "")); got.AutoApprove.On {
+		t.Error("auto approve is still on")
 	}
 }

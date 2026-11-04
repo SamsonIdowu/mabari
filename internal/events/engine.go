@@ -577,6 +577,45 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	}
 }
 
+// SetAutoApprove turns auto approve on or off and records it. Turning it on also settles any
+// waiting approvals it covers, and returns how many. Call inside Do.
+func (e *Engine) SetAutoApprove(on bool, scope string) int {
+	settings := e.settings
+	settings.AutoApprove = models.AutoApprove{On: on, Scope: scope}
+	e.SaveSettings(settings)
+	if !on {
+		e.Log("Everyone", models.LogApproval, "Turned off auto approve", "Off", "")
+		e.Toast("Auto approve is off. Agents will ask again.")
+		return 0
+	}
+	label := "low risk only"
+	if scope == "all" {
+		label = "everything"
+	}
+	e.Log("Everyone", models.LogApproval, "Turned on auto approve ("+label+")", "On", "amber")
+	settled := 0
+	for _, agent := range e.agents {
+		if agent.Approval != nil && e.autoCovers(*agent.Approval) {
+			e.decide(agent, models.DecisionAllowed, models.DecidedByAuto)
+			settled++
+		}
+	}
+	notice := "Auto approve is on"
+	if settled == 1 {
+		notice += ". 1 waiting approval was approved"
+	} else if settled > 1 {
+		notice += ". " + strconv.Itoa(settled) + " waiting approvals were approved"
+	}
+	e.Toast(notice)
+	return settled
+}
+
+// SetReply gives an agent a reply bubble. Call inside Do.
+func (e *Engine) SetReply(agent *models.LiveAgent, text string, milliseconds int64) {
+	agent.Reply, agent.ReplyUntil = text, e.now().UnixMilli()+milliseconds
+	e.Touch(agent)
+}
+
 // SetFirstRun records whether Mabari is still on its first run. Call inside Do.
 func (e *Engine) SetFirstRun(firstRun bool) {
 	e.firstRun = firstRun

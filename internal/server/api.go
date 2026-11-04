@@ -56,6 +56,10 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/approvals/{id}/decision", a.decide)
 
 	mux.HandleFunc("GET /api/activity", a.activity)
+
+	mux.HandleFunc("POST /api/dispatch/preview", a.previewDispatch)
+	mux.HandleFunc("POST /api/messages", a.sendMessage)
+	mux.HandleFunc("POST /api/auto-approve", a.autoApprove)
 }
 
 func (a *api) snapshot(w http.ResponseWriter, _ *http.Request) {
@@ -448,10 +452,13 @@ func validSettings(s models.Settings) string {
 
 func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 	// Decoding onto the current settings is what makes this a partial update.
-	settings := a.engine.Snapshot().Settings
+	current := a.engine.Snapshot().Settings
+	settings := current
 	if !readJSON(w, r, &settings) {
 		return
 	}
+	// Auto approve has its own route, which records the change and asks for an acknowledgement.
+	settings.AutoApprove = current.AutoApprove
 	if problem := validSettings(settings); problem != "" {
 		writeError(w, http.StatusBadRequest, problem)
 		return

@@ -151,6 +151,32 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 	return "", ""
 }
 
+// ETALong is the estimate in plain words, as the panel and answers say it.
+func ETALong(a *LiveAgent, now time.Time) string {
+	switch a.State {
+	case StateApproval:
+		return "Paused until you decide on the approval"
+	case StateIdle:
+		return "No task right now"
+	case StateDone:
+		return "Finished"
+	case StateError:
+		return "Stopped by an error"
+	case StatePaused:
+		return "Interrupted, waiting for your instruction"
+	}
+	estimate := EstimateFor(a.State, a.Progress, a.Rate, now)
+	if estimate == nil {
+		return "No estimate yet"
+	}
+	finish := time.UnixMilli(estimate.FinishAt).Format("15:04")
+	if estimate.SecondsLeft < 60 {
+		return "Under a minute left, done around " + finish
+	}
+	minutes := max(1, int(math.Round(float64(estimate.SecondsLeft)/60)))
+	return "About " + strconv.Itoa(minutes) + " min left, done around " + finish
+}
+
 var addressedTo = regexp.MustCompile(`^[A-Za-z]+,\s*`)
 
 // WithoutName drops a leading "Sage, " from an instruction.

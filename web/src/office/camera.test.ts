@@ -74,11 +74,19 @@ describe('teamView', () => {
   });
 });
 
+describe('clampView when zoomed out', () => {
+  it('keeps the office centred', () => {
+    expect(clampView({ cx: 10, cy: 900, s: 0.5 })).toEqual({ cx: W / 2, cy: H / 2, s: 0.5 });
+  });
+});
+
 describe('nextZoom', () => {
   it('steps through the levels and stops at the ends', () => {
     expect(nextZoom(1, 1)).toBe(1.25);
-    expect(nextZoom(2.5, 1)).toBe(2.5);
-    expect(nextZoom(1, -1)).toBe(1);
+    expect(nextZoom(3, 1)).toBe(3);
+    expect(nextZoom(1, -1)).toBe(0.8);
+    expect(nextZoom(0.5, -1)).toBe(0.5);
     expect(nextZoom(2, -1)).toBe(1.5);
+    expect(nextZoom(1.1, 1)).toBe(1.25);
   });
 });

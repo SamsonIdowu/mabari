@@ -419,3 +419,27 @@ section[data-screen='home'] {
   color: var(--muted);
   padding: 6px 10px;
 }
+
+.stage.max {
+  position: fixed !important;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  min-height: 0;
+}
+.stage:fullscreen {
+  background: var(--bg);
+}
+.cmdbar {
+  zoom: 1 !important;
+  padding: 14px 22px !important;
+}
+.cmdbar .cmdin {
+  min-height: 48px;
+}
+.cmdbar .cmdin input {
+  font-size: 15.5px;
+}
+.cmdbar .btn {
+  min-height: 44px;
+}

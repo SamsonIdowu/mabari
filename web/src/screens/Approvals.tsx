@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Approval, LiveAgent, Settings, Snapshot } from '../gen/models.ts';
+import { leaveFullscreen } from '../office/fullscreen.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
@@ -66,7 +67,10 @@ function ApprovalDialog(props: {
   const { agent, approval, autoOn, close } = props;
   useEscape(close);
   const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => dialog.current?.focus(), []);
+  useEffect(() => {
+    leaveFullscreen();
+    dialog.current?.focus();
+  }, []);
 
   const decide = (decision: 'allowed' | 'denied') => {
     close();

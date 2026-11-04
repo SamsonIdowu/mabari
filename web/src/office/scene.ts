@@ -3,7 +3,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { buildBg, ell, PAL, R, rrect } from './background.ts';
+import { buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
 import {
@@ -430,6 +430,7 @@ export class OfficeScene {
     const m = this.matrix();
     c.setTransform(m.a, 0, 0, m.a, m.e, m.f);
     c.drawImage(officeBackground(theme), 0, 0);
+    drawClockHands(c, theme, new Date());
     this.drawMotes(theme, t, dt);
 
     const walkers = [...this.walkers.values()];

@@ -137,3 +137,58 @@ test('zoom tools change the view and fit resets it', async ({ page }) => {
   await page.getByRole('button', { name: 'Fit the whole office' }).click();
   await expect(page.locator('#zoomPct')).toHaveText('100%');
 });
+
+test('the keyboard and the wheel zoom the office', async ({ page }) => {
+  await loadDemo(page);
+  const percent = page.locator('#zoomPct');
+  await expect(percent).toHaveText('100%');
+  await page.keyboard.press('=');
+  await expect(percent).toHaveText('125%');
+  await page.keyboard.press('0');
+  await expect(percent).toHaveText('100%');
+  await page.keyboard.press('-');
+  await expect(percent).toHaveText('80%');
+  await page.keyboard.press('0');
+  await page.locator('#floor').hover();
+  await page.mouse.wheel(0, -100);
+  await expect(percent).toHaveText('125%');
+});
+
+test('shortcuts leave text boxes alone', async ({ page }) => {
+  await loadDemo(page);
+  const box = page.getByLabel('Message', { exact: true });
+  await box.fill('');
+  await box.press('=');
+  await box.press('f');
+  await expect(box).toHaveValue('=f');
+  await expect(page.locator('#zoomPct')).toHaveText('100%');
+  await expect(page.locator('#fsBtn')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('full screen toggles and falls back to filling the window', async ({ page }) => {
+  await loadDemo(page);
+  await page.evaluate(() => {
+    Element.prototype.requestFullscreen = () => Promise.reject(new Error('refused'));
+  });
+  const button = page.locator('#fsBtn');
+  await expect(button).toHaveAttribute('title', 'Full screen (F)');
+  await page.keyboard.press('f');
+  await expect(page.locator('#stage')).toHaveClass(/max/);
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await expect(button).toHaveAttribute('title', 'Exit full screen (F or Esc)');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#stage')).not.toHaveClass(/max/);
+});
+
+test('an approval card leaves full screen so it can be seen', async ({ page }) => {
+  await loadDemo(page);
+  await page.evaluate(() => {
+    Element.prototype.requestFullscreen = () => Promise.reject(new Error('refused'));
+  });
+  await page.keyboard.press('f');
+  await expect(page.locator('#stage')).toHaveClass(/max/);
+  await page.locator('.bitem').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('#stage')).not.toHaveClass(/max/);
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Allow once' })).toBeVisible();
+});

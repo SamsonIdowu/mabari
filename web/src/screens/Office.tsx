@@ -4,7 +4,7 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
-import { nextZoom } from '../office/camera.ts';
+import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { renderOverlays } from '../office/overlays.ts';
 import { OfficeScene } from '../office/scene.ts';
@@ -29,6 +29,9 @@ const useFilters = () => {
   const team = useOfficeUi((state) => state.team);
   return { project, provider, model, status, team };
 };
+
+const WHEEL_STEP = 40;
+const WHEEL_GAP_MS = 120;
 
 function Summary({ scoped }: { scoped: LiveAgent[] }) {
   const working = scoped.filter((agent) => agent.estimate);
@@ -176,7 +179,8 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   useEscape(() => {
     if (document.querySelector('.scrim')) return;
     const ui = useOfficeUi.getState();
-    if (menu) close();
+    if (ui.maximised) ui.set({ maximised: false });
+    else if (menu) close();
     else if (ui.team) ui.set({ team: null });
     else if (ui.selected) ui.set({ selected: null, follow: false });
   });
@@ -388,18 +392,21 @@ function FloorMessage({ office }: { office: Snapshot }) {
 }
 
 function CanvasTools() {
-  const zoom = useOfficeUi((state) => state.zoom);
   const selected = useOfficeUi((state) => state.selected);
   const follow = useOfficeUi((state) => state.follow);
   const spotlight = useOfficeUi((state) => state.spotlight);
   const set = useOfficeUi((state) => state.set);
-  const zoomBy = (direction: number) => {
-    const next = nextZoom(zoom, direction);
-    set({ zoom: next, team: null, ...(next === 1 ? { pan: { x: 0, y: 0 } } : {}) });
-  };
+  const zoomBy = useOfficeUi((state) => state.zoomBy);
+  const fit = useOfficeUi((state) => state.fit);
+  const wide = useOfficeUi((state) => state.fullscreen || state.maximised);
   return (
     <div className="ctools" role="toolbar" aria-label="Office view">
-      <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
+      <button
+        type="button"
+        title="Zoom out (−, or scroll)"
+        aria-label="Zoom out"
+        onClick={() => zoomBy(-1)}
+      >
         <Icon>
           <path d="M5 12h14" />
         </Icon>
@@ -407,7 +414,12 @@ function CanvasTools() {
       <span id="zoomPct" className="num">
         100%
       </span>
-      <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(1)}>
+      <button
+        type="button"
+        title="Zoom in (+, or scroll)"
+        aria-label="Zoom in"
+        onClick={() => zoomBy(1)}
+      >
         <Icon>
           <path d="M12 5v14M5 12h14" />
         </Icon>
@@ -415,12 +427,24 @@ function CanvasTools() {
       <span className="csep" />
       <button
         type="button"
-        title="Fit the whole office"
+        title="Fit the whole office (0)"
         aria-label="Fit the whole office"
-        onClick={() => set({ zoom: 1, pan: { x: 0, y: 0 }, follow: false, team: null })}
+        onClick={fit}
       >
         <Icon>
-          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        id="fsBtn"
+        title={wide ? 'Exit full screen (F or Esc)' : 'Full screen (F)'}
+        aria-label="Full screen"
+        aria-pressed={wide}
+        onClick={toggleFullscreen}
+      >
+        <Icon>
+          <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
         </Icon>
       </button>
       <button
@@ -455,6 +479,7 @@ function CanvasTools() {
 }
 
 function Stage({ office }: { office: Snapshot }) {
+  const maximised = useOfficeUi((state) => state.maximised);
   const canvas = useRef<HTMLCanvasElement>(null);
   const tags = useRef<HTMLDivElement>(null);
   const board = useRef<HTMLDivElement>(null);
@@ -487,11 +512,32 @@ function Stage({ office }: { office: Snapshot }) {
     scene.current = running;
     running.start();
 
+    let scrolled = 0;
+    let lastStep = 0;
     const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const { zoom, set: update } = useOfficeUi.getState();
-      update({ zoom: nextZoom(zoom, event.deltaY < 0 ? 1 : -1), team: null });
+      scrolled += event.deltaY;
+      const time = performance.now();
+      if (Math.abs(scrolled) > WHEEL_STEP && time - lastStep > WHEEL_GAP_MS) {
+        useOfficeUi.getState().zoomBy(scrolled < 0 ? 1 : -1);
+        scrolled = 0;
+        lastStep = time;
+      }
+    };
+    const onFullscreen = () => {
+      useOfficeUi.getState().set({ fullscreen: !!document.fullscreenElement });
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const { tagName } = event.target as HTMLElement;
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return;
+      if (document.querySelector('.scrim')) return;
+      const ui = useOfficeUi.getState();
+      if (event.key === '+' || event.key === '=') ui.zoomBy(1);
+      else if (event.key === '-' || event.key === '_') ui.zoomBy(-1);
+      else if (event.key === '0') ui.fit();
+      else if (event.key === 'f' || event.key === 'F') toggleFullscreen();
+      else return;
+      event.preventDefault();
     };
     const onMove = (event: MouseEvent) => {
       const current = drag.current;
@@ -520,11 +566,15 @@ function Stage({ office }: { office: Snapshot }) {
       drag.current = null;
     };
     element.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('fullscreenchange', onFullscreen);
+    document.addEventListener('keydown', onKey);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
       running.stop();
       element.removeEventListener('wheel', onWheel);
+      document.removeEventListener('fullscreenchange', onFullscreen);
+      document.removeEventListener('keydown', onKey);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
@@ -547,7 +597,7 @@ function Stage({ office }: { office: Snapshot }) {
 
   return (
     <div className="ofloor">
-      <div className="stage" id="stage">
+      <div className={maximised ? 'stage max' : 'stage'} id="stage">
         <canvas
           id="floor"
           ref={canvas}

@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
 import type { LiveAgent } from '../gen/models.ts';
+import { nextZoom } from './camera.ts';
 
 export type StatusFilter = 'all' | 'needs' | 'active';
 
@@ -19,6 +20,10 @@ interface OfficeUi extends OfficeFilters {
   pan: { x: number; y: number };
   follow: boolean;
   spotlight: boolean;
+  /** Full screen without the browser's help, for when it refuses. */
+  maximised: boolean;
+  /** Real full screen is on. */
+  fullscreen: boolean;
   mode: MessageMode;
   /** "auto", "selected", "everyone" or an agent id. */
   target: string;
@@ -29,6 +34,8 @@ interface OfficeUi extends OfficeFilters {
   autoDialog: boolean;
   answers: Record<string, Answer>;
   teamAnswer: { question: string; lines: TeamLine[] } | null;
+  zoomBy: (direction: number) => void;
+  fit: () => void;
   set: (patch: Partial<OfficeUiFields>) => void;
   clearFilters: () => void;
 }
@@ -50,6 +57,8 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   pan: { x: 0, y: 0 },
   follow: false,
   spotlight: true,
+  maximised: false,
+  fullscreen: false,
   mode: 'instruct',
   target: 'auto',
   panelTab: 'live',
@@ -58,6 +67,12 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   autoDialog: false,
   answers: {},
   teamAnswer: null,
+  zoomBy: (direction) =>
+    set((state) => {
+      const zoom = nextZoom(state.zoom, direction);
+      return { zoom, team: null, follow: false, ...(zoom <= 1 ? { pan: { x: 0, y: 0 } } : {}) };
+    }),
+  fit: () => set({ zoom: 1, pan: { x: 0, y: 0 }, follow: false, team: null }),
   set: (patch) => set(patch),
   clearFilters: () => set(NO_FILTERS),
 }));

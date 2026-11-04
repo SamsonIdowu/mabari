@@ -18,15 +18,16 @@ export interface Size {
   height: number;
 }
 
-export const ZOOMS = [1, 1.25, 1.5, 2, 2.5];
+export const ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2, 2.5, 3];
+const FIT_INDEX = 3;
 
 export function clampView(view: View): View {
   const halfW = W / 2 / view.s;
   const halfH = H / 2 / view.s;
   return {
     s: view.s,
-    cx: Math.min(W - halfW, Math.max(halfW, view.cx)),
-    cy: Math.min(H - halfH, Math.max(halfH, view.cy)),
+    cx: halfW >= W / 2 ? W / 2 : Math.min(W - halfW, Math.max(halfW, view.cx)),
+    cy: halfH >= H / 2 ? H / 2 : Math.min(H - halfH, Math.max(halfH, view.cy)),
   };
 }
 
@@ -71,6 +72,7 @@ export function teamView(desks: number[]): View {
 }
 
 export function nextZoom(current: number, direction: number): number {
-  const index = Math.max(0, ZOOMS.indexOf(current));
+  const found = ZOOMS.indexOf(current);
+  const index = found < 0 ? FIT_INDEX : found;
   return ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, index + direction))]!;
 }

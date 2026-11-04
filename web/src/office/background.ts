@@ -206,11 +206,13 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   R(c, 8 * 32 - 1, 9, 6 * 32 + 2, 42, P.paper);
   /* clock */
   c.fillStyle = P.frame;
-  ell(c, 21 * 32 - 20, 28, 11, 11);
+  ell(c, 21 * 32 + 12, 28, 11, 11);
   c.fillStyle = P.paper;
-  ell(c, 21 * 32 - 20, 28, 9, 9);
-  R(c, 21 * 32 - 21, 21, 2, 8, P.ink);
-  R(c, 21 * 32 - 21, 27, 7, 2, P.ink);
+  ell(c, 21 * 32 + 12, 28, 9, 9);
+  for (let hm = 0; hm < 12; hm++) {
+    const ha = (hm / 12) * Math.PI * 2;
+    R(c, 21 * 32 + 12 + Math.sin(ha) * 7.5 - 0.5, 28 - Math.cos(ha) * 7.5 - 0.5, 1, 1, P.ink);
+  }
   /* framed monochrome prints and the wordmark */
   [
     [6 * 32 + 6, 14],
@@ -231,8 +233,8 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   });
   c.font = '900 20px Nunito, sans-serif';
   c.fillStyle = P.ink;
-  c.fillText('mabari', 22 * 32 + 14, 36);
-  R(c, 22 * 32 + 14, 42, 44, 2, P.ink);
+  c.fillText('mabari', 22 * 32 + 26, 36);
+  R(c, 22 * 32 + 26, 42, 44, 2, P.ink);
   /* storage cabinets */
   for (let fx = 1; fx < 6; fx++) {
     const x = fx * 32;
@@ -355,4 +357,34 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   R(c, 14 * 32, H - 8, 64, 8, P.base);
   R(c, 14 * 32 + 4, H - 20, 56, 12, P.wallLow);
   return cv;
+}
+
+/** The wall clock's hands, showing the real local time. */
+export function drawClockHands(c: Ctx, theme: keyof typeof PAL, now: Date) {
+  const P = PAL[theme];
+  const cx = 21 * 32 + 12;
+  const cy = 28;
+  const minutes = now.getMinutes() + now.getSeconds() / 60;
+  const hours = (now.getHours() % 12) + minutes / 60;
+  const seconds = now.getSeconds() + now.getMilliseconds() / 1000;
+  const hand = (fraction: number, length: number) => {
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(
+      cx + Math.sin(fraction * Math.PI * 2) * length,
+      cy - Math.cos(fraction * Math.PI * 2) * length,
+    );
+    c.stroke();
+  };
+  c.lineCap = 'round';
+  c.strokeStyle = P.ink;
+  c.lineWidth = 1.8;
+  hand(hours / 12, 4.2);
+  c.lineWidth = 1.2;
+  hand(minutes / 60, 6.6);
+  c.strokeStyle = '#E5484D';
+  c.lineWidth = 0.6;
+  hand(seconds / 60, 7.4);
+  c.fillStyle = P.ink;
+  ell(c, cx, cy, 1.1, 1.1);
 }

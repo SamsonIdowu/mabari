@@ -358,6 +358,10 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 	// Claude Code sessions run in the person's own terminal. Outside the demo, Mabari makes the
 	// project and says how to start; the session joins it by its folder.
 	realClaude := plan.Account == models.AccountClaudeCode && !a.simulator.DemoActive()
+	// Outside the demo, an API key account has nothing real to run the team on yet.
+	if !a.simulator.DemoActive() && (plan.Account == models.AccountAnthropicKey || plan.Account == models.AccountOpenAIKey) {
+		return a.realRunner(plan.Account), ""
+	}
 	if !realClaude {
 		free := models.DeskCount - len(a.engine.Agents())
 		if free < 1 {

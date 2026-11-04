@@ -34,6 +34,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/snapshot", a.snapshot)
 	mux.HandleFunc("GET /ws", a.websocket)
 	mux.HandleFunc("POST /api/demo/load", a.loadDemo)
+	mux.HandleFunc("POST /api/demo/stop", a.stopDemo)
 	mux.HandleFunc("POST /api/wipe", a.wipe)
 
 	mux.HandleFunc("GET /api/projects", a.listProjects)
@@ -75,6 +76,15 @@ func (a *api) snapshot(w http.ResponseWriter, _ *http.Request) {
 
 func (a *api) loadDemo(w http.ResponseWriter, _ *http.Request) {
 	if err := a.simulator.LoadDemo(); err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// stopDemo clears the demo office, so only agents from real connections appear.
+func (a *api) stopDemo(w http.ResponseWriter, _ *http.Request) {
+	if err := a.engine.Do(a.simulator.StopDemo); err != nil {
 		internalError(w, err)
 		return
 	}
@@ -437,6 +447,24 @@ func (a *api) connected(kind models.AccountKind) bool {
 	return false
 }
 
+// realRunner says why an agent on this account can't be started from Mabari outside the demo,
+// or "" when it can. Call inside Do.
+func (a *api) realRunner(kind models.AccountKind) string {
+	switch kind {
+	case models.AccountCodex:
+		if a.codex != nil {
+			return ""
+		}
+		return "Codex isn't running here. Install the Codex CLI and restart Mabari."
+	case models.AccountClaudeCode:
+		return "Claude Code sessions start in your terminal: run claude in the agent's folder and it takes a desk."
+	case models.AccountAnthropicKey, models.AccountOpenAIKey:
+		return "Agents that run on an API key aren't ready yet. Use Claude Code or Codex for now."
+	default:
+		return "Agents on this account report by themselves."
+	}
+}
+
 func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 	var body newAgentBody
 	if !readJSON(w, r, &body) {
@@ -465,6 +493,12 @@ func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 		if body.LeadID != "" {
 			if spec.Lead = a.engine.Agent(body.LeadID); spec.Lead == nil {
 				problem = "That lead has left the office."
+				return
+			}
+		}
+		// Outside the demo only real connections make agents, never simulated ones.
+		if !a.simulator.DemoActive() {
+			if problem = a.realRunner(body.Account); problem != "" {
 				return
 			}
 		}

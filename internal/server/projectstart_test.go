@@ -171,3 +171,36 @@ func TestFolderChecks(t *testing.T) {
 		t.Errorf("missing = %+v", got)
 	}
 }
+
+// Stopping the demo clears its agents, and outside the demo New agent makes no simulated ones.
+func TestStoppingTheDemoLeavesOnlyRealAgents(t *testing.T) {
+	office := newOffice(t)
+	if !office.demo(t).Demo {
+		t.Fatal("the demo isn't flagged")
+	}
+	if response := office.do(t, http.MethodPost, "/api/demo/stop", ""); response.Code != http.StatusOK {
+		t.Fatalf("stop = %d", response.Code)
+	}
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	if snapshot.Demo || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 1 {
+		t.Fatalf("after stop: demo=%v agents=%d projects=%d", snapshot.Demo, len(snapshot.Agents), len(snapshot.Projects))
+	}
+	_ = office.engine.Do(func() {
+		for _, account := range office.engine.Accounts() {
+			if account.Kind == models.AccountClaudeCode || account.Kind == models.AccountAnthropicKey {
+				account.Status = models.AccountConnected
+				office.engine.SetAccount(account)
+			}
+		}
+	})
+	for kind, want := range map[string]string{"claude_code": "run claude", "anthropic_key": "aren't ready yet"} {
+		body := `{"name":"Tess","account":"` + kind + `","model":"claude-sonnet-4-5","task":"Help","projectId":"","folder":"~/code/x","dailyCostCap":0,"allowedTools":[]}`
+		response := office.do(t, http.MethodPost, "/api/agents", body)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), want) {
+			t.Errorf("%s = %d %s", kind, response.Code, response.Body)
+		}
+	}
+	if snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", "")); len(snapshot.Agents) != 0 {
+		t.Errorf("simulated agents appeared: %d", len(snapshot.Agents))
+	}
+}

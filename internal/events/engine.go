@@ -58,6 +58,7 @@ type Engine struct {
 	accounts   map[models.AccountKind]*models.Account
 	settings   models.Settings
 	firstRun   bool
+	demo       bool
 	messages   []models.Message
 	log        []models.LogEntry
 	dirty      map[string]struct{}
@@ -105,6 +106,11 @@ func (e *Engine) load(ctx context.Context) error {
 		return err
 	}
 	e.firstRun = firstRun != "0"
+	demo, err := e.store.Meta(ctx, store.MetaDemo)
+	if err != nil {
+		return err
+	}
+	e.demo = demo == "1"
 
 	accounts, err := e.store.Accounts(ctx)
 	if err != nil {
@@ -661,6 +667,9 @@ func (e *Engine) SetFirstRun(firstRun bool) {
 // SetMeta stores a connector's own value. Call inside Do.
 func (e *Engine) SetMeta(key, value string) {
 	e.record(e.store.SetMeta(context.Background(), key, value))
+	if key == store.MetaDemo {
+		e.demo = value == "1"
+	}
 }
 
 // Project finds a project by id, or returns nil. Call inside Do.
@@ -788,7 +797,7 @@ func (e *Engine) Wipe() {
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.SaveProject(models.FirstProject())
-	e.firstRun = true
+	e.firstRun, e.demo = true, false
 	e.Reset()
 }
 
@@ -892,6 +901,7 @@ func (e *Engine) Snapshot() models.Snapshot {
 		BootID:   e.bootID,
 		Seq:      e.seq,
 		FirstRun: e.firstRun,
+		Demo:     e.demo,
 		Projects: projects,
 		Accounts: e.accountList(),
 		Agents:   agents,

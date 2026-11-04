@@ -799,6 +799,20 @@ export function Office() {
               <Summary scoped={scoped} />
             </div>
             <div className="ohact">
+              {office.demo ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  title="Clear the demo agents. Only real agents from your connections stay."
+                  onClick={() =>
+                    void api
+                      .stopDemo()
+                      .then(() => useOfficeStore.getState().toast('The demo has stopped.'))
+                  }
+                >
+                  Stop the demo
+                </button>
+              ) : null}
               <AutoApproveButton settings={office.settings} />
               <button
                 type="button"

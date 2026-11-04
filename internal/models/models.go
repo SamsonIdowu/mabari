@@ -361,9 +361,11 @@ type Settings struct {
 
 // Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.
 type Snapshot struct {
-	BootID   string      `json:"bootId"`
-	Seq      uint64      `json:"seq"`
-	FirstRun bool        `json:"firstRun"`
+	BootID   string `json:"bootId"`
+	Seq      uint64 `json:"seq"`
+	FirstRun bool   `json:"firstRun"`
+	// Demo is true while the demo office runs. Only then are agents simulated.
+	Demo     bool        `json:"demo"`
 	Projects []Project   `json:"projects"`
 	Accounts []Account   `json:"accounts"`
 	Agents   []LiveAgent `json:"agents"`

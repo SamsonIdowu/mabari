@@ -573,6 +573,10 @@ export interface Snapshot {
   bootId: string;
   seq: number /* uint64 */;
   firstRun: boolean;
+  /**
+   * Demo is true while the demo office runs. Only then are agents simulated.
+   */
+  demo: boolean;
   projects: Project[];
   accounts: Account[];
   agents: LiveAgent[];

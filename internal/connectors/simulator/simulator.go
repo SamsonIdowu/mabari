@@ -1034,3 +1034,18 @@ func (s *Simulator) decidePlan(lead *models.LiveAgent, approval models.Approval)
 	s.reply(lead, "Thanks. Bringing in the team.", 5000)
 	s.spawnTeam(lead, members)
 }
+
+// StopDemo ends the demo office: its simulated agents, projects, messages and log go, and the
+// office keeps only what real connections report. Accounts and settings stay. Call inside Do.
+func (s *Simulator) StopDemo() {
+	s.Stop()
+	s.timers = nil
+	s.runtimes = map[string]*runtime{}
+	s.planned = nil
+	s.demoMode = false
+	s.engine.ClearOffice()
+	s.engine.SaveProject(models.FirstProject())
+	s.engine.SetMeta(store.MetaDemo, "0")
+	s.engine.Log("Everyone", models.LogSession, "Stopped the demo office", "Only real agents from now on", "")
+	s.engine.Reset()
+}

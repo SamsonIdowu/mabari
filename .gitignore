@@ -1,5 +1,7 @@
 node_modules/
 dist/
+bin/
+tmp/
 .pnpm-store/
 coverage/
 test-results/

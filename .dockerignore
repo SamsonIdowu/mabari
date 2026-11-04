@@ -1,0 +1,9 @@
+**
+!cmd/**
+!internal/**
+!web/**
+!go.mod
+!go.sum
+web/node_modules
+web/dist
+web/test-results

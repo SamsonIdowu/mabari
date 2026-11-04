@@ -9,7 +9,7 @@ test.beforeEach(async ({ request }) => {
 const NAV: [name: string, label: string, heading: string][] = [
   ['Agents', 'Agents', 'Agents'],
   ['Projects', 'Projects', 'Projects'],
-  ['Conversations', 'Chats', 'Conversations'],
+  ['Chats, conversations', 'Chats', 'Conversations'],
   ['Accounts', 'Accounts', 'Accounts'],
   ['Activity log', 'Activity', 'Activity log'],
   ['Settings', 'Settings', 'Settings'],

@@ -35,7 +35,12 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
       className={isCurrent ? 'nav on' : 'nav'}
       href={`#${item.route}`}
       title={item.title ?? item.label}
-      aria-label={item.name}
+      // The visible label must be part of the name, for people who speak to their computer.
+      aria-label={
+        !item.name || item.name.toLowerCase().includes(item.label.toLowerCase())
+          ? item.name
+          : `${item.label}, ${item.name.toLowerCase()}`
+      }
       aria-current={isCurrent ? 'page' : undefined}
     >
       <Icon>{item.icon}</Icon>

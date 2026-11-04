@@ -134,7 +134,7 @@
 }
 .tag .qd {
   background: var(--amber);
-  color: #1c1300;
+  color: var(--amber-fg);
   font-size: 10px;
   font-weight: 800;
   border-radius: 6px;

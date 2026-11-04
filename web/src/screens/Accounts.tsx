@@ -87,7 +87,7 @@ function ChatGptCard({ account }: { account: Account }) {
         </div>
         <StatusChip status={account.status} />
       </div>
-      <div className="scroll">
+      <div className="scroll" tabIndex={0}>
         {connected && account.email ? (
           <div className="banner" style={{ padding: '10px 12px' }}>
             <Icon>
@@ -167,7 +167,7 @@ function ClaudeCard({ account }: { account: Account }) {
         </div>
         <StatusChip status={account.status} />
       </div>
-      <div className="scroll">
+      <div className="scroll" tabIndex={0}>
         {plan.data?.attached ? null : (
           <div className="field">
             <span className="flabel">

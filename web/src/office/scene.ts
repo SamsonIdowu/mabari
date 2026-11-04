@@ -6,7 +6,17 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { buildBg, ell, PAL, R, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
-import { deskSeat, DESKS, H, pathTo, spotFor, STATE_LOCATIONS, W, type Point } from './layout.ts';
+import {
+  deskSeat,
+  DESKS,
+  H,
+  pathTo,
+  spotFor,
+  SPOTS,
+  STATE_LOCATIONS,
+  W,
+  type Point,
+} from './layout.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 
 /** An agent as the floor sees it: the server's agent plus where it is walking. */
@@ -168,8 +178,11 @@ export class OfficeScene {
         });
         return;
       }
-      const moved = existing.state !== agent.state || existing.desk !== agent.desk;
+      const startedLeaving = agent.leaving && !existing.leaving;
+      const moved =
+        !agent.leaving && (existing.state !== agent.state || existing.desk !== agent.desk);
       Object.assign(existing, agent, { n: index + 1 });
+      if (startedLeaving) existing.path = pathTo(existing, SPOTS.door[0]!);
       if (moved) {
         existing.path = pathTo(existing, target);
         if (teleport) {

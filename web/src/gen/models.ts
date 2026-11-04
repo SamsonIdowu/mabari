@@ -283,6 +283,10 @@ export interface SessionState {
    * Estimate is null unless the agent is working. See EstimateFor.
    */
   estimate: Estimate | null;
+  /**
+   * TeamEstimate is when a lead and its subagents should all be done, or null if it has none.
+   */
+  teamEstimate: Estimate | null;
   elapsed: number /* int64 */;
   tokensIn: number /* int64 */;
   tokensOut: number /* int64 */;

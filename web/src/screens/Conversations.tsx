@@ -41,7 +41,12 @@ function Dot({ hue }: { hue: string | undefined }) {
   return <span className="idot" style={{ ['--ac' as string]: hue ?? '#9AA0AE' }} />;
 }
 
-function MessageBubble(props: { message: Message; right: boolean; hue: string | undefined }) {
+export function MessageBubble(props: {
+  message: Message;
+  right: boolean;
+  hue: string | undefined;
+  showPair?: boolean;
+}) {
   const { message } = props;
   const kind = KINDS[message.kind];
   return (
@@ -50,7 +55,12 @@ function MessageBubble(props: { message: Message; right: boolean; hue: string | 
       <div className="cb" style={{ borderLeftColor: kind?.color }}>
         <span className="cmeta">
           <b>{message.fromName}</b>
-          <span className="muted">to {message.toName}</span>
+          {props.showPair !== false ? (
+            <>
+              <span className="muted">to</span>
+              <b>{message.toName}</b>
+            </>
+          ) : null}
           {kind ? (
             <span className="dec" style={{ ['--dc' as string]: kind.color }}>
               {kind.label}

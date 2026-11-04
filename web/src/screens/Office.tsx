@@ -11,6 +11,7 @@ import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { AgentPanel } from './AgentPanel.tsx';
 import { LATER } from './parts.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
@@ -544,8 +545,10 @@ function Stage({ office }: { office: Snapshot }) {
 export function Office() {
   const office = useOfficeStore((state) => state.office);
   const filters = useFilters();
+  const selectedId = useOfficeUi((state) => state.selected);
   if (!office) return null;
 
+  const selected = office.agents.find((agent) => agent.id === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
   const project = office.projects.find((item) => item.id === filters.project);
   const scoped = office.agents.filter((agent) => inScope(agent, filters, office.agents));
@@ -584,6 +587,7 @@ export function Office() {
           {lead ? <TeamBanner lead={lead} agents={office.agents} /> : null}
           <Stage office={office} />
         </div>
+        {selected ? <AgentPanel key={selected.id} office={office} agent={selected} /> : null}
       </div>
     </section>
   );

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.pnpm-store/
+coverage/
+test-results/
+playwright-report/
+*.log
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.env
+.env.*
+
+# Local tool state
+.claude/
+.remember/

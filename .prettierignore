@@ -1,0 +1,5 @@
+design/
+docs/
+dist/
+pnpm-lock.yaml
+apps/web/src/styles/tokens.css

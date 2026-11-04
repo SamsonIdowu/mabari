@@ -1,0 +1,6 @@
+packages:
+  - path: github.com/SamsonIdowu/mabari/internal/models
+    output_path: web/src/gen/models.ts
+    optional_type: 'null'
+    frontmatter: |
+      // SPDX-License-Identifier: Apache-2.0

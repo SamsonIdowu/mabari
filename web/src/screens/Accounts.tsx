@@ -173,7 +173,14 @@ function ClaudeCard({ account }: { account: Account }) {
             <span className="flabel">
               These lines will be added to <code>{path}</code>
             </span>
-            <div className="codebox" data-testid="claudeDiff">
+            {/* Focusable, because the change is long enough to scroll. */}
+            <div
+              className="codebox"
+              data-testid="claudeDiff"
+              tabIndex={0}
+              role="region"
+              aria-label="Lines added to Claude Code's settings"
+            >
               {plan.isError ? (
                 <span className="ctx">{plan.error.message}</span>
               ) : (

@@ -660,3 +660,32 @@ func TestATeamWaitsForItsPlan(t *testing.T) {
 		}
 	}
 }
+
+// An instruction sent mid step reaches the agent at its next checkpoint within a few seconds,
+// whatever step comes next, so Mabari can relay the reply quickly.
+func TestAnInstructionMidStepLandsWithinSeconds(t *testing.T) {
+	for seed := uint32(1); seed <= 20; seed++ {
+		sim, engine, c, _ := setup(t, ":memory:", seed)
+		if err := sim.LoadDemo(); err != nil {
+			t.Fatal(err)
+		}
+		var ledger *models.LiveAgent
+		_ = engine.Do(func() {
+			for _, agent := range engine.Agents() {
+				if agent.Name == "Ledger" {
+					ledger = agent
+				}
+			}
+			sim.Instruct(ledger, "Also round the totals to whole cents")
+		})
+		if len(ledger.Queued) != 1 {
+			t.Fatalf("seed %d: Ledger should be mid step: %v %+v", seed, ledger.State, ledger.Queued)
+		}
+		advance(t, sim, c, 3)
+		var asked []models.Instruction
+		_ = engine.Do(func() { asked = engine.Agent(ledger.ID).Asked })
+		if len(asked) == 0 || asked[len(asked)-1].Reply == "" {
+			t.Errorf("seed %d: not answered after 3 ticks: %+v", seed, asked)
+		}
+	}
+}

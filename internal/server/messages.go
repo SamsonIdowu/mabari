@@ -63,6 +63,8 @@ type messageBody struct {
 	Mode string `json:"mode"`
 	// Target is "auto", "everyone" or an agent id.
 	Target string `json:"target"`
+	// quiet leaves out the toasts, for Mabari on Home, which says the same thing itself.
+	quiet bool
 }
 
 type messageResult struct {
@@ -122,11 +124,14 @@ func (a *api) ask(agents []*models.LiveAgent, text string, result *messageResult
 	a.engine.SetReply(agent, query.Short(agent, now), replyMillis)
 }
 
-func (a *api) instruct(agents []*models.LiveAgent, text string) {
+func (a *api) instruct(agents []*models.LiveAgent, text string, quiet bool) {
 	for _, agent := range agents {
 		if connector := a.engine.ConnectorFor(agent); connector != nil {
 			connector.Instruct(agent, text)
 		}
+	}
+	if quiet {
+		return
 	}
 	waiting := 0
 	for _, agent := range agents {
@@ -233,12 +238,14 @@ func (a *api) deliver(body messageBody) (messageResult, bool) {
 			kind = models.LogQuery
 		}
 		a.engine.Log("Dispatcher", kind, body.Text, "Routed to "+routed.Name, "")
-		a.engine.Toast("Dispatcher sent it to " + routed.Name + ": " + routed.Reason)
+		if !body.quiet {
+			a.engine.Toast("Dispatcher sent it to " + routed.Name + ": " + routed.Reason)
+		}
 	}
 	if body.Mode == string(models.ModeQuery) {
 		a.ask(agents, body.Text, &result)
 	} else {
-		a.instruct(agents, body.Text)
+		a.instruct(agents, body.Text, body.quiet)
 	}
 	return result, true
 }

@@ -295,3 +295,18 @@ func Clip(text string, limit int) string {
 	}
 	return string([]rune(text)[:limit])
 }
+
+// AIName is the AI behind an agent, as Mabari names it in chat: "Claude", "ChatGPT" for a Codex
+// sign-in, "OpenAI" for an API key, or "Custom AI".
+func AIName(a *LiveAgent) string {
+	switch {
+	case a.Account == AccountCodex:
+		return "ChatGPT"
+	case a.Provider == ProviderClaude:
+		return "Claude"
+	case a.Provider == ProviderOpenAI:
+		return "OpenAI"
+	default:
+		return "Custom AI"
+	}
+}

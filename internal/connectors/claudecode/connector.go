@@ -50,7 +50,20 @@ type input struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	AgentType            string          `json:"agent_type"`
 	AgentID              string          `json:"agent_id"`
+	// MessageDisplay sends an assistant message in batches of lines as it streams.
+	MessageID string `json:"message_id"`
+	Final     bool   `json:"final"`
+	Delta     string `json:"delta"`
 }
+
+// streamed is an assistant message arriving in batches, with when its first batch came.
+type streamed struct {
+	text    strings.Builder
+	started time.Time
+}
+
+// streamsKept caps the messages being put together at once, in case final batches go missing.
+const streamsKept = 32
 
 // toolInput holds the tool arguments Mabari shows. Each tool uses some of them.
 type toolInput struct {
@@ -80,6 +93,10 @@ type Connector struct {
 	// handing is what the lead last asked a subagent to do, by session, from its Task call.
 	handing   map[string]string
 	lastEvent time.Time
+	// streams are assistant messages arriving through MessageDisplay, by message id.
+	streams map[string]*streamed
+	// delivered is when each session last had instructions handed to it from Mabari.
+	delivered map[string]time.Time
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -91,6 +108,9 @@ func New(engine *events.Engine) *Connector {
 		pause:   map[string]bool{},
 		stopped: map[string]bool{},
 		handing: map[string]string{},
+		streams: map[string]*streamed{},
+
+		delivered: map[string]time.Time{},
 	}
 }
 
@@ -124,6 +144,10 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 	}
 	if in.Event == "PermissionRequest" {
 		return c.permission(ctx, in)
+	}
+	if in.Event == "MessageDisplay" {
+		c.display(in)
+		return nil
 	}
 	var reply []byte
 	_ = c.engine.Do(func() { reply = c.observe(in) })
@@ -311,6 +335,9 @@ func clip(text string, limit int) string {
 // observe handles every event except permission requests. Call inside Do.
 func (c *Connector) observe(in input) []byte {
 	if in.Event == "SessionEnd" {
+		c.mu.Lock()
+		delete(c.delivered, agentID(in.SessionID))
+		c.mu.Unlock()
 		if agent := c.engine.Agent(agentID(in.SessionID)); agent != nil {
 			c.engine.Log(agent.Name, models.LogSession, "Claude Code session ended", "Left", "")
 			for _, helper := range slices.Clone(c.engine.Agents()) {
@@ -423,6 +450,49 @@ func (c *Connector) deliverAtStop(agent *models.LiveAgent) []byte {
 	return mustJSON(map[string]any{"decision": "block", "reason": text})
 }
 
+// display puts together an assistant message as it streams. When it is complete, and it began
+// after Mabari handed the session an instruction, it is the agent's first reply to it, so it is
+// relayed at once instead of waiting for the turn to stop. Printing nothing leaves Claude Code's
+// display as it is.
+func (c *Connector) display(in input) {
+	// A subagent's messages are its own, not its lead's answer.
+	if in.MessageID == "" || in.AgentID != "" {
+		return
+	}
+	c.mu.Lock()
+	message := c.streams[in.MessageID]
+	if message == nil {
+		if len(c.streams) >= streamsKept {
+			clear(c.streams)
+		}
+		message = &streamed{started: time.Now()}
+		c.streams[in.MessageID] = message
+	}
+	if message.text.Len() < models.ReplyLimit*4 {
+		message.text.WriteString(in.Delta)
+	}
+	if !in.Final {
+		c.mu.Unlock()
+		return
+	}
+	delete(c.streams, in.MessageID)
+	handed, ok := c.delivered[agentID(in.SessionID)]
+	c.mu.Unlock()
+	text := redact.Text(strings.TrimSpace(message.text.String()))
+	if !ok || message.started.Before(handed) || text == "" {
+		return
+	}
+	_ = c.engine.Do(func() {
+		agent := c.engine.Agent(agentID(in.SessionID))
+		if agent == nil {
+			return
+		}
+		if c.engine.Answered(agent, text) {
+			c.engine.SetReply(agent, clip(text, 90), 8000)
+		}
+	})
+}
+
 func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 	var lines []string
 	for {
@@ -436,6 +506,9 @@ func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	c.mu.Lock()
+	c.delivered[agent.ID] = time.Now()
+	c.mu.Unlock()
 	return "The user sent this from Mabari while you were working: " + strings.Join(lines, " Also: ")
 }
 

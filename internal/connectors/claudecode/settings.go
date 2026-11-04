@@ -22,10 +22,11 @@ import (
 // BackupSuffix is added to settings.json for the copy saved before the first change.
 const BackupSuffix = ".mabari-backup"
 
-// Hook events Mabari listens to, from Claude Code 2.1.318.
+// Hook events Mabari listens to, from Claude Code 2.1.318. MessageDisplay lets Mabari relay an
+// agent's first reply as soon as it streams, instead of at Stop.
 var hookEvents = []string{
 	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
-	"Notification", "Stop", "SubagentStart", "SubagentStop", "SessionEnd",
+	"Notification", "Stop", "SubagentStart", "SubagentStop", "SessionEnd", "MessageDisplay",
 }
 
 // toolEvents take a matcher; "*" matches every tool.
@@ -38,8 +39,12 @@ const PermissionWait = 120
 // hookTimeout is each event's timeout in seconds. A timed-out hook only loses its output: the
 // action goes ahead through Claude Code's normal rules, because Mabari never sets onFailure.
 func hookTimeout(event string) int {
-	if event == "PermissionRequest" {
+	switch event {
+	case "PermissionRequest":
 		return PermissionWait + 10
+	case "MessageDisplay":
+		// Claude Code holds each batch of lines until the hook returns, so keep it short.
+		return 2
 	}
 	return 5
 }

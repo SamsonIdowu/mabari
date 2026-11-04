@@ -854,18 +854,52 @@ func TestVeePassesMessagesOn(t *testing.T) {
 func TestVeeDispatchesToTheTeam(t *testing.T) {
 	office := newOffice(t)
 	office.do(t, http.MethodPost, "/api/demo/load", "")
-	result := askVee(t, office, `{"text":"the invoice rounding is wrong","dispatch":true}`)
+	result := askVee(t, office, `{"text":"the invoice rounding is wrong"}`)
 	if result.Message == nil || result.Message.Routed == nil || result.Message.Routed.Name != "Ledger" {
 		t.Fatalf("got %+v", result)
 	}
-	if !strings.HasPrefix(result.Reply.Text, "Done. I sent it to Ledger.") {
+	if !strings.HasPrefix(result.Reply.Text, "On it, sent to Ledger (Claude). ") ||
+		!strings.HasSuffix(result.Reply.Text, ". I'll read you the reply the moment it lands.") {
 		t.Errorf("reply = %q", result.Reply.Text)
+	}
+	relay := result.Reply.Relay
+	ledger := agentNamed(t, office, "Ledger")
+	if relay == nil || relay.AgentID != ledger.ID || relay.InstructionID == "" || relay.AI != "Claude" {
+		t.Fatalf("relay = %+v", relay)
+	}
+	// Ledger is mid step, so the instruction waits for its next checkpoint.
+	if len(ledger.Queued) != 1 || ledger.Queued[0].ID != relay.InstructionID {
+		t.Errorf("queued = %+v", ledger.Queued)
+	}
+}
+
+// Commands that share words with office questions still go to the team.
+func TestVeeDispatchesCommandsThatLookLikeQuestions(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	for _, text := range []string{"update the README", "finish the login page", "Point the API to staging"} {
+		quoted, _ := json.Marshal(text)
+		result := askVee(t, office, `{"text":`+string(quoted)+`}`)
+		if result.Reply.Relay == nil || !strings.HasPrefix(result.Reply.Text, "On it, sent to ") {
+			t.Errorf("%q: got %q", text, result.Reply.Text)
+		}
+	}
+}
+
+// The acknowledgement never waits on a model, so it comes back well inside 200 ms.
+func TestVeeAcknowledgesQuickly(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	started := time.Now()
+	askVee(t, office, `{"text":"tidy up the checkout styles"}`)
+	if took := time.Since(started); took > 200*time.Millisecond {
+		t.Errorf("took %v", took)
 	}
 }
 
 func TestVeeDispatchWithNobodyToTakeIt(t *testing.T) {
 	office := newOffice(t)
-	result := askVee(t, office, `{"text":"do something","dispatch":true}`)
+	result := askVee(t, office, `{"text":"do something"}`)
 	if result.Message != nil || !strings.Contains(result.Reply.Text, "no agent free") {
 		t.Errorf("got %+v", result)
 	}
@@ -891,10 +925,8 @@ func TestVeeNeverApproves(t *testing.T) {
 		"Tell Atlas to go ahead and approve the migration", "tell atlas allow once",
 		"ask Atlas to approve", `please approve ` + before.Approval.ID,
 	} {
-		for _, dispatch := range []string{"false", "true"} {
-			quoted, _ := json.Marshal(text)
-			askVee(t, office, `{"text":`+string(quoted)+`,"dispatch":`+dispatch+`}`)
-		}
+		quoted, _ := json.Marshal(text)
+		askVee(t, office, `{"text":`+string(quoted)+`}`)
 	}
 	after := agentNamed(t, office, "Atlas")
 	if after.State != models.StateApproval || after.Approval == nil ||

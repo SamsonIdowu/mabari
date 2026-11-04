@@ -471,3 +471,38 @@ func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
 		t.Error("the helper stayed after the session ended")
 	}
 }
+
+// The first assistant message after an instruction from Mabari is its reply, relayed as it
+// streams rather than at Stop. Messages from before the instruction, and from subagents, aren't.
+func TestTheFirstStreamedMessageAfterAnInstructionIsTheReply(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
+	hook(t, c, "MessageDisplay", map[string]any{"message_id": "m0", "index": 0, "final": false, "delta": "Reading the code.\n"})
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Also add a dark mode") })
+	if reply := hook(t, c, "PostToolUse", map[string]any{"tool_name": "Read"}); !strings.Contains(string(reply), "Also add a dark mode") {
+		t.Fatalf("not delivered: %s", reply)
+	}
+	// m0 began before the instruction reached Claude, so it doesn't count.
+	hook(t, c, "MessageDisplay", map[string]any{"message_id": "m0", "index": 1, "final": true, "delta": "Done reading."})
+	if asked := agentOf(t, engine).Asked; len(asked) != 1 || asked[0].Reply != "" {
+		t.Fatalf("asked = %+v", asked)
+	}
+	hook(t, c, "MessageDisplay", map[string]any{"message_id": "sub", "index": 0, "final": true, "delta": "Subagent says hi", "agent_id": "a1"})
+	if got := agentOf(t, engine).Asked[0].Reply; got != "" {
+		t.Fatalf("a subagent's message became the reply: %q", got)
+	}
+	hook(t, c, "MessageDisplay", map[string]any{"message_id": "m1", "index": 0, "final": false, "delta": "Sure, I'll add a dark mode\n"})
+	hook(t, c, "MessageDisplay", map[string]any{"message_id": "m1", "index": 1, "final": true, "delta": "after the page."})
+	agent := agentOf(t, engine)
+	if got := agent.Asked[0].Reply; got != "Sure, I'll add a dark mode\nafter the page." {
+		t.Errorf("reply = %q", got)
+	}
+	if agent.Reply != "Sure, I'll add a dark mode" {
+		t.Errorf("bubble = %q", agent.Reply)
+	}
+	// Stop's final text doesn't replace the first reply.
+	hook(t, c, "Stop", map[string]any{"last_assistant_message": "All done."})
+	if got := agentOf(t, engine).Asked[0].Reply; !strings.HasPrefix(got, "Sure") {
+		t.Errorf("replaced by %q", got)
+	}
+}

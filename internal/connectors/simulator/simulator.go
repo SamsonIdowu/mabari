@@ -28,9 +28,12 @@ const Source = "sim"
 
 const (
 	officeSecondsPerTick = 6
-	approvalEveryTicks   = 45
-	conversationEvery    = 5
-	waitForever          = 999
+	// checkpointSoon is how many office seconds a step has left once an instruction waits for it,
+	// as in the prototype: two ticks, so about two seconds.
+	checkpointSoon     = 9
+	approvalEveryTicks = 45
+	conversationEvery  = 5
+	waitForever        = 999
 )
 
 // Mulberry32 is a small seeded generator, matching the one the golden test installs in the
@@ -682,7 +685,12 @@ func (s *Simulator) tickAgent(agent *models.LiveAgent) {
 	}
 	if state.stateLeft <= 0 && agent.State != models.StateSpawning {
 		next := (planIndex(agent.State) + 1 + int(math.Floor(s.between(0, 2)))) % len(plan)
+		previous := agent.State
 		s.setState(agent, plan[next])
+		// A new step is a checkpoint even when it is the same kind of work, such as editing again.
+		if agent.State == previous {
+			s.checkpoint(agent)
+		}
 	}
 }
 
@@ -773,6 +781,10 @@ func (s *Simulator) Decide(agent *models.LiveAgent, approval models.Approval) {
 func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 	if agent.Provider == models.ProviderClaude && agent.State.Active() {
 		s.engine.Queue(agent, text)
+		// The step it is on ends within a couple of ticks, so the instruction lands in seconds.
+		if state := s.runtimeOf(agent); state.stateLeft > checkpointSoon {
+			state.stateLeft = checkpointSoon
+		}
 		return
 	}
 	s.engine.Delivered(agent, text)

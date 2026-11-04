@@ -28,8 +28,8 @@ const (
 	KindStatus   Kind = "status"
 	KindOffice   Kind = "office"
 	KindEmpty    Kind = "empty"
-	KindDispatch Kind = "dispatch"
 	KindNewAgent Kind = "newAgent"
+	KindReplies  Kind = "replies"
 )
 
 // Line is one agent in a reply.
@@ -45,6 +45,20 @@ type Line struct {
 	Summary string `json:"summary"`
 	// ApprovalID lets the UI open the card. It is empty for an agent stopped by an error.
 	ApprovalID string `json:"approvalId"`
+	// AI and Reply are set in a list of replies: who answered, and what it said.
+	AI    string `json:"ai"`
+	Reply string `json:"reply"`
+}
+
+// Relay tells the UI which instruction to watch, so it can read out the agent's reply the moment
+// it lands.
+type Relay struct {
+	// AgentID is the agent that holds the instruction. For a Claude Code subagent that is its lead.
+	AgentID       string `json:"agentId"`
+	InstructionID string `json:"instructionId"`
+	// Agent and AI name who will answer, for "Ledger (Claude) replied: …".
+	Agent string `json:"agent"`
+	AI    string `json:"ai"`
 }
 
 // Send asks the server to pass a message on through the normal instruct and query code.
@@ -66,10 +80,12 @@ type Reply struct {
 	Working  int              `json:"working"`
 	Total    int              `json:"total"`
 	Need     int              `json:"need"`
-	// Message is what the Send to the team button would send.
-	Message string `json:"message"`
-	// Send is set when the reply passes a message on.
+	// Relay is set when Mabari passed an instruction on and will relay the reply.
+	Relay *Relay `json:"relay"`
+	// Send is set when the reply passes a message to a named agent.
 	Send *Send `json:"-"`
+	// Dispatch is set when the message is a task for the dispatcher, not something Mabari answers.
+	Dispatch bool `json:"-"`
 }
 
 // Gesture order matters: "star jump" is a jump, as in the prototype.
@@ -93,9 +109,25 @@ var (
 	message  = regexp.MustCompile(`(?i)^(?:please\s+)?(tell|ask)\s+([a-z ]+?)\s+(?:to\s+)?(.+)$`)
 	opening  = regexp.MustCompile(`(?i)^(?:please\s+)?(?:tell|ask)\s+`)
 	leadTo   = regexp.MustCompile(`(?i)^to\s+`)
-	greeting = regexp.MustCompile(`\b(hello|hi|hey)\b`)
-	eta      = regexp.MustCompile(`\beta\b`)
+	greeting = regexp.MustCompile(`^(hello|hi|hey)\b`)
+	// eta is a question about when work will be done.
+	eta = regexp.MustCompile(`^when\b|\beta\b|how long|time left|done by|\bfinish(?:ed)?\b.*\?$`)
+	// question is how a question to Mabari starts, when it doesn't end with "?".
+	question = regexp.MustCompile(`^(what|what's|whats|who|who's|whos|how|how's|hows|when|is|are|any|anything|has|did|show|give me|tell me|status|eta|summary|update me|catch me up)\b`)
+	// asking is how a request for a gesture starts. What follows must be short too.
+	asking   = regexp.MustCompile(`^(can you|could you|do a|give me a|show me a|let's see a)\b`)
+	newAgent = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:add|create|make|hire|start|build)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?agent(?:\s+(?:for|to|that|who|which|called|named|please)\b.*)?[.!]?$`)
+	// deciding is an order to decide an approval. Mabari never does, so it lists what waits instead.
+	deciding = regexp.MustCompile(`^(?:please\s+)?(?:approve|allow|deny|reject)\b`)
+	newProj  = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
 )
+
+// shortWords is the most a message can have and still be small talk or a gesture.
+const shortWords = 3
+
+// replyShown is how much of an agent's reply a list of replies shows. The full text is in the
+// agent's panel.
+const replyShown = 200
 
 func has(text string, phrases ...string) bool {
 	for _, phrase := range phrases {
@@ -146,42 +178,143 @@ func (o view) reply(text, gesture string, kind Kind) Reply {
 	}
 }
 
-// Answer works out Vee's reply. Messages come first, so that "tell Scout to fix the endpoint" is
-// an instruction and not a request for the point gesture.
+// IsQuestion reports whether a message is phrased as a question: it ends with "?" or starts the
+// way questions do.
+func IsQuestion(q string) bool {
+	q = strings.TrimSpace(strings.ToLower(q))
+	return strings.HasSuffix(q, "?") || question.MatchString(q)
+}
+
+// short reports whether a message is short enough for a gesture: a few words, or "can you"
+// and a few words.
+func short(q string) bool {
+	words := strings.Fields(q)
+	if len(words) <= shortWords {
+		return true
+	}
+	if match := asking.FindString(q); match != "" {
+		return len(strings.Fields(q[len(match):])) <= shortWords+1
+	}
+	return false
+}
+
+// Answer works out Mabari's reply. Messages to a named agent come first, so that "tell Scout to
+// fix the endpoint" is an instruction and not a request for the point gesture. Mabari answers
+// questions about the office itself; everything else is a task, and Dispatch is set.
 func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 	office := look(agents, now)
-	q := strings.ToLower(text)
+	q := strings.TrimSpace(strings.ToLower(text))
 	if reply, ok := office.passOn(text, q); ok {
 		return reply
 	}
-	for _, gesture := range gestures {
-		if hasWord(q, gesture.name) || hasWord(q, gesture.phrase) {
-			return office.reply(gesture.quip, gesture.name, KindPlain)
+	isQ, small := IsQuestion(q), short(q)
+	if small {
+		for _, gesture := range gestures {
+			if hasWord(q, gesture.name) || hasWord(q, gesture.phrase) {
+				return office.reply(gesture.quip, gesture.name, KindPlain)
+			}
 		}
 	}
+	chat := len(strings.Fields(q)) <= shortWords+2
+	named := office.named(q)
 	switch {
-	case greeting.MatchString(q):
+	case chat && greeting.MatchString(q):
 		return office.greet()
-	case has(q, "thank"):
+	case chat && has(q, "thank"):
 		return office.reply("Any time. Keeping an eye on things is my favourite job.", "bow", KindPlain)
-	case has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"):
+	case isQ && has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"),
+		deciding.MatchString(q):
 		return office.needs()
-	case has(q, "how long", "when", "finish", "done by", "time left") || eta.MatchString(q):
+	case isQ && eta.MatchString(q):
 		return office.when()
-	case has(q, "agent") && has(q, "new", "create", "add", "make", "hire") && !has(q, "project"):
+	case newAgent.MatchString(q):
 		return office.reply("Let's add someone to the team. Pick a role and I'll fill in the rest.",
 			"point", KindNewAgent)
-	case has(q, "project") && has(q, "new", "start", "create", "begin"):
+	case newProj.MatchString(q):
 		return office.reply("The project chat arrives in a later stage, so I can't open it yet.", "shrug", KindPlain)
-	case has(q, "office", "floor", "show me"):
+	case isQ && has(q, "office", "floor") || q == "office":
 		return office.reply("Taking you to the office floor.", "point", KindOffice)
-	case has(q, "happening", "status", "update", "going on", "summary", "what's up", "whats up", "progress"),
-		has(q, "who is", "who's", "whos"):
+	case named != nil && isQ && has(q, "doing", "working", "status", "how is", "how's", "what is", "what's",
+		"progress", "update", "done", "finished", "up to"):
+		return office.agentStatus(named)
+	case isQ && has(q, "happening", "status", "update", "going on", "summary", "what's up", "whats up",
+		"progress", "catch me up"),
+		isQ && has(q, "who is", "who's", "whos"):
 		return office.status()
+	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
+		"responses", "answers"):
+		return office.replies()
 	}
-	reply := office.reply("I can pass that to the team. The dispatcher will pick the best agent for it.",
-		"shrug", KindDispatch)
-	reply.Message = text
+	reply := office.reply("", "nod", KindPlain)
+	reply.Dispatch = true
+	return reply
+}
+
+// named finds an agent the message mentions by name, longest name first.
+func (o view) named(q string) *models.LiveAgent {
+	sorted := slices.Clone(o.agents)
+	slices.SortStableFunc(sorted, func(a, b *models.LiveAgent) int { return cmp.Compare(len(b.Name), len(a.Name)) })
+	for _, agent := range sorted {
+		if agent.Name != "" && hasWord(q, strings.ToLower(agent.Name)) {
+			return agent
+		}
+	}
+	return nil
+}
+
+// lastReply is the newest reply the agent gave to something sent from Mabari.
+func lastReply(agent *models.LiveAgent) (models.Instruction, bool) {
+	var last models.Instruction
+	for _, asked := range agent.Asked {
+		if asked.Reply != "" && asked.RepliedAt >= last.RepliedAt {
+			last = asked
+		}
+	}
+	return last, last.Reply != ""
+}
+
+func shorten(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if clipped := models.Clip(text, replyShown); clipped != text {
+		return clipped + "…"
+	}
+	return text
+}
+
+func (o view) agentStatus(agent *models.LiveAgent) Reply {
+	text := agent.Name + " (" + models.AIName(agent) + ") is " +
+		strings.ToLower(models.StateLabels[agent.State]) + ": " + strings.TrimSuffix(agent.Task, ".") + ". " +
+		models.ETALong(agent, o.now) + "."
+	if last, ok := lastReply(agent); ok {
+		text += " Its last reply: " + shorten(last.Reply)
+	}
+	return o.reply(text, "point", KindPlain)
+}
+
+func (o view) replies() Reply {
+	type said struct {
+		agent  *models.LiveAgent
+		answer models.Instruction
+	}
+	var all []said
+	for _, agent := range o.agents {
+		for _, asked := range agent.Asked {
+			if asked.Reply != "" {
+				all = append(all, said{agent, asked})
+			}
+		}
+	}
+	if len(all) == 0 {
+		return o.reply("No AI replies yet. Send a task and I'll pass on what Claude, Codex or any other AI says.",
+			"shrug", KindPlain)
+	}
+	slices.SortStableFunc(all, func(a, b said) int { return cmp.Compare(b.answer.RepliedAt, a.answer.RepliedAt) })
+	reply := o.reply("Here are the latest AI replies.", "point", KindReplies)
+	for _, item := range all[:min(4, len(all))] {
+		line := o.line(item.agent)
+		line.AI, line.Reply = models.AIName(item.agent), shorten(item.answer.Reply)
+		reply.Lines = append(reply.Lines, line)
+	}
 	return reply
 }
 
@@ -219,19 +352,14 @@ func (o view) passOn(text, q string) (Reply, bool) {
 	if body == "" {
 		return Reply{}, false
 	}
-	var reply Reply
-	switch {
-	case strings.EqualFold(match[1], "ask"):
-		reply = o.reply("I asked "+agent.Name+". The answer comes from its log, so it won't be interrupted.",
+	if strings.EqualFold(match[1], "ask") {
+		reply := o.reply("I asked "+agent.Name+". The answer comes from its log, so it won't be interrupted.",
 			"nod", KindPlain)
 		reply.Send = &Send{AgentID: agent.ID, Text: body, Mode: models.ModeQuery}
 		return reply, true
-	case agent.Account == models.AccountClaudeCode && agent.State.Active():
-		reply = o.reply("Passed it to "+agent.Name+". As a Claude Code agent it picks it up at its next checkpoint.",
-			"nod", KindPlain)
-	default:
-		reply = o.reply("Sent to "+agent.Name+". It has it now.", "nod", KindPlain)
 	}
+	// What Mabari says depends on how it went, so Passed fills in the text after sending.
+	reply := o.reply("", "nod", KindPlain)
 	reply.Send = &Send{AgentID: agent.ID, Text: body, Mode: models.ModeInstruct}
 	return reply, true
 }
@@ -316,16 +444,57 @@ func (o view) line(agent *models.LiveAgent) Line {
 	}
 }
 
-// Dispatched is what Vee says after sending a message to the team. A nil agent means nobody could
-// take it.
-func Dispatched(name, reason string, agents []*models.LiveAgent, now time.Time) Reply {
+// Where is what became of an instruction Mabari passed on: the agent that holds it (a
+// subagent's lead), its id, and whether it waits for the agent's next checkpoint. An empty id
+// means the agent couldn't take it.
+type Where struct {
+	Holder        *models.LiveAgent
+	InstructionID string
+	Queued        bool
+}
+
+func relayFor(agent *models.LiveAgent, where Where) *Relay {
+	holder := where.Holder
+	if holder == nil {
+		holder = agent
+	}
+	return &Relay{AgentID: holder.ID, InstructionID: where.InstructionID, Agent: agent.Name, AI: models.AIName(agent)}
+}
+
+func (o view) unreachable(agent *models.LiveAgent) Reply {
+	return o.reply(agent.Name+" couldn't take that just now. Try again in a moment.", "shrug", KindPlain)
+}
+
+// Passed is what Mabari says after passing an instruction to the agent the user named.
+func Passed(agent *models.LiveAgent, where Where, agents []*models.LiveAgent, now time.Time) Reply {
 	office := look(agents, now)
-	if name == "" {
+	if where.InstructionID == "" {
+		return office.unreachable(agent)
+	}
+	text := "Sent to " + agent.Name + ". I'll tell you what it says."
+	if where.Queued {
+		text = "Passed it to " + agent.Name + ". It's mid step, so it gets it at its next checkpoint. I'll tell you what it says."
+	}
+	reply := office.reply(text, "nod", KindPlain)
+	reply.Relay = relayFor(agent, where)
+	return reply
+}
+
+// Dispatched is what Mabari says the moment the dispatcher has picked an agent: who got it, which
+// AI, and why. A nil agent means nobody could take it.
+func Dispatched(agent *models.LiveAgent, reason string, where Where, agents []*models.LiveAgent, now time.Time) Reply {
+	office := look(agents, now)
+	if agent == nil {
 		return office.reply("There's no agent free to take that yet. Start one first.", "shrug", KindPlain)
 	}
-	text := "Done. I sent it to " + name
-	if reason != "" {
-		text += ". " + strings.ToUpper(reason[:1]) + strings.TrimSuffix(reason[1:], ".")
+	if where.InstructionID == "" {
+		return office.unreachable(agent)
 	}
-	return office.reply(text+".", "nod", KindPlain)
+	text := "On it, sent to " + agent.Name + " (" + models.AIName(agent) + ")"
+	if reason = strings.TrimSuffix(strings.TrimSpace(reason), "."); reason != "" {
+		text += ". " + strings.ToUpper(reason[:1]) + reason[1:]
+	}
+	reply := office.reply(text+". I'll read you the reply the moment it lands.", "nod", KindPlain)
+	reply.Relay = relayFor(agent, where)
+	return reply
 }

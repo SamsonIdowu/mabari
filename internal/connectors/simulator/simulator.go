@@ -154,12 +154,30 @@ func (s *Simulator) Stop() {
 	}
 }
 
-// Resume carries on after a restart, if the demo was running.
-func (s *Simulator) Resume(active bool) {
-	s.demoMode = active
-	if active {
+// Resume carries on after a restart, if the demo was running. Timers and runtimes live only in
+// memory, so it rebuilds what would otherwise stall: agents that were walking out leave, idle demo
+// agents get their next task, and new agents get the colour after the ones already in use.
+func (s *Simulator) Resume(active bool) error {
+	err := s.engine.Do(func() {
+		s.demoMode = active
+		s.hueIndex = len(s.engine.Agents())
+		for _, agent := range slices.Clone(s.engine.Agents()) {
+			if agent.Source != Source {
+				continue
+			}
+			if agent.Leaving {
+				s.engine.RemoveAgent(agent.ID)
+				continue
+			}
+			if active && agent.State == models.StateIdle {
+				s.runtimeOf(agent).nextTask = s.now() + int64(s.between(15000, 35000))
+			}
+		}
+	})
+	if err == nil && active {
 		s.Start()
 	}
+	return err
 }
 
 // Models lists the models demo agents use.
@@ -185,7 +203,8 @@ type agentSpec struct {
 	spawned   bool
 }
 
-func deskPosition(index int) (x, y int) { return 8 + index%4*3, 4 + index/4*3 }
+// deskPosition is a desk's tile, matching web/src/office/layout.ts: columns 5 tiles apart, rows 4.
+func deskPosition(index int) (x, y int) { return 8 + index%4*5, 4 + index/4*4 }
 
 // NewAgent is what the Create a new agent dialog asks for.
 type NewAgent struct {

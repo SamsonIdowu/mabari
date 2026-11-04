@@ -143,7 +143,10 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 		_ = database.Close()
 		return nil, err
 	}
-	sim.Resume(demo == "1")
+	if err := sim.Resume(demo == "1"); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	return &office{store: database, engine: engine, simulator: sim}, nil
 }
 

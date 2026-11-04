@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -295,7 +297,106 @@ func TestDataSurvivesARestart(t *testing.T) {
 
 	// Event numbers carry on, so nothing collides with what was stored.
 	resumed := New(restarted, Mulberry32(2), 0)
+	if err := resumed.Resume(true); err != nil {
+		t.Fatal(err)
+	}
 	advance(t, resumed, c, 20)
+}
+
+// restartedDemo loads the demo, lets it run, then reopens the same database as Mabari does at start.
+func restartedDemo(t *testing.T, change func(*Simulator, *events.Engine)) (*Simulator, *events.Engine, *clock) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mabari.db")
+	ctx := context.Background()
+	s, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &clock{ms: goldenStart}
+	engine, err := events.New(ctx, s, c.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sim := New(engine, Mulberry32(1), 0)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	advance(t, sim, c, 5)
+	if change != nil {
+		if err := engine.Do(func() { change(sim, engine) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	restarted, err := events.New(ctx, reopened, c.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed := New(restarted, Mulberry32(2), 0)
+	if err := resumed.Resume(true); err != nil {
+		t.Fatal(err)
+	}
+	return resumed, restarted, c
+}
+
+func TestIdleAgentsGoBackToWorkAfterARestart(t *testing.T) {
+	sim, engine, c := restartedDemo(t, nil)
+	var idle []string
+	for _, agent := range engine.Snapshot().Agents {
+		if agent.State == models.StateIdle {
+			idle = append(idle, agent.ID)
+		}
+	}
+	if len(idle) == 0 {
+		t.Fatal("the demo has no idle agent to check")
+	}
+	advance(t, sim, c, 60)
+	for _, agent := range engine.Snapshot().Agents {
+		if slices.Contains(idle, agent.ID) && agent.State == models.StateIdle {
+			t.Errorf("%s is still idle a minute after the restart", agent.Name)
+		}
+	}
+}
+
+func TestStoppedAgentLeavesAfterARestart(t *testing.T) {
+	_, engine, _ := restartedDemo(t, func(sim *Simulator, engine *events.Engine) {
+		sim.StopAgent(engine.AgentByName("Ledger"))
+	})
+	if agent := engine.Snapshot(); slices.ContainsFunc(agent.Agents, func(a models.LiveAgent) bool {
+		return a.Name == "Ledger"
+	}) {
+		t.Error("Ledger stayed in the office after the restart")
+	}
+}
+
+func TestNewAgentsGetAFreshColourAfterARestart(t *testing.T) {
+	sim, engine, _ := restartedDemo(t, nil)
+	used := map[string]bool{}
+	for _, agent := range engine.Snapshot().Agents {
+		used[agent.Hue] = true
+	}
+	var hue string
+	if err := engine.Do(func() {
+		agent, err := sim.CreateAgent(NewAgent{Name: "Fresh", Account: models.AccountClaudeCode,
+			Model: sim.Models()[0], Task: "Tidy the notes"})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		hue = agent.Hue
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(used) < len(hues) && used[hue] {
+		t.Errorf("the new agent reused %s", hue)
+	}
 }
 
 func TestRetentionKeepsOnlyRecentData(t *testing.T) {
@@ -389,5 +490,30 @@ func TestMatchesThePrototype(t *testing.T) {
 		if got := len(snapshot.Log); got != frame.Log {
 			t.Fatalf("tick %d: %d log rows, prototype has %d", tick, got, frame.Log)
 		}
+	}
+}
+
+// Helpers sit at the free desks nearest their lead, measured on the office's real desk grid.
+func TestHelpersSitNearestTheirLead(t *testing.T) {
+	sim, engine, _, _ := setup(t, ":memory:", 1)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	var desks []int
+	if err := engine.Do(func() {
+		lead := engine.AgentByName("Quill")
+		for index := range 3 {
+			helper := sim.AddSubagent(lead, "Helper"+strconv.Itoa(index), "Check the tests", sim.Models()[0])
+			if helper == nil {
+				t.Errorf("helper %d was refused", index)
+				return
+			}
+			desks = append(desks, helper.Desk)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(desks, []int{11, 15, 14}) {
+		t.Errorf("desks = %v, want [11 15 14]", desks)
 	}
 }

@@ -465,8 +465,13 @@ func (e *Engine) Toast(text string) {
 	e.broadcast(models.ServerMessage{Type: models.MsgToast, Text: text})
 }
 
-// Reset tells clients that too much changed to patch, so they reload the snapshot. Call inside Do.
+// Reset tells clients the office was replaced, by a wipe or the demo, so they reload the snapshot
+// and clear what they were looking at. Call inside Do.
 func (e *Engine) Reset() { e.broadcast(models.ServerMessage{Type: models.MsgReset}) }
+
+// Resync tells clients to reload the snapshot but keep their view, after a change too wide to
+// patch such as retention. Call inside Do.
+func (e *Engine) Resync() { e.broadcast(models.ServerMessage{Type: models.MsgResync}) }
 
 // Queue holds an instruction for the agent's next checkpoint. Call inside Do.
 func (e *Engine) Queue(agent *models.LiveAgent, text string) {
@@ -835,7 +840,7 @@ func (e *Engine) RunRetention(ctx context.Context) error {
 		}
 		// Open pages reload, so removed log rows disappear there too.
 		if events+log > 0 || trimmed {
-			e.Reset()
+			e.Resync()
 		}
 	})
 }

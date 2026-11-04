@@ -83,4 +83,13 @@ describe('applyMessage', () => {
     applyMessage(state, message({ type: 'event', event: event('new') }));
     expect(JSON.stringify(state)).toBe(before);
   });
+
+  it('skips a message the snapshot already holds', () => {
+    const state = snapshot({ seq: 5, agents: [agent()] });
+    expect(applyMessage(state, message({ seq: 5, type: 'event', event: event('old') }))).toBe(state);
+    expect(applyMessage(state, message({ seq: 3, type: 'event', event: event('old') }))).toBe(state);
+    const next = applyMessage(state, message({ seq: 6, type: 'event', event: event('new') }));
+    expect(next.seq).toBe(6);
+    expect(next.agents[0]?.feed?.map((item) => item.id)).toEqual(['new']);
+  });
 });

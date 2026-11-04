@@ -19,6 +19,8 @@ function withFeed(agents: LiveAgent[], next: LiveAgent): LiveAgent {
 
 /** Applies one numbered change to a snapshot. It never changes the snapshot it is given. */
 export function applyMessage(state: Snapshot, message: ServerMessage): Snapshot {
+  // Numbers only go up. A message the snapshot already holds is skipped, not applied twice.
+  if (message.seq <= state.seq) return state;
   const next: Snapshot = { ...state, seq: message.seq };
   switch (message.type) {
     case 'agent':

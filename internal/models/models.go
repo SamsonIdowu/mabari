@@ -375,7 +375,7 @@ type Snapshot struct {
 // Message types sent over the WebSocket.
 const (
 	MsgHello    = "hello"  // First message: BootID and the current Seq.
-	MsgResync   = "resync" // This client fell behind: reload the snapshot.
+	MsgResync   = "resync" // Reload the snapshot and keep the view: the client fell behind, or retention ran.
 	MsgAgent    = "agent"  // Agent changed; it has no Feed.
 	MsgRemove   = "agent.remove"
 	MsgEvent    = "event"
@@ -385,7 +385,7 @@ const (
 	MsgAccount  = "account"
 	MsgSettings = "settings"
 	MsgToast    = "toast"
-	MsgReset    = "reset" // Too much changed to patch: reload the snapshot.
+	MsgReset    = "reset" // The office was replaced by a wipe or the demo: reload and clear the view.
 )
 
 // ServerMessage is one WebSocket message. Type says which of the other fields is set.

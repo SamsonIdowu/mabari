@@ -25,8 +25,10 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
   toasts: [],
   setSnapshot: (office) => set({ office }),
   apply: (message) => {
-    if (message.type === 'toast' && message.text) get().toast(message.text);
     const { office } = get();
+    // A message already applied, replayed after a reload, does not toast again.
+    if (office && message.seq <= office.seq) return;
+    if (message.type === 'toast' && message.text) get().toast(message.text);
     if (office) set({ office: applyMessage(office, message) });
   },
   toast: (text) => {

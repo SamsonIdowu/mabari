@@ -36,6 +36,8 @@ interface VeeStore {
   sendToTeam: (text: string) => Promise<void>;
   /** Called once a frame to finish what has finished. */
   settle: (now: number) => void;
+  /** Back to the greeting, and quiet, after the office was wiped or replaced. */
+  reset: () => void;
 }
 
 /** Reads a reply aloud with the browser's own voices, which run on this computer. */
@@ -94,6 +96,10 @@ export const useVee = create<VeeStore>((set, get) => ({
     } catch (error) {
       get().say(fail(error as Error));
     }
+  },
+  reset: () => {
+    window.speechSynthesis?.cancel();
+    set({ state: 'idle', said: VEE_HELLO, heard: '', gesture: null, talkUntil: 0 });
   },
   settle: (now) => {
     const { gesture, state, talkUntil } = get();

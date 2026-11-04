@@ -4,7 +4,8 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Settings as SettingsModel, Snapshot } from '../gen/models.ts';
 import { Icon } from '../shell/Icon.tsx';
-import { LATER, PageHead } from './parts.tsx';
+import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
+import { PageHead } from './parts.tsx';
 
 const DEFAULTS: [key: string, label: string, kind: string][] = [
   ['claude', 'Claude Code', 'claude_code'],
@@ -111,18 +112,7 @@ function ApprovalsCard({ settings }: { settings: SettingsModel }) {
       <div className="kv">
         <span className="flabel">Auto approve</span>
         <div className="field">
-          <button
-            type="button"
-            className="btn"
-            style={{ alignSelf: 'flex-start' }}
-            disabled
-            title={LATER}
-          >
-            <Icon>
-              <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
-            </Icon>
-            Auto approve
-          </button>
+          <AutoApproveButton settings={settings} extraStyle={{ alignSelf: 'flex-start' }} />
           <span className="help">
             {state} Applies to all agents and is recorded in the Activity log.
           </span>
@@ -291,6 +281,7 @@ export function Settings() {
         <DataCard settings={office.settings} />
         <WipeCard />
       </div>
+      <AutoApproveDialog office={office} />
     </section>
   );
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
+import { send } from '../office/send.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import {
   decisionColors,
@@ -15,7 +16,6 @@ import {
 import { Icon } from '../shell/Icon.tsx';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
-import { LATER } from './parts.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
 type Dialog = 'settings' | 'subagent' | null;
@@ -185,12 +185,79 @@ function Counters({ agent }: { agent: LiveAgent }) {
   );
 }
 
+const HIGHLIGHT_MS = 2400;
+
+function AnswerCard({ agent }: { agent: LiveAgent }) {
+  const answer = useOfficeUi((state) => state.answers[agent.id]);
+  const set = useOfficeUi((state) => state.set);
+  if (!answer) return null;
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const dismiss = () => {
+    const answers = { ...useOfficeUi.getState().answers };
+    delete answers[agent.id];
+    set({ answers });
+  };
+  const show = (id: string) => {
+    set({ panelTab: 'live', highlight: id });
+    setTimeout(() => {
+      document.getElementById(`ev-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 0);
+    setTimeout(() => set({ highlight: null }), HIGHLIGHT_MS);
+  };
+  return (
+    <div className="answer" aria-live="polite">
+      <span className="chip query" style={{ alignSelf: 'flex-start' }}>
+        <Icon>
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </Icon>
+        Answered from the log
+      </span>
+      <span className="q">{answer.question}</span>
+      <span>
+        {answer.name} is <b>{answer.state.toLowerCase()}</b> on “{answer.task}”. So far it read{' '}
+        {plural(answer.reads, 'file')}, made {plural(answer.edits, 'edit')}
+        {answer.runs ? ` and ran a command ${plural(answer.runs, 'time')}` : ''}.{' '}
+        {answer.latestTool ? (
+          <>
+            Its latest step was <code>{answer.latestTool}</code> {answer.latestSummary}.{' '}
+          </>
+        ) : null}
+        {answer.estimate}.
+      </span>
+      <span className="help">
+        By {answer.model}. {answer.name} was not interrupted.
+      </span>
+      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="help">Based on</span>
+        {answer.events.map((id) => (
+          <button type="button" className="evlink" key={id} onClick={() => show(id)}>
+            {id}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="btn ghost sm"
+          style={{ marginLeft: 'auto' }}
+          onClick={dismiss}
+        >
+          Dismiss
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function Feed({ agent }: { agent: LiveAgent }) {
+  const highlight = useOfficeUi((state) => state.highlight);
   return (
     <Section title="Live tool calls">
       <div className="feed">
         {(agent.feed ?? []).map((event) => (
-          <div className="fe" key={event.id}>
+          <div
+            className={highlight === event.id ? 'fe hl' : 'fe'}
+            id={`ev-${event.id}`}
+            key={event.id}
+          >
             <span className="toolchip" style={{ ['--dc' as string]: colourOf(event.tool) }}>
               {event.tool}
             </span>
@@ -320,7 +387,11 @@ function Banners({ agent }: { agent: LiveAgent }) {
           <span className="grow">
             {agent.name} {agent.approval.title}.
           </span>
-          <button type="button" className="btn sm danger" disabled title={LATER}>
+          <button
+            type="button"
+            className="btn sm danger"
+            onClick={() => useOfficeUi.getState().set({ reviewing: agent.approval?.id ?? null })}
+          >
             Review
           </button>
         </div>
@@ -365,7 +436,7 @@ function Banners({ agent }: { agent: LiveAgent }) {
   );
 }
 
-function Foot({ agent }: { agent: LiveAgent }) {
+function Foot({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
   const [confirming, setConfirming] = useState(false);
   const set = useOfficeUi((state) => state.set);
   const stop = () => {
@@ -414,12 +485,67 @@ function Foot({ agent }: { agent: LiveAgent }) {
           </button>
         </div>
       )}
+      <PanelMessage agent={agent} office={office} />
     </div>
   );
 }
 
+function PanelMessage({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
+  const mode = useOfficeUi((state) => state.mode);
+  const set = useOfficeUi((state) => state.set);
+  const [text, setText] = useState('');
+  const instruct = mode === 'instruct';
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const message = text.trim();
+    if (!message) return;
+    setText('');
+    void send(message, mode, agent.id, office);
+  };
+  return (
+    <form
+      style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+      autoComplete="off"
+      onSubmit={submit}
+    >
+      <div className="seg modeseg" role="group" aria-label="Message type">
+        <button
+          type="button"
+          className={instruct ? 'ins on' : 'ins'}
+          onClick={() => set({ mode: 'instruct' })}
+        >
+          Instruct
+        </button>
+        <button
+          type="button"
+          className={instruct ? 'qry' : 'qry on'}
+          onClick={() => set({ mode: 'query' })}
+        >
+          Query
+        </button>
+      </div>
+      <div className={instruct ? 'cmdin' : 'cmdin qry'}>
+        <label className="sr" htmlFor="panelText">
+          Message to {agent.name}
+        </label>
+        <input
+          id="panelText"
+          value={text}
+          placeholder={
+            instruct ? `Tell ${agent.name} what to do` : `Ask about ${agent.name}'s work`
+          }
+          onChange={(event) => setText(event.target.value)}
+        />
+        <button className={`btn sm sendbtn ${instruct ? 'ins' : 'qry'}`} type="submit">
+          {instruct ? 'Send' : 'Ask'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAgent }) {
-  const [tab, setTab] = useState<Tab>('live');
+  const tab = useOfficeUi((state) => state.panelTab);
   const [dialog, setDialog] = useState<Dialog>(null);
   const set = useOfficeUi((state) => state.set);
   const provider = providers[agent.provider as ProviderName] ?? providers.custom;
@@ -517,7 +643,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
               key={id}
               className={tab === id ? 'on' : ''}
               aria-pressed={tab === id}
-              onClick={() => setTab(id)}
+              onClick={() => set({ panelTab: id })}
             >
               {label}
             </button>
@@ -526,6 +652,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
       </div>
       <div className="pbody">
         <Banners agent={agent} />
+        <AnswerCard agent={agent} />
         {tab === 'live' ? (
           <>
             <Section title="Current task">
@@ -545,7 +672,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         {tab === 'trail' ? <Trail agent={agent} subagents={subagents} /> : null}
         {tab === 'chats' ? <Chats agent={agent} office={office} /> : null}
       </div>
-      <Foot agent={agent} key={agent.id} />
+      <Foot agent={agent} office={office} key={agent.id} />
       {dialog === 'settings' ? (
         <AgentSettingsDialog
           agent={agent}

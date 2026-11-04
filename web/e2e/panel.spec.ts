@@ -14,6 +14,9 @@ async function open(page: Page, name: string) {
   await page.mouse.click(box.x + box.width / 2, box.y - 24);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible();
+  // Clicking an agent that needs approval also opens its card.
+  const card = page.getByRole('dialog');
+  if (await card.isVisible()) await card.getByRole('button', { name: 'Close' }).click();
   return panel;
 }
 

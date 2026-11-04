@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
+import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
 import type { LiveAgent } from '../gen/models.ts';
 
 export type StatusFilter = 'all' | 'needs' | 'active';
@@ -18,6 +19,16 @@ interface OfficeUi extends OfficeFilters {
   pan: { x: number; y: number };
   follow: boolean;
   spotlight: boolean;
+  mode: MessageMode;
+  /** "auto", "selected", "everyone" or an agent id. */
+  target: string;
+  panelTab: 'live' | 'trail' | 'chats';
+  highlight: string | null;
+  /** The approval whose card is open. It closes if that approval is settled or replaced. */
+  reviewing: string | null;
+  autoDialog: boolean;
+  answers: Record<string, Answer>;
+  teamAnswer: { question: string; lines: TeamLine[] } | null;
   set: (patch: Partial<OfficeUiFields>) => void;
   clearFilters: () => void;
 }
@@ -39,6 +50,14 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   pan: { x: 0, y: 0 },
   follow: false,
   spotlight: true,
+  mode: 'instruct',
+  target: 'auto',
+  panelTab: 'live',
+  highlight: null,
+  reviewing: null,
+  autoDialog: false,
+  answers: {},
+  teamAnswer: null,
   set: (patch) => set(patch),
   clearFilters: () => set(NO_FILTERS),
 }));

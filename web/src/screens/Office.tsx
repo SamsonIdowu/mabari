@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
-import { clockText, minsText } from '../format.ts';
+import { minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { nextZoom } from '../office/camera.ts';
 import colourKey from '../office/colourKey.html?raw';
@@ -11,7 +11,10 @@ import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
+import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
+import { CommandBar } from './CommandBar.tsx';
 import { LATER } from './parts.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
@@ -32,23 +35,26 @@ function Summary({ scoped }: { scoped: LiveAgent[] }) {
   const need = scoped.filter(needsYou).length;
   const held = scoped.filter((a) => a.state === 'approval' || a.state === 'paused').length;
   const seconds = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
-  const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
     <span className="help" id="officeClock">
-      {scoped.length} agent{scoped.length === 1 ? '' : 's'} · {working.length} working ·{' '}
+      {scoped.length} agent{scoped.length === 1 ? '' : 's'} · {working.length} working
       {need ? (
-        <b style={{ color: 'var(--red)' }}>
-          {need} need{need === 1 ? 's' : ''} you
-        </b>
-      ) : (
-        'nothing needs you'
-      )}
+        <>
+          {' · '}
+          <b style={{ color: 'var(--red)' }}>
+            {need} need{need === 1 ? 's' : ''} you
+          </b>
+        </>
+      ) : null}
       {working.length ? (
-        <span title="Estimated time to completion for every agent in this view">
-          {' '}
-          · all done about {minsText(seconds)}, around {clockText(finish)}
-          {held ? ` (not counting ${held} waiting on you)` : ''}
-        </span>
+        <>
+          {' · '}
+          <span
+            title={`Estimated time to completion for every agent in this view${held ? `, not counting ${held} waiting on you` : ''}`}
+          >
+            done ~{minsText(seconds)}
+          </span>
+        </>
       ) : null}
     </span>
   );
@@ -166,6 +172,14 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const [menu, setMenu] = useState<Menu>(null);
   const toggle = (name: Menu) => setMenu(menu === name ? null : name);
   const close = () => setMenu(null);
+  // Escape closes one thing at a time. An open dialog handles the key itself.
+  useEscape(() => {
+    if (document.querySelector('.scrim')) return;
+    const ui = useOfficeUi.getState();
+    if (menu) close();
+    else if (ui.team) ui.set({ team: null });
+    else if (ui.selected) ui.set({ selected: null, follow: false });
+  });
 
   const project = office.projects.find((item) => item.id === filters.project);
   const provider = providers[filters.provider as ProviderName];
@@ -188,9 +202,6 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
 
   return (
     <div className="obar2">
-      <span className="help" style={{ fontWeight: 700 }}>
-        Show
-      </span>
       <div className="ddwrap">
         <button
           type="button"
@@ -294,6 +305,38 @@ function TeamBanner({ lead, agents }: { lead: LiveAgent; agents: LiveAgent[] }) 
         </span>
         <button type="button" className="btn sm" onClick={() => set({ team: null })}>
           Back to the full floor
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AutoBanner({ office }: { office: Snapshot }) {
+  const { on, scope } = office.settings.autoApprove;
+  if (!on) return null;
+  return (
+    <div style={{ padding: '0 20px' }}>
+      <div className="banner amber" style={{ marginTop: 12 }}>
+        <Icon>
+          <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
+        </Icon>
+        <span className="grow">
+          Auto approve is on for every agent
+          {scope === 'all' ? (
+            <>
+              , <b>including risky actions</b>.
+            </>
+          ) : (
+            '. Risky actions still wait for you.'
+          )}{' '}
+          Every auto-approval is recorded in the Activity log.
+        </span>
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => void api.autoApprove(false, scope, false)}
+        >
+          Turn off
         </button>
       </div>
     </div>
@@ -491,8 +534,15 @@ function Stage({ office }: { office: Snapshot }) {
     if (skipClick.current || !scene.current) return;
     const box = event.currentTarget.getBoundingClientRect();
     const hit = scene.current.hit({ x: event.clientX - box.left, y: event.clientY - box.top });
-    if (hit) set({ selected: hit.id });
-    else set({ selected: null, follow: false });
+    if (hit) {
+      set({
+        selected: hit.id,
+        target: 'selected',
+        reviewing: hit.state === 'approval' ? (hit.approval?.id ?? null) : null,
+      });
+    } else {
+      set({ selected: null, follow: false });
+    }
   };
 
   return (
@@ -530,7 +580,15 @@ function Stage({ office }: { office: Snapshot }) {
             <div className="fsteps" />
           </div>
         </div>
-        <div className="board" ref={board} aria-label="Notice board" />
+        <div
+          className="board"
+          ref={board}
+          aria-label="Notice board"
+          onClick={(event) => {
+            const item = (event.target as HTMLElement).closest<HTMLElement>('[data-review]');
+            if (item) set({ reviewing: item.dataset.review ?? null });
+          }}
+        />
         <CanvasTools />
         <div className="readout" ref={readout} aria-live="off" />
         <span className="stagehint" ref={hint}>
@@ -563,12 +621,7 @@ export function Office() {
               <Summary scoped={scoped} />
             </div>
             <div className="ohact">
-              <button type="button" className="btn" disabled title={LATER}>
-                <Icon>
-                  <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
-                </Icon>
-                Auto approve
-              </button>
+              <AutoApproveButton settings={office.settings} />
               <button type="button" className="btn" disabled title={LATER}>
                 <Icon>
                   <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
@@ -585,10 +638,14 @@ export function Office() {
           </div>
           <FilterBar office={office} scoped={scoped} />
           {lead ? <TeamBanner lead={lead} agents={office.agents} /> : null}
+          <AutoBanner office={office} />
           <Stage office={office} />
+          <CommandBar office={office} />
         </div>
         {selected ? <AgentPanel key={selected.id} office={office} agent={selected} /> : null}
       </div>
+      <ApprovalCard office={office} />
+      <AutoApproveDialog office={office} />
     </section>
   );
 }

@@ -56,7 +56,9 @@ for (const [width, height] of [
     expect(stage.y).toBe(bar.y + bar.height);
     expect(stage.x).toBe(main.x);
     expect(stage.x + stage.width).toBe(main.x + main.width);
-    expect(stage.y + stage.height).toBe(height);
+    const commands = (await page.locator('.cmdbar').boundingBox())!;
+    expect(stage.y + stage.height).toBe(commands.y);
+    expect(commands.y + commands.height).toBe(height);
   });
 }
 
@@ -75,8 +77,8 @@ test('the header summarises the floor', async ({ page }) => {
   const summary = page.locator('#officeClock');
   await expect(summary).toContainText('10 agents');
   await expect(summary).toContainText('need you');
-  await expect(summary).toContainText(/all done about \d+ min, around \d\d:\d\d/);
-  await expect(summary).toContainText('(not counting 1 waiting on you)');
+  await expect(summary).toContainText(/done ~\d+ min/);
+  await expect(summary.locator('[title*="not counting 1 waiting on you"]')).toBeVisible();
 });
 
 test('the notice board lists approvals', async ({ page }) => {

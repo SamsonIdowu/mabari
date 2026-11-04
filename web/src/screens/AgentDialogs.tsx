@@ -4,6 +4,7 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { useEscape } from '../shell/useEscape.ts';
 
 const TOOLS: [id: string, label: string][] = [
   ['read', 'Read files'],
@@ -31,6 +32,7 @@ function DialogFrame(props: {
   onSubmit: (event: FormEvent) => void;
   children: ReactNode;
 }) {
+  useEscape(props.close);
   return (
     <div className="scrim">
       <form

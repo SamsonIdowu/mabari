@@ -658,6 +658,11 @@ func (c *Connector) Interrupt(agent *models.LiveAgent) {
 	go func() { _ = c.call("turn/interrupt", map[string]any{"threadId": thread, "turnId": turn}, nil) }()
 }
 
+// Continue starts a new turn that picks up where the interrupted one stopped. Call inside Do.
+func (c *Connector) Continue(agent *models.LiveAgent) {
+	c.Instruct(agent, "Continue where you stopped.")
+}
+
 // StopAgent interrupts the thread and takes the agent out of the office. Call inside Do.
 func (c *Connector) StopAgent(agent *models.LiveAgent) {
 	c.Interrupt(agent)

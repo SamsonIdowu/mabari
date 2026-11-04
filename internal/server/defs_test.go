@@ -149,3 +149,27 @@ func TestMabariCountsWhatItDispatches(t *testing.T) {
 		t.Errorf("runs = %d", mabari.Runs)
 	}
 }
+
+func TestInterruptAndContinue(t *testing.T) {
+	o := newOffice(t)
+	o.demo(t)
+	ledger := agentNamed(t, o, "Ledger")
+	before := ledger.State
+	if response := o.do(t, http.MethodPost, "/api/agents/"+ledger.ID+"/interrupt", ""); response.Code != http.StatusOK {
+		t.Fatalf("interrupt = %d", response.Code)
+	}
+	if got := agentNamed(t, o, "Ledger"); got.State != models.StatePaused || got.PausedFrom != before {
+		t.Fatalf("paused = %v from %v", got.State, got.PausedFrom)
+	}
+	if response := o.do(t, http.MethodPost, "/api/agents/"+ledger.ID+"/continue", ""); response.Code != http.StatusOK {
+		t.Fatalf("continue = %d", response.Code)
+	}
+	got := agentNamed(t, o, "Ledger")
+	if got.State != before || got.Feed[0].Summary != "Continued by you from where it stopped" {
+		t.Errorf("after continue: %v, %q", got.State, got.Feed[0].Summary)
+	}
+	rows := decode[[]models.LogEntry](t, o.do(t, http.MethodGet, "/api/activity?q=Continue", ""))
+	if len(rows) == 0 || rows[0].Outcome != "Continued by you" {
+		t.Errorf("log = %+v", rows)
+	}
+}

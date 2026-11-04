@@ -368,7 +368,7 @@ func (c *Connector) observe(in input) []byte {
 		return c.deliver(agent, "UserPromptSubmit")
 	case "PreToolUse":
 		if c.takePause(in.SessionID) {
-			agent.State = models.StatePaused
+			agent.PausedFrom, agent.State = agent.State, models.StatePaused
 			c.engine.AddEvent(agent, "interrupt", "Paused from Mabari", nil)
 			return mustJSON(map[string]any{
 				"continue":   false,
@@ -703,6 +703,25 @@ func (c *Connector) Interrupt(agent *models.LiveAgent) {
 	c.pause[strings.TrimPrefix(agent.ID, "cc-")] = true
 	c.mu.Unlock()
 	c.engine.Toast(agent.Name + " pauses at its next step.")
+}
+
+// Continue lifts a pause that hasn't happened yet. Once Claude Code has paused, its session waits
+// for the person, so the next step needs them to type in it; Mabari says so. Call inside Do.
+func (c *Connector) Continue(agent *models.LiveAgent) {
+	session := strings.TrimPrefix(agent.ID, "cc-")
+	c.mu.Lock()
+	pending := c.pause[session]
+	delete(c.pause, session)
+	c.mu.Unlock()
+	if pending {
+		return
+	}
+	if agent.State == models.StatePaused {
+		// Claude Code ended the turn, so the session is waiting for its person, not working.
+		agent.State, agent.PausedFrom = models.StateIdle, ""
+		c.engine.Touch(agent)
+		c.engine.Toast("Claude Code stopped " + agent.Name + "'s turn. Type in its session to carry on.")
+	}
 }
 
 // StopAgent stops following a session. Its terminal keeps running, so Mabari says so.

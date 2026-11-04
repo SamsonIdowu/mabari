@@ -51,6 +51,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/agents/{id}", a.updateAgent)
 	mux.HandleFunc("GET /api/agents/{id}/events", a.agentEvents)
 	mux.HandleFunc("POST /api/agents/{id}/interrupt", a.agentAction(interruptAgent))
+	mux.HandleFunc("POST /api/agents/{id}/continue", a.agentAction(a.continueAgent))
 	mux.HandleFunc("POST /api/agents/{id}/stop", a.agentAction(stopAgent))
 	mux.HandleFunc("POST /api/agents/{id}/retry", a.agentAction(retryAgent))
 	mux.HandleFunc("POST /api/agents/{id}/subagents", a.addSubagent)
@@ -375,7 +376,18 @@ func (a *api) applyAgentBody(agent *models.LiveAgent, body agentBody) {
 
 func interruptAgent(c events.Connector, agent *models.LiveAgent) { c.Interrupt(agent) }
 func stopAgent(c events.Connector, agent *models.LiveAgent)      { c.StopAgent(agent) }
-func retryAgent(c events.Connector, agent *models.LiveAgent)     { c.Retry(agent) }
+
+// continueAgent resumes an interrupted agent and says so in its steps, the log and a toast.
+func (a *api) continueAgent(c events.Connector, agent *models.LiveAgent) {
+	if agent.State != models.StatePaused {
+		return
+	}
+	c.Continue(agent)
+	a.engine.AddEvent(agent, "start", "Continued by you from where it stopped", nil)
+	a.engine.Log(agent.Name, models.LogInstruction, "Continue", "Continued by you", "ok")
+	a.engine.Toast(agent.Name + " is back to work.")
+}
+func retryAgent(c events.Connector, agent *models.LiveAgent) { c.Retry(agent) }
 
 // agentAction runs a connector action on the agent in the path.
 func (a *api) agentAction(action func(events.Connector, *models.LiveAgent)) http.HandlerFunc {

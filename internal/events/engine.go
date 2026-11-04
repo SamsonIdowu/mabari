@@ -36,6 +36,8 @@ type Connector interface {
 	// Decide resumes an agent after the Engine has recorded the decision.
 	Decide(agent *models.LiveAgent, approval models.Approval)
 	Interrupt(agent *models.LiveAgent)
+	// Continue resumes an interrupted agent from where it stopped.
+	Continue(agent *models.LiveAgent)
 	// StopAgent ends one agent's session.
 	StopAgent(agent *models.LiveAgent)
 	// Retry starts an agent again after an error.

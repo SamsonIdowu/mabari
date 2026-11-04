@@ -177,6 +177,8 @@ type SessionState struct {
 	TalkUntil  int64  `json:"talkUntil"`
 	TalkColor  string `json:"talkColor"`
 	Leaving    bool   `json:"leaving"`
+	// PausedFrom is the state an interrupted agent was in, so Continue can return to it.
+	PausedFrom AgentState `json:"pausedFrom"`
 	// Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
 	// each with the agent's reply once it gives one. At most AskedKept.
 	Asked []Instruction `json:"asked"`

@@ -50,8 +50,10 @@ func Mulberry32(seed uint32) func() float64 {
 
 type runtime struct {
 	stateLeft float64
-	spawned   bool
-	doneUntil int64
+	// pausedLeft is how much of its step an interrupted agent had left.
+	pausedLeft float64
+	spawned    bool
+	doneUntil  int64
 	// nextTask is when an idle demo agent picks up new work, or zero.
 	nextTask int64
 }
@@ -801,12 +803,35 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 	s.engine.Answered(agent, said)
 }
 
-// Interrupt pauses an agent after its current tool call.
+// Interrupt pauses an agent after its current tool call, remembering where it was.
 func (s *Simulator) Interrupt(agent *models.LiveAgent) {
+	if agent.State == models.StatePaused {
+		return
+	}
+	state := s.runtimeOf(agent)
+	agent.PausedFrom, state.pausedLeft = agent.State, state.stateLeft
 	agent.State = models.StatePaused
-	s.runtimeOf(agent).stateLeft = waitForever
+	state.stateLeft = waitForever
 	s.engine.AddEvent(agent, "interrupt", "Paused by you after the current tool call", nil)
 	s.engine.Log(agent.Name, models.LogInstruction, "Interrupt", "Paused", "amber")
+}
+
+// Continue resumes an interrupted agent in exactly the state it was in, with the rest of its step.
+func (s *Simulator) Continue(agent *models.LiveAgent) {
+	if agent.State != models.StatePaused {
+		return
+	}
+	state := s.runtimeOf(agent)
+	previous := agent.PausedFrom
+	if previous == "" || previous == models.StatePaused {
+		previous = models.StateThinking
+	}
+	agent.State, agent.PausedFrom = previous, ""
+	state.stateLeft = max(12, state.pausedLeft)
+	if state.pausedLeft >= waitForever {
+		state.stateLeft = waitForever
+	}
+	s.engine.Touch(agent)
 }
 
 // AddSubagent seats a new agent at the free desk nearest its lead.

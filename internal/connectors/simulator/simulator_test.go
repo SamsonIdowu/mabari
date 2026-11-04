@@ -689,3 +689,35 @@ func TestAnInstructionMidStepLandsWithinSeconds(t *testing.T) {
 		}
 	}
 }
+
+// Interrupt pauses an agent; Continue puts it back in exactly the state it was in, with the rest
+// of its step still to run.
+func TestContinueResumesTheExactState(t *testing.T) {
+	sim, engine, c, _ := setup(t, ":memory:", 3)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	var ledger *models.LiveAgent
+	_ = engine.Do(func() {
+		ledger = engine.AgentByName("Ledger")
+		ledger.State = models.StateRunning
+		sim.runtimeOf(ledger).stateLeft = 100
+		sim.Interrupt(ledger)
+	})
+	if ledger.State != models.StatePaused || ledger.PausedFrom != models.StateRunning {
+		t.Fatalf("after interrupt: %v from %v", ledger.State, ledger.PausedFrom)
+	}
+	advance(t, sim, c, 30)
+	_ = engine.Do(func() {
+		if ledger.State != models.StatePaused {
+			t.Fatalf("a paused agent moved on: %v", ledger.State)
+		}
+		sim.Continue(ledger)
+	})
+	if ledger.State != models.StateRunning || ledger.PausedFrom != "" {
+		t.Errorf("after continue: %v from %q", ledger.State, ledger.PausedFrom)
+	}
+	if left := sim.runtimeOf(ledger).stateLeft; left != 100 {
+		t.Errorf("step left = %v, want the 100 it had", left)
+	}
+}

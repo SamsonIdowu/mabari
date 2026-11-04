@@ -192,6 +192,9 @@ func (c *Connector) Decide(*models.LiveAgent, models.Approval) {}
 // Interrupt is passed on as an instruction, since Mabari can't reach into the app.
 func (c *Connector) Interrupt(agent *models.LiveAgent) { c.engine.Queue(agent, "Please pause.") }
 
+// Continue asks the app to carry on.
+func (c *Connector) Continue(agent *models.LiveAgent) { c.engine.Queue(agent, "Please continue.") }
+
 // StopAgent takes the agent out of the office. The app keeps running until it stops itself.
 func (c *Connector) StopAgent(agent *models.LiveAgent) {
 	c.engine.Queue(agent, "Please stop.")

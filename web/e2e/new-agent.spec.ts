@@ -117,13 +117,24 @@ test('clicking an empty desk opens the dialog for that desk', async ({ page }) =
   await page.mouse.click(desk.x, desk.y);
   const form = dialog(page);
   await expect(form).toContainText('It walks in and takes desk 16.');
-  await expect(form.getByLabel('Desk')).toHaveCount(0);
+  await expect(form.getByLabel('Desk')).toHaveValue('');
   await form.getByLabel('Name').fill('Juniper');
   await form.getByRole('button', { name: 'Create agent' }).click();
   await expect(form).toBeHidden();
   await expect(page.locator('.tag .nt', { hasText: 'Juniper' })).toBeVisible();
   await page.mouse.move(desk.x, desk.y);
   await expect(page.locator('#floor')).not.toHaveCSS('cursor', 'pointer');
+});
+
+test('the model starts on the agent settings and follows a lead', async ({ page }) => {
+  await loadDemo(page);
+  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  const model = dialog(page).getByLabel('Model');
+  await expect(model.locator('option').first()).toHaveText(/^From agent settings \(.+\)$/);
+  await dialog(page)
+    .getByLabel('Desk')
+    .selectOption({ label: "In Ledger's office, as a subagent" });
+  await expect(model.locator('option').first()).toHaveText(/^From Ledger's agent settings \(.+\)$/);
 });
 
 test('a desk with an agent never opens the dialog', async ({ page }) => {

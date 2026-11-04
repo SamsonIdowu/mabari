@@ -97,6 +97,12 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const [error, setError] = useState('');
   const close = () => set({ newAgent: null });
   const models = accounts.find((item) => item.kind === account)?.models ?? [];
+  const leader = office.agents.find((agent) => agent.id === lead);
+  const preset = leader
+    ? leader.subModel && leader.subModel !== 'inherit'
+      ? leader.subModel
+      : leader.model
+    : (office.settings.defaults[account] ?? models[0] ?? '');
 
   const applyRole = (choice: Role) => {
     setRole(choice.label);
@@ -123,14 +129,13 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
       .createAgent({
         name,
         account: account as AccountKind,
-        model: model || models[0] || '',
+        model: model || preset,
         task,
         projectId,
         folder,
         dailyCostCap: Number(cap),
         allowedTools: tools,
-        ...(desk === undefined ? {} : { desk }),
-        ...(lead ? { leadId: lead } : {}),
+        ...(lead ? { leadId: lead } : desk === undefined ? {} : { desk }),
       })
       .then(() => {
         close();
@@ -218,13 +223,17 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
           <select
             className="in"
             id="naModel"
-            value={model || models[0] || ''}
+            value={model}
             onChange={(event) => setModel(event.target.value)}
           >
+            <option value="">
+              From {leader ? `${leader.name}'s ` : ''}agent settings ({preset})
+            </option>
             {models.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
+          <span className="help">Leave it on agent settings to use your default.</span>
         </div>
         <div className="field">
           <label htmlFor="naCap">Daily cost cap</label>
@@ -240,6 +249,7 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
               onChange={(event) => setCap(event.target.value)}
             />
           </div>
+          <span className="help">The agent pauses when it reaches this.</span>
         </div>
         <div className="field">
           <label htmlFor="naProj">Project</label>
@@ -256,24 +266,26 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
             ))}
           </select>
         </div>
-        {desk === undefined ? (
-          <div className="field">
-            <label htmlFor="naLead">Desk</label>
-            <select
-              className="in"
-              id="naLead"
-              value={lead}
-              onChange={(event) => setLead(event.target.value)}
-            >
-              <option value="">Its own desk</option>
-              {leads.map((agent) => (
-                <option value={agent.id} key={agent.id}>
-                  In {agent.name}&apos;s office, as a subagent
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        <div className="field">
+          <label htmlFor="naLead">Desk</label>
+          <select
+            className="in"
+            id="naLead"
+            value={lead}
+            onChange={(event) => {
+              setLead(event.target.value);
+              setModel('');
+            }}
+          >
+            <option value="">Its own desk</option>
+            {leads.map((agent) => (
+              <option value={agent.id} key={agent.id}>
+                In {agent.name}&apos;s office, as a subagent
+              </option>
+            ))}
+          </select>
+          <span className="help">Subagents sit next to their lead and share its project.</span>
+        </div>
       </div>
       <div className="field">
         <label htmlFor="naInst">Instructions</label>
@@ -310,6 +322,9 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
             </label>
           ))}
         </div>
+        <span className="help">
+          Shell commands and file changes outside the folder always ask for approval.
+        </span>
       </div>
       <div className="field">
         <label htmlFor="naDir">Working folder</label>

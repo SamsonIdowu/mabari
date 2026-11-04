@@ -4,16 +4,11 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { openAgent, threadKey, useOfficeUi } from '../office/uiStore.ts';
+import { MESSAGE_KINDS } from '../office/talk.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
 
-const KINDS: Record<string, { color: string; label: string }> = {
-  handoff: { color: '#1DD1A1', label: 'Handoff' },
-  question: { color: '#48DBFB', label: 'Question' },
-  answer: { color: '#4FB3FF', label: 'Answer' },
-  report: { color: '#FF9F43', label: 'Report' },
-  review: { color: '#FF6B9A', label: 'Review' },
-};
+const KINDS = MESSAGE_KINDS;
 
 const LIVE_MS = 5000;
 /** Within this many pixels of the bottom, a new message keeps the view at the bottom. */

@@ -161,3 +161,21 @@ test('the panel shows a queued instruction', async ({ page }) => {
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel.locator('.queued')).toContainText('Also add a changelog entry');
 });
+
+// Stage 9: one message shows up on the floor, in the panel and on the Conversations page.
+test('a handoff appears on the floor, in the panel and on the page', async ({ page }) => {
+  const panel = await open(page, 'Atlas');
+  await panel.getByRole('button', { name: 'Add subagent' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name').fill('Tally');
+  await dialog.getByLabel('Task').fill('Count the orders');
+  await dialog.getByRole('button', { name: 'Add subagent' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  const said = 'Can you take this for me: count the orders?';
+  await expect(page.locator('.ovl')).toContainText(said);
+  await panel.getByRole('button', { name: 'Conversations' }).click();
+  await expect(panel.locator('.cmsg', { hasText: said })).toBeVisible();
+  await panel.getByRole('button', { name: /Tally · \d+/ }).click();
+  await expect(page.locator('.thread.on')).toContainText('Atlas and Tally');
+  await expect(page.locator('.cmsg', { hasText: said })).toBeVisible();
+});

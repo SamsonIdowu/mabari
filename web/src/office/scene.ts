@@ -6,6 +6,7 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
+import { Talk } from './talk.ts';
 import {
   deskSeat,
   DESKS,
@@ -91,6 +92,8 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 export class OfficeScene {
   hoverDesk: number | null = null;
   readonly walkers = new Map<string, Walker>();
+  /** Agents talking: curves and flying envelopes. */
+  readonly talk = new Talk();
   view: View = { cx: W / 2, cy: H / 2, s: 1 };
   size = { width: W, height: H };
   private readonly context: CanvasRenderingContext2D;
@@ -481,6 +484,17 @@ export class OfficeScene {
     this.drawDeskHint(theme);
     for (const walker of [...scoped].sort((a, b) => a.y - b.y)) {
       drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id);
+    }
+    const messages = useOfficeStore.getState().office?.messages ?? [];
+    const where = (id: string) => {
+      const walker = this.walkers.get(id);
+      return walker && inView(walker) && !walker.leaving ? { x: walker.x, y: walker.y } : null;
+    };
+    const now = performance.now();
+    this.talk.update(messages, where, now);
+    if (!reducedMotion()) {
+      this.talk.drawCurves(c, messages, where, t, Date.now());
+      this.talk.drawFlights(c, now);
     }
     c.setTransform(1, 0, 0, 1, 0, 0);
   }

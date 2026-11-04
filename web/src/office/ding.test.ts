@@ -2,12 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
-import { listenForCompletions, playDing, someoneFinished } from './ding.ts';
+import { approvalArrived, listenForApprovals, playDing } from './ding.ts';
 
 const agent = (id: string, state: string) => ({ id, state }) as unknown as LiveAgent;
 
-function office(agents: LiveAgent[], completionSound = true) {
-  return { agents, settings: { completionSound } } as unknown as Snapshot;
+function office(agents: LiveAgent[], approvalSound = true) {
+  return { agents, settings: { approvalSound } } as unknown as Snapshot;
 }
 
 let notes = 0;
@@ -28,25 +28,36 @@ class FakeAudioContext {
   }
   createGain() {
     return {
-      gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+      gain: {
+        setValueAtTime: vi.fn(),
+        linearRampToValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn(),
+      },
       connect: vi.fn(),
     };
   }
 }
 
-describe('someoneFinished', () => {
-  it('sees an agent move to done', () => {
-    expect(someoneFinished([agent('a', 'editing')], [agent('a', 'done')])).toBe(true);
+const waiting = (id: string, approvalId: string) =>
+  ({ id, state: 'approval', approval: { id: approvalId } }) as unknown as LiveAgent;
+
+describe('approvalArrived', () => {
+  it('sees an agent start waiting for an approval', () => {
+    expect(approvalArrived([agent('a', 'editing')], [waiting('a', 'p1')])).toBe(true);
   });
 
-  it('ignores agents that were already done or have only just arrived', () => {
-    expect(someoneFinished([agent('a', 'done')], [agent('a', 'done')])).toBe(false);
-    expect(someoneFinished([], [agent('a', 'done')])).toBe(false);
-    expect(someoneFinished([agent('a', 'done')], [agent('a', 'idle')])).toBe(false);
+  it('sees a second approval from the same agent', () => {
+    expect(approvalArrived([waiting('a', 'p1')], [waiting('a', 'p2')])).toBe(true);
+  });
+
+  it('ignores the same approval, finished tasks, and agents that only just arrived', () => {
+    expect(approvalArrived([waiting('a', 'p1')], [waiting('a', 'p1')])).toBe(false);
+    expect(approvalArrived([agent('a', 'editing')], [agent('a', 'done')])).toBe(false);
+    expect(approvalArrived([], [waiting('a', 'p1')])).toBe(false);
   });
 });
 
-describe('the completion sound', () => {
+describe('the approval sound', () => {
   let stop: () => void;
   const set = (snapshot: Snapshot) => useOfficeStore.setState({ office: snapshot });
 
@@ -56,7 +67,7 @@ describe('the completion sound', () => {
     notes = 0;
     vi.stubGlobal('AudioContext', FakeAudioContext);
     vi.stubGlobal('document', new EventTarget());
-    stop = listenForCompletions();
+    stop = listenForApprovals();
     document.dispatchEvent(new Event('pointerdown'));
   });
 
@@ -66,35 +77,36 @@ describe('the completion sound', () => {
     vi.unstubAllGlobals();
   });
 
-  it('plays two notes once when a task finishes', () => {
+  it('plays once when an approval needs you, and not when a task finishes', () => {
     set(office([agent('a', 'editing')]));
     set(office([agent('a', 'done')]));
-    expect(notes).toBe(2);
-    set(office([agent('a', 'done')]));
-    expect(notes).toBe(2);
+    expect(notes).toBe(0);
+    set(office([agent('a', 'editing')]));
+    set(office([waiting('a', 'p1')]));
+    expect(notes).toBe(4);
+    set(office([waiting('a', 'p1')]));
+    expect(notes).toBe(4);
   });
 
   it('stays quiet when the setting is off', () => {
-    vi.advanceTimersByTime(2000);
     set(office([agent('a', 'editing')], false));
-    set(office([agent('a', 'done')], false));
+    set(office([waiting('a', 'p1')], false));
     expect(notes).toBe(0);
   });
 
-  it('does not ring for a first snapshot full of finished agents', () => {
-    vi.advanceTimersByTime(2000);
+  it('does not ring for a first snapshot full of waiting agents', () => {
     useOfficeStore.setState({ office: null });
-    set(office([agent('a', 'done'), agent('b', 'done')]));
+    set(office([waiting('a', 'p1'), waiting('b', 'p2')]));
     expect(notes).toBe(0);
   });
 
-  it('plays at most once a second', () => {
-    vi.advanceTimersByTime(2000);
+  it('plays at most once every 0.9 seconds', () => {
+    vi.advanceTimersByTime(2000); // past the last test's ding
     playDing();
-    playDing();
-    expect(notes).toBe(2);
-    vi.advanceTimersByTime(1001);
     playDing();
     expect(notes).toBe(4);
+    vi.advanceTimersByTime(901);
+    playDing();
+    expect(notes).toBe(8);
   });
 });

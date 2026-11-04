@@ -115,7 +115,7 @@ func (s *Simulator) after(milliseconds int64, work func()) {
 func (s *Simulator) runtimeOf(agent *models.LiveAgent) *runtime {
 	state, ok := s.runtimes[agent.ID]
 	if !ok {
-		state = &runtime{stateLeft: s.between(18, 40), doneUntil: s.now() + 9000}
+		state = &runtime{stateLeft: s.between(60, 220), doneUntil: s.now() + 9000}
 		s.runtimes[agent.ID] = state
 	}
 	return state
@@ -323,7 +323,8 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 	agent.Elapsed = orElse(spec.elapsed, func() int64 { return s.rounded(120, 1800) })
 	agent.TokensIn = orElse(spec.tokensIn, func() int64 { return s.rounded(8000, 90000) })
 	agent.TokensOut = orElse(spec.tokensOut, func() int64 { return s.rounded(2000, 20000) })
-	stateLeft := s.between(20, 40)
+	// Calm movement: a work state lasts minutes of office time, 25 to 50 real seconds.
+	stateLeft := s.between(60, 220)
 	agent.Folder = "~/code/shop"
 	if spec.folder != "" {
 		agent.Folder = spec.folder
@@ -431,7 +432,7 @@ func (s *Simulator) toolCall(agent *models.LiveAgent, state models.AgentState) (
 func (s *Simulator) setState(agent *models.LiveAgent, state models.AgentState) {
 	previous := agent.State
 	agent.State = state
-	s.runtimeOf(agent).stateLeft = s.between(18, 40)
+	s.runtimeOf(agent).stateLeft = s.between(150, 300)
 	s.engine.Touch(agent)
 	if previous != state {
 		s.checkpoint(agent)

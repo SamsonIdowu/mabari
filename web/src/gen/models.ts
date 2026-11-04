@@ -558,9 +558,10 @@ export interface Settings {
   voiceEngine: string;
   spokenReplies: boolean;
   /**
-   * CompletionSound plays a short ding when an agent finishes a task.
+   * ApprovalSound plays a short ding when an approval needs the person. Not when a task
+   * finishes, and not when auto approve settles it.
    */
-  completionSound: boolean;
+  approvalSound: boolean;
   retentionDays: number /* int */;
   lanAccess: boolean;
   /**

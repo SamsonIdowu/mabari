@@ -126,13 +126,19 @@ test('a hub token is shown once and can be revoked', async ({ page }) => {
   await expect(page.getByTestId('hubToken')).toHaveCount(0);
 });
 
-test('Attach Claude Code shows the real change first, and never runs from go run', async ({ page }) => {
+test('Attach Claude Code shows the real change first, and never runs from go run', async ({
+  page,
+}) => {
   await page.goto('/#accounts');
   const diff = page.getByTestId('claudeDiff');
   await expect(diff).toContainText('"PermissionRequest"');
-  await expect(diff).toContainText('"onFailure"', { timeout: 100 }).catch(() => undefined);
+  await expect(diff)
+    .toContainText('"onFailure"', { timeout: 100 })
+    .catch(() => undefined);
   await expect(diff).not.toContainText('onFailure');
-  await expect(page.locator('.card', { hasText: 'Attach Claude Code' })).toContainText('.mabari-backup');
+  await expect(page.locator('.card', { hasText: 'Attach Claude Code' })).toContainText(
+    '.mabari-backup',
+  );
   // The test server runs under go run, so there is no binary for the hook to call.
   await page.getByRole('button', { name: 'Attach Claude Code', exact: true }).click();
   await expect(page.getByText('start Mabari from its built binary')).toBeVisible();
@@ -181,7 +187,7 @@ test('live updates reach the page', async ({ page }) => {
   await expect(page.getByText('Kept for 7 days.')).toBeVisible();
 });
 
-test('the completion sound has a switch and can be played', async ({ page }) => {
+test('the approval sound has a switch and can be played', async ({ page }) => {
   await page.addInitScript(() => {
     const started: number[] = [];
     Object.assign(window, { notesPlayed: started });
@@ -199,7 +205,11 @@ test('the completion sound has a switch and can be played', async ({ page }) => 
       }
       createGain() {
         return {
-          gain: { setValueAtTime: () => undefined, exponentialRampToValueAtTime: () => undefined },
+          gain: {
+            setValueAtTime: () => undefined,
+            linearRampToValueAtTime: () => undefined,
+            exponentialRampToValueAtTime: () => undefined,
+          },
           connect: () => undefined,
         };
       }
@@ -208,18 +218,18 @@ test('the completion sound has a switch and can be played', async ({ page }) => 
   });
   await loadDemo(page);
   await go(page, '#preferences');
-  const box = page.getByLabel('Ding when a task is completed');
+  const box = page.getByLabel('Ding when an approval needs you');
   await expect(box).toBeChecked();
   await page.getByRole('button', { name: 'Play it' }).click();
   await expect
     .poll(() =>
       page.evaluate(() => (window as unknown as { notesPlayed: number[] }).notesPlayed.length),
     )
-    .toBe(2);
+    .toBe(4); // two notes, each with its overtone
   await box.click();
   await expect(box).not.toBeChecked();
   await page.reload();
-  await expect(page.getByLabel('Ding when a task is completed')).not.toBeChecked();
+  await expect(page.getByLabel('Ding when an approval needs you')).not.toBeChecked();
 });
 
 test('a wipe forgets the filtered view, so the next demo shows everyone', async ({ page }) => {

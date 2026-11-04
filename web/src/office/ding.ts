@@ -2,14 +2,12 @@
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent } from '../gen/models.ts';
 
-const THROTTLE_MS = 1000;
+const THROTTLE_MS = 900;
+/** Two bright notes, each with a quiet overtone, as in the prototype. */
 const NOTES = [
-  { frequency: 880, delay: 0 },
-  { frequency: 1318.51, delay: 0.12 },
+  { frequency: 1318.5, delay: 0 },
+  { frequency: 1975.5, delay: 0.11 },
 ];
-const ATTACK = 0.012;
-const DECAY = 0.45;
-const VOLUME = 0.16;
 
 let context: AudioContext | null = null;
 let lastPlayed = -Infinity;
@@ -20,46 +18,61 @@ function unlock() {
   if (context.state === 'suspended') void context.resume();
 }
 
-function note(audio: AudioContext, frequency: number, at: number) {
+function tone(
+  audio: AudioContext,
+  frequency: number,
+  at: number,
+  peak: number,
+  attack: number,
+  length: number,
+) {
   const oscillator = audio.createOscillator();
   const gain = audio.createGain();
   oscillator.type = 'sine';
   oscillator.frequency.value = frequency;
-  gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(VOLUME, at + ATTACK);
-  gain.gain.exponentialRampToValueAtTime(0.0001, at + ATTACK + DECAY);
+  gain.gain.setValueAtTime(0, at);
+  gain.gain.linearRampToValueAtTime(peak, at + attack);
+  gain.gain.exponentialRampToValueAtTime(peak / 275, at + length);
   oscillator.connect(gain);
   gain.connect(audio.destination);
   oscillator.start(at);
-  oscillator.stop(at + ATTACK + DECAY);
+  oscillator.stop(at + length + 0.1);
 }
 
-/** Plays two sine notes, at most once a second, so no sound files are needed. */
+/** Plays the chime, at most once every 0.9 seconds. Made with Web Audio, so no sound files. */
 export function playDing() {
   if (!context) return;
   const now = performance.now();
   if (now - lastPlayed < THROTTLE_MS) return;
   lastPlayed = now;
-  for (const { frequency, delay } of NOTES) note(context, frequency, context.currentTime + delay);
+  for (const { frequency, delay } of NOTES) {
+    const at = context.currentTime + delay;
+    tone(context, frequency, at, 0.22, 0.008, 1.1);
+    tone(context, frequency * 2.01, at, 0.05, 0.006, 0.5);
+  }
 }
 
-/** True when an agent that was already on the floor has just finished. */
-export function someoneFinished(before: LiveAgent[], after: LiveAgent[]): boolean {
+/**
+ * True when an approval has just started waiting for someone: an agent already on the floor now
+ * has a pending approval it didn't have before. One that auto approve settled never shows as
+ * pending, so it stays quiet.
+ */
+export function approvalArrived(before: LiveAgent[], after: LiveAgent[]): boolean {
   return after.some((agent) => {
-    if (agent.state !== 'done') return false;
+    if (agent.state !== 'approval' || !agent.approval) return false;
     const earlier = before.find((item) => item.id === agent.id);
-    return earlier !== undefined && earlier.state !== 'done';
+    return earlier !== undefined && earlier.approval?.id !== agent.approval.id;
   });
 }
 
 /** Starts listening, and returns how to stop. */
-export function listenForCompletions(): () => void {
+export function listenForApprovals(): () => void {
   document.addEventListener('pointerdown', unlock, { capture: true });
   document.addEventListener('keydown', unlock, { capture: true });
   const unsubscribe = useOfficeStore.subscribe((state, previous) => {
     const { office } = state;
-    if (!office?.settings.completionSound || !previous.office) return;
-    if (someoneFinished(previous.office.agents, office.agents)) playDing();
+    if (!office?.settings.approvalSound || !previous.office) return;
+    if (approvalArrived(previous.office.agents, office.agents)) playDing();
   });
   return () => {
     document.removeEventListener('pointerdown', unlock, { capture: true });

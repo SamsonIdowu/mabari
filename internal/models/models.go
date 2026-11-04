@@ -351,10 +351,11 @@ type Settings struct {
 	QueryModel    string `json:"queryModel"`
 	VoiceEngine   string `json:"voiceEngine"`
 	SpokenReplies bool   `json:"spokenReplies"`
-	// CompletionSound plays a short ding when an agent finishes a task.
-	CompletionSound bool `json:"completionSound"`
-	RetentionDays   int  `json:"retentionDays"`
-	LANAccess       bool `json:"lanAccess"`
+	// ApprovalSound plays a short ding when an approval needs the person. Not when a task
+	// finishes, and not when auto approve settles it.
+	ApprovalSound bool `json:"approvalSound"`
+	RetentionDays int  `json:"retentionDays"`
+	LANAccess     bool `json:"lanAccess"`
 	// RequireLogin asks for the access key on this computer too, for a computer shared with others.
 	RequireLogin bool              `json:"requireLogin"`
 	Defaults     map[string]string `json:"defaults"`

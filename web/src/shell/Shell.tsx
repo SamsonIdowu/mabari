@@ -15,7 +15,7 @@ import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
 import { StatusScreens } from '../screens/StatusScreens.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
-import { listenForCompletions } from '../office/ding.ts';
+import { listenForApprovals } from '../office/ding.ts';
 import { useHashRoute } from '../useHashRoute.ts';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
@@ -58,7 +58,7 @@ export function Shell() {
     screenRef.current?.scrollTo({ top: 0 });
   }, [route]);
 
-  useEffect(listenForCompletions, []);
+  useEffect(listenForApprovals, []);
 
   return (
     <div className={collapsed ? 'app collapsed' : 'app'}>

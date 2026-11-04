@@ -232,10 +232,14 @@ function VoiceCard({ settings }: { settings: SettingsModel }) {
           <label className="switch">
             <input
               type="checkbox"
-              checked={settings.completionSound}
-              onChange={(event) => save({ completionSound: event.target.checked })}
+              checked={settings.approvalSound}
+              onChange={(event) => {
+                save({ approvalSound: event.target.checked });
+                // Turning it on plays it, so you know what to listen for.
+                if (event.target.checked) playDing();
+              }}
             />
-            Ding when a task is completed
+            Ding when an approval needs you
           </label>
           <button type="button" className="btn sm" onClick={playDing}>
             Play it

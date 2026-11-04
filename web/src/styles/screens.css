@@ -140,6 +140,25 @@
   border-radius: 6px;
   padding: 1px 6px;
 }
+/* A message being sent or received: white with a coloured ring on the sender, filled on the
+   receiver. The colour is the message kind's. */
+.tag .mchip {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  animation: rise 0.2s ease;
+}
+.tag .mchip.mc-in {
+  background: var(--mc);
+  color: #0c0c0c;
+}
+.tag .mchip.mc-out {
+  background: #ffffff;
+  color: #0c0c0c;
+  box-shadow: inset 0 0 0 1.5px var(--mc);
+}
 .bub {
   position: absolute;
   transform: translate(-50%, -100%);

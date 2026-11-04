@@ -2,10 +2,12 @@
 import { clockText, etaLong, etaShort, modelLabel, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import { decisionColors, decisionLabels, providers, type ProviderName } from '../shared/tokens.ts';
+import { useOfficeStore } from '../data/officeStore.ts';
 import { R } from './background.ts';
 import { drawChar } from './character.ts';
 import { H, W } from './layout.ts';
 import type { OfficeScene, Walker } from './scene.ts';
+import { chipFor } from './talk.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 
 const STEP_LABELS: Record<string, string> = {
@@ -69,13 +71,16 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   const ui = useOfficeUi.getState();
   const { width, height } = scene.size;
   const seen = new Set<string>();
+  const messages = useOfficeStore.getState().office?.messages ?? [];
+  const now = Date.now();
+  const nameOf = (id: string) => scene.walkers.get(id)?.name ?? 'someone';
   for (const walker of scene.walkers.values()) {
     seen.add(walker.id);
     let element = layer.querySelector<HTMLElement>(`[data-o="${CSS.escape(walker.id)}"]`);
     if (!element) {
       element = document.createElement('div');
       element.dataset.o = walker.id;
-      element.innerHTML = `<div class="bub"></div><div class="tag ${providerClass(walker)}"><span class="nt"></span><span class="qd" hidden>Waiting to deliver</span></div>`;
+      element.innerHTML = `<div class="bub"></div><div class="tag ${providerClass(walker)}"><span class="nt"></span><span class="qd" hidden>Waiting to deliver</span><span class="mchip" hidden></span></div>`;
       layer.appendChild(element);
     }
     const visible = inScope(walker, ui, agents) && matches(walker, ui);
@@ -97,7 +102,15 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     );
     const attention = walker.state === 'approval' || walker.state === 'error';
     tag.className = `tag ${providerClass(walker)}${ui.selected === walker.id ? ' sel' : ''}${attention ? ' attn' : ''}`;
-    (tag.lastElementChild as HTMLElement).hidden = !walker.queued?.length;
+    tag.querySelector<HTMLElement>('.qd')!.hidden = !walker.queued?.length;
+    const chip = chipFor(walker.id, messages, now, nameOf);
+    const chipElement = tag.querySelector<HTMLElement>('.mchip')!;
+    chipElement.hidden = !chip;
+    if (chip) {
+      if (chipElement.textContent !== chip.text) chipElement.textContent = chip.text;
+      chipElement.style.setProperty('--mc', chip.color);
+      chipElement.className = `mchip ${chip.incoming ? 'mc-in' : 'mc-out'}`;
+    }
 
     const isReply = walker.bubbleKind === 'reply';
     const isTalk = walker.bubbleKind === 'talk';

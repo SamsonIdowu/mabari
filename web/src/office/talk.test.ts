@@ -1,28 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../gen/models.ts';
-import { kindColor, Talk } from './talk.ts';
+import { chipFor, kindColor, latestFor, SHOW_MS } from './talk.ts';
 
-const message = (id: string, kind = 'handoff'): Message =>
-  ({ id, fromAgent: 'a', toAgents: ['b'], kind, text: 'x', time: 0 }) as Message;
+const message = (id: string, time: number, kind = 'question', from = 'a', to = 'b'): Message =>
+  ({ id, fromAgent: from, toAgents: [to], kind, text: 'x', time }) as Message;
 
-const where = (id: string) => (id === 'a' ? { x: 0, y: 0 } : id === 'b' ? { x: 100, y: 0 } : null);
+const names: Record<string, string> = { a: 'Sage', b: 'Ledger', c: 'Atlas' };
+const nameOf = (id: string) => names[id] ?? id;
 
-describe('Talk', () => {
-  it('flies an envelope only for messages sent after the floor opened', () => {
-    const talk = new Talk();
-    talk.update([message('1'), message('2')], where, 0);
-    expect(talk.flying).toBe(0);
-    talk.update([message('1'), message('2'), message('3')], where, 10);
-    talk.update([message('1'), message('2'), message('3')], where, 20);
-    expect(talk.flying).toBe(1);
+describe('floor messages', () => {
+  it('chips the sender with "To" and the receiver with "From", in the kind colour', () => {
+    const messages = [message('1', 1000)];
+    expect(chipFor('a', messages, 2000, nameOf)).toEqual({
+      text: '↗ To Ledger · Question',
+      color: '#48DBFB',
+      incoming: false,
+    });
+    expect(chipFor('b', messages, 2000, nameOf)).toEqual({
+      text: '✉ From Sage · Question',
+      color: '#48DBFB',
+      incoming: true,
+    });
+    expect(chipFor('c', messages, 2000, nameOf)).toBeNull();
   });
 
-  it('skips agents that are not on the floor', () => {
-    const talk = new Talk();
-    talk.update([], where, 0);
-    talk.update([{ ...message('9'), toAgents: ['gone'] }], where, 10);
-    expect(talk.flying).toBe(0);
+  it('shows the newest message and fades after about 4 seconds', () => {
+    const messages = [message('1', 1000), message('2', 2000, 'answer', 'b', 'a')];
+    expect(latestFor('a', messages, 2500)?.id).toBe('2');
+    expect(latestFor('a', messages, 2000 + SHOW_MS + 1)).toBeNull();
   });
 
   it('uses the prototype colours', () => {

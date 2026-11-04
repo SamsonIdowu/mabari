@@ -6,7 +6,7 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
-import { Talk } from './talk.ts';
+import { drawEnvelopes } from './talk.ts';
 import {
   deskSeat,
   DESKS,
@@ -92,8 +92,6 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 export class OfficeScene {
   hoverDesk: number | null = null;
   readonly walkers = new Map<string, Walker>();
-  /** Agents talking: curves and flying envelopes. */
-  readonly talk = new Talk();
   view: View = { cx: W / 2, cy: H / 2, s: 1 };
   size = { width: W, height: H };
   private readonly context: CanvasRenderingContext2D;
@@ -415,6 +413,27 @@ export class OfficeScene {
     } else if (walker.state === 'done' && here) {
       glow = '#3FB97A';
       R(c, x + 20, y - 10, 24, 14, glow);
+    } else if (walker.state === 'running' && here) {
+      // Test output scrolling past, mostly green with the odd amber line.
+      R(c, x + 20, y - 10, 24, 14, '#0F1A12');
+      for (let line = 0; line < 4; line++) {
+        const rowY = y - 8 + ((t / 90 + line * 3) % 12);
+        const width = Math.round(4 + ((line * 7 + Math.floor(t / 400)) % 14));
+        R(c, x + 22, rowY, width, 1, line % 3 ? '#3FB97A' : '#F2B33D');
+      }
+      glow = '#3FB97A';
+    } else if (walker.state === 'reading' && here) {
+      // A document.
+      R(c, x + 20, y - 10, 24, 14, '#F4F4F2');
+      for (let line = 0; line < 4; line++)
+        R(c, x + 22, y - 8 + line * 3, line % 2 ? 14 : 18, 1, '#9A9A9E');
+    } else if (walker.state === 'browsing' && here) {
+      // A web page: a bar, a picture and two lines of text.
+      R(c, x + 20, y - 10, 24, 14, '#EAF2FA');
+      R(c, x + 20, y - 10, 24, 3, '#9FB3CC');
+      R(c, x + 22, y - 5, 9, 6, '#5B9BF0');
+      R(c, x + 33, y - 5, 9, 1, '#9A9A9E');
+      R(c, x + 33, y - 2, 7, 1, '#9A9A9E');
     } else if (walker.estimate) {
       R(c, x + 20, y - 10, 24, 14, '#2A3546');
       R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
@@ -490,12 +509,7 @@ export class OfficeScene {
       const walker = this.walkers.get(id);
       return walker && inView(walker) && !walker.leaving ? { x: walker.x, y: walker.y } : null;
     };
-    const now = performance.now();
-    this.talk.update(messages, where, now);
-    if (!reducedMotion()) {
-      this.talk.drawCurves(c, messages, where, t, Date.now());
-      this.talk.drawFlights(c, now);
-    }
+    drawEnvelopes(c, messages, where, Date.now(), reducedMotion());
     c.setTransform(1, 0, 0, 1, 0, 0);
   }
 }

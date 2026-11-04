@@ -57,7 +57,26 @@ export function Welcome() {
               Nothing leaves this computer unless you turn on LAN access in Settings.
             </p>
           </div>
-          <canvas width="960" height="576" aria-label="Preview of the pixel office" />
+          <div className="herowrap">
+            <canvas
+              id="heroCanvas"
+              width="960"
+              height="576"
+              aria-label="Preview of the pixel office"
+            />
+            <div className="veehello">
+              <canvas
+                data-mascot="wave"
+                data-scale="5"
+                width="160"
+                height="180"
+                aria-hidden="true"
+              />
+              <div className="veebub">
+                Hi, I&apos;m <b>Vee</b>. I keep an eye on your agents so you don&apos;t have to.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

@@ -1954,3 +1954,191 @@ tr:last-child td {
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.35);
 }
+.fbubble {
+  position: absolute;
+  left: 62%;
+  top: 2%;
+  z-index: 2;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  box-shadow: var(--shadow);
+  white-space: normal;
+  width: max-content;
+}
+.fbubble.red {
+  background: var(--red);
+  color: #fff;
+}
+.fhname {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 6px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+.fhname .muted {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.finfo,
+.fsteps {
+  z-index: 2;
+}
+
+/* mascot */
+.brandvee {
+  width: 32px;
+  height: 36px;
+  image-rendering: pixelated;
+  flex: none;
+  margin-top: -4px;
+}
+.fhname canvas {
+  position: static !important;
+  inset: auto;
+  width: 24px !important;
+  height: 24px !important;
+  flex: none;
+  image-rendering: pixelated;
+  border-radius: 6px;
+  background: var(--surface2);
+}
+.fhname .vee {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+}
+.fbubble {
+  left: 50%;
+  top: auto;
+  bottom: 100%;
+  transform: translate(-50%, -6px);
+  border-radius: 14px;
+  max-width: 260px;
+  text-align: center;
+}
+.ctools,
+.readout {
+  z-index: 25;
+}
+.herowrap {
+  position: relative;
+}
+.veehello {
+  position: absolute;
+  left: -28px;
+  bottom: -34px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  pointer-events: none;
+}
+.veehello canvas {
+  width: 160px;
+  height: 180px;
+  image-rendering: pixelated;
+}
+.veebub {
+  margin-top: 18px;
+  max-width: 230px;
+  padding: 10px 14px;
+  border-radius: 16px 16px 16px 4px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.floormsg canvas[data-mascot] {
+  position: static !important;
+  width: 96px;
+  height: 108px;
+  image-rendering: pixelated;
+  margin: -6px auto 2px;
+  display: block;
+}
+.veerow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.veerow figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+}
+.veerow canvas {
+  width: 96px;
+  height: 108px;
+  image-rendering: pixelated;
+}
+.veerow figcaption {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--fg2);
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes rise {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+.voice {
+  animation: none;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+[hidden] {
+  display: none !important;
+}

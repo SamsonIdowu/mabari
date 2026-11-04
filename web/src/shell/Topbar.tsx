@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-import { BrandMark } from './BrandMark.tsx';
 import { LocalStatus } from './LocalStatus.tsx';
 import { RailToggle } from './RailToggle.tsx';
 import { ThemeButton } from './ThemeButton.tsx';
@@ -9,7 +8,14 @@ export function Topbar() {
     <header className="topbar">
       <RailToggle />
       <a className="brandmark" href="#office" aria-label="Mabari, go to the office">
-        <BrandMark />
+        <canvas
+          className="brandvee"
+          data-mascot="idle"
+          data-scale="1"
+          width="32"
+          height="36"
+          aria-hidden="true"
+        />
         <span className="bm-name">Mabari</span>
         <span className="bm-tag">Your AI agents at work</span>
       </a>

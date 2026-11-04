@@ -60,6 +60,17 @@ func ConfigDir(getenv func(string) string) (string, error) {
 type Hook struct {
 	Binary string
 	Port   int
+	// TokenFile, when set, is where the hook reads its token, instead of the secret store. Used
+	// when Mabari runs in Docker and Claude Code on the host.
+	TokenFile string
+}
+
+func (hook Hook) args(event string) []string {
+	args := []string{"hook", "--port", strconv.Itoa(hook.Port)}
+	if hook.TokenFile != "" {
+		args = append(args, "--token-file", hook.TokenFile)
+	}
+	return append(args, event)
 }
 
 // Plan is a change to settings.json, shown before it is made.
@@ -110,7 +121,7 @@ func PlanAttach(configDir string, hook Hook) (Plan, error) {
 		group.set("hooks", mustJSON([]map[string]any{{
 			"type":    "command",
 			"command": hook.Binary,
-			"args":    []string{"hook", "--port", strconv.Itoa(hook.Port), event},
+			"args":    hook.args(event),
 			"timeout": hookTimeout(event),
 		}}))
 		groups = append(groups, mustJSON(group))

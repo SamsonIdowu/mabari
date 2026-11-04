@@ -51,7 +51,14 @@ func runHook(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	port := flags.Int("port", config.DefaultPort, "Mabari's port")
+	tokenFile := flags.String("token-file", "", "read the token from this file")
 	if flags.Parse(args) != nil || flags.NArg() != 1 {
+		return nil
+	}
+	if *tokenFile != "" {
+		claudecode.RunHook(flags.Arg(0), *port, stdin, stdout, func() (string, error) {
+			return claudecode.ReadTokenFile(*tokenFile)
+		})
 		return nil
 	}
 	cfg, err := config.Load(nil, os.Getenv, io.Discard)
@@ -74,8 +81,16 @@ func runHook(args []string, stdin io.Reader, stdout io.Writer) error {
 func connectClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("connect claude", flag.ContinueOnError)
 	yes := flags.Bool("yes", false, "make the change without asking")
+	tokenFile := flags.String("token-file", "", "keep the hook token in this file, for Mabari in Docker")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *tokenFile != "" {
+		absolute, err := filepath.Abs(expandHome(*tokenFile))
+		if err != nil {
+			return err
+		}
+		*tokenFile = absolute
 	}
 	cfg, err := config.Load(nil, os.Getenv, io.Discard)
 	if err != nil {
@@ -89,7 +104,7 @@ func connectClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	plan, err := claudecode.PlanAttach(dir, claudecode.Hook{Binary: binary, Port: cfg.Port})
+	plan, err := claudecode.PlanAttach(dir, claudecode.Hook{Binary: binary, Port: cfg.Port, TokenFile: *tokenFile})
 	if err != nil {
 		return err
 	}
@@ -102,12 +117,18 @@ func connectClaude(args []string, stdin io.Reader, stdout io.Writer) error {
 		_, err := fmt.Fprintln(stdout, "Nothing was changed.")
 		return err
 	}
-	store, err := openSecrets(cfg)
-	if err != nil {
-		return err
-	}
-	if err := claudecode.EnsureToken(store); err != nil {
-		return err
+	if *tokenFile != "" {
+		if err := claudecode.EnsureTokenFile(*tokenFile); err != nil {
+			return err
+		}
+	} else {
+		store, err := openSecrets(cfg)
+		if err != nil {
+			return err
+		}
+		if err := claudecode.EnsureToken(store); err != nil {
+			return err
+		}
 	}
 	if err := claudecode.Apply(plan); err != nil {
 		return err
@@ -163,11 +184,18 @@ func confirm(stdin io.Reader, stdout io.Writer, question string) bool {
 	return answer == "y" || answer == "yes"
 }
 
+// HookTokenSecret is where Docker mounts the hook token shared with Claude Code on the host.
+const HookTokenSecret = "/run/secrets/mabari_hook_token" // #nosec G101 -- a path, not a credential
+
 // claudeOptions turns on the Claude Code routes. A container can't reach the host's settings, so
 // there the Accounts page shows the host command instead (Stage 11).
 func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
 	if os.Getenv("MABARI_IN_CONTAINER") == "1" {
-		return nil
+		// Claude Code on the host reports here when the hook token is shared as a Docker secret.
+		if _, err := claudecode.ReadTokenFile(HookTokenSecret); err != nil {
+			return nil
+		}
+		return &server.ClaudeOptions{Connector: o.claude, Secrets: o.secrets, TokenFile: HookTokenSecret}
 	}
 	dir, err := claudecode.ConfigDir(os.Getenv)
 	if err != nil {
@@ -196,4 +224,14 @@ func watchClaude(ctx context.Context, o *office) {
 			_ = o.engine.Do(func() { o.claude.CheckStale(now) })
 		}
 	}
+}
+
+// expandHome turns a leading ~ into the home folder, since a quoted ~ reaches us unexpanded.
+func expandHome(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(path, "~"))
+		}
+	}
+	return path
 }

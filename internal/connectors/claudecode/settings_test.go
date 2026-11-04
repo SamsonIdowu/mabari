@@ -240,3 +240,40 @@ func mustString(value any) string {
 	data, _ := json.Marshal(value)
 	return string(data)
 }
+
+func TestHookWithATokenFile(t *testing.T) {
+	hook := Hook{Binary: "/usr/local/bin/mabari", Port: 4317, TokenFile: "/Users/a/.mabari/hook_token"}
+	if got := strings.Join(hook.args("Stop"), " "); got != "hook --port 4317 --token-file /Users/a/.mabari/hook_token Stop" {
+		t.Errorf("args = %q", got)
+	}
+	if got := strings.Join(Hook{Binary: "/m", Port: 9}.args("Stop"), " "); got != "hook --port 9 Stop" {
+		t.Errorf("args = %q", got)
+	}
+}
+
+func TestTokenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub", "hook_token")
+	if _, err := ReadTokenFile(path); err == nil {
+		t.Error("read a missing file")
+	}
+	if err := EnsureTokenFile(path); err != nil {
+		t.Fatal(err)
+	}
+	first, err := ReadTokenFile(path)
+	if err != nil || !strings.HasPrefix(first, "mab_hook_") {
+		t.Fatalf("token = %q %v", first, err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v", info.Mode())
+	}
+	if err := EnsureTokenFile(path); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := ReadTokenFile(path); again != first {
+		t.Error("the token changed")
+	}
+	_ = os.WriteFile(path, []byte("short"), 0o600)
+	if _, err := ReadTokenFile(path); err == nil {
+		t.Error("a short token was accepted")
+	}
+}

@@ -11,7 +11,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/secrets"
@@ -94,4 +97,33 @@ func EnsureToken(store secrets.Store) error {
 		return err
 	}
 	return store.Set(TokenName, "mab_hook_"+hex.EncodeToString(raw))
+}
+
+// ReadTokenFile reads a hook token kept in a file, for Mabari in Docker with Claude Code on the
+// host. The same file is the container's mabari_hook_token secret.
+func ReadTokenFile(path string) (string, error) {
+	content, err := os.ReadFile(path) // #nosec G304 -- the person's own token file
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(content))
+	if len(token) < 32 {
+		return "", errors.New("the hook token file is too short")
+	}
+	return token, nil
+}
+
+// EnsureTokenFile makes the token file the first time, readable only by its owner.
+func EnsureTokenFile(path string) error {
+	if _, err := ReadTokenFile(path); err == nil {
+		return nil
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte("mab_hook_"+hex.EncodeToString(raw)+"\n"), 0o600)
 }

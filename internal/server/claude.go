@@ -21,6 +21,10 @@ type ClaudeOptions struct {
 	ConfigDir string
 	// Hook is the binary and port written into settings.json.
 	Hook claudecode.Hook
+	// TokenFile, when set, holds the hook token instead of Secrets. In Docker it is the
+	// mabari_hook_token secret, and settings.json lives on the host, so Connect explains the
+	// host command instead of writing it.
+	TokenFile string
 
 	seen claudecode.Seen
 }
@@ -37,7 +41,7 @@ func (a *api) claudeRoutes(mux *http.ServeMux) {
 // claudeHook takes one hook call. Only a call signed with the install's token gets in, because a
 // hook reply can steer Claude, and the reply is signed so the hook knows it came from here.
 func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
-	token, err := a.claude.Secrets.Get(claudecode.TokenName)
+	token, err := a.claude.token()
 	if err != nil || token == "" {
 		writeError(w, http.StatusUnauthorized, "Claude Code is not connected")
 		return
@@ -74,8 +78,31 @@ type claudeStatus struct {
 	Backup   string            `json:"backup"`
 }
 
+func (c *ClaudeOptions) token() (string, error) {
+	if c.TokenFile != "" {
+		return claudecode.ReadTokenFile(c.TokenFile)
+	}
+	return c.Secrets.Get(claudecode.TokenName)
+}
+
+// HostCommand is what to run on the host when Mabari is in Docker.
+const HostCommand = "mabari connect claude --token-file ~/.mabari/hook_token"
+
+// inDocker answers Connect and Disconnect when Claude Code's settings are on the host.
+func (a *api) inDocker(w http.ResponseWriter) bool {
+	if a.claude.TokenFile == "" {
+		return false
+	}
+	writeError(w, http.StatusConflict, "Mabari runs in Docker, so Claude Code's settings are on your computer. "+
+		"Run this there: "+HostCommand+". See docs/INSTALL.md.")
+	return true
+}
+
 // claudePlan shows exactly what Connect would change, before anything is written.
 func (a *api) claudePlan(w http.ResponseWriter, _ *http.Request) {
+	if a.inDocker(w) {
+		return
+	}
 	plan, err := claudecode.PlanAttach(a.claude.ConfigDir, a.claude.Hook)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
@@ -96,6 +123,9 @@ func (a *api) claudeConnect(w http.ResponseWriter, r *http.Request) {
 		Confirm bool `json:"confirm"`
 	}
 	if !readJSON(w, r, &body) {
+		return
+	}
+	if a.inDocker(w) {
 		return
 	}
 	if !body.Confirm {
@@ -134,6 +164,9 @@ func (a *api) claudeConnect(w http.ResponseWriter, r *http.Request) {
 
 // claudeDisconnect takes Mabari's hooks out of settings.json and forgets the hook token.
 func (a *api) claudeDisconnect(w http.ResponseWriter, _ *http.Request) {
+	if a.inDocker(w) {
+		return
+	}
 	if err := a.detachClaude(); err != nil {
 		internalError(w, err)
 		return
@@ -155,6 +188,9 @@ func (a *api) claudeDisconnect(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *api) detachClaude() error {
+	if a.claude.TokenFile != "" {
+		return nil // the settings are on the host, and the token is the person's own file
+	}
 	plan, err := claudecode.PlanDetach(a.claude.ConfigDir)
 	if err != nil {
 		return err

@@ -175,6 +175,7 @@ type agentSpec struct {
 	tokensOut int64
 	errorText string
 	project   string
+	folder    string
 	spawned   bool
 }
 
@@ -244,6 +245,9 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 	agent.TokensOut = orElse(spec.tokensOut, func() int64 { return s.rounded(2000, 20000) })
 	stateLeft := s.between(20, 40)
 	agent.Folder = "~/code/shop"
+	if spec.folder != "" {
+		agent.Folder = spec.folder
+	}
 	agent.AllowedTools = []string{"read", "edit", "shell"}
 	agent.Skin = pick(s, skins)
 	agent.Hair = pick(s, hairs)
@@ -669,6 +673,70 @@ func (s *Simulator) Interrupt(agent *models.LiveAgent) {
 	s.runtimeOf(agent).stateLeft = waitForever
 	s.engine.AddEvent(agent, "interrupt", "Paused by you after the current tool call", nil)
 	s.engine.Log(agent.Name, models.LogInstruction, "Interrupt", "Paused", "amber")
+}
+
+// AddSubagent seats a new agent at the free desk nearest its lead.
+func (s *Simulator) AddSubagent(lead *models.LiveAgent, name, task, model string) *models.LiveAgent {
+	count := 0
+	for _, agent := range s.engine.Agents() {
+		if isLeadOf(lead, agent) {
+			count++
+		}
+	}
+	if count >= models.MaxSubagents {
+		s.engine.Toast(lead.Name + "'s office is full. Three subagents at most.")
+		return nil
+	}
+	if model == "" {
+		model = subModelFor(lead)
+	}
+	project := ""
+	if lead.Project != nil {
+		project = *lead.Project
+	}
+	helper := s.makeAgent(agentSpec{
+		name: name, provider: lead.Provider, model: model, account: lead.Account, task: task,
+		state: models.StateThinking, near: &lead.Desk, lead: lead, project: project,
+		progress: 0.03, tokensIn: 500, tokensOut: 80, folder: lead.Folder,
+	})
+	if helper == nil {
+		return nil
+	}
+	s.runtimeOf(lead).spawned = true
+	s.engine.AddEvent(lead, "spawn_agent", "Started "+helper.Name+" ("+helper.Model+")", nil)
+	s.talk(lead, helper, "Can you take this for me: "+lowerFirst(helper.Task)+"?",
+		models.MessageHandoff)
+	s.after(3000, func() {
+		s.talk(helper, lead, "On it. I'll report back when the first part is done.",
+			models.MessageAnswer)
+	})
+	s.engine.Log(lead.Name, models.LogSession, "Added subagent "+helper.Name+" using "+helper.Model,
+		"In "+lead.Name+"'s office", "ok")
+	return helper
+}
+
+// Retry starts an agent again after an error.
+func (s *Simulator) Retry(agent *models.LiveAgent) {
+	agent.Error = ""
+	s.setState(agent, models.StateThinking)
+	s.engine.AddEvent(agent, "retry", "Retrying after the error", nil)
+}
+
+// leaveAfter is how long an agent takes to walk out before it is removed.
+const leaveAfter = 6000
+
+// StopAgent ends an agent's session. It walks out, then leaves the office.
+func (s *Simulator) StopAgent(agent *models.LiveAgent) {
+	s.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")
+	agent.Leaving = true
+	agent.State = models.StateIdle
+	s.engine.Touch(agent)
+	s.engine.Toast(agent.Name + " stopped and left the office")
+	s.after(leaveAfter, func() {
+		if s.stillHere(agent) {
+			s.engine.RemoveAgent(agent.ID)
+		}
+	})
 }
 
 func intPointer(value int) *int { return &value }

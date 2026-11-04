@@ -4,20 +4,26 @@ package server
 
 import (
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 const (
+	maxAgentName   = 24
 	maxProjectName = 28
 	eventPageLimit = 200
 )
 
 var retentionChoices = []int{7, 30, 90, 365}
+
+// folderPath accepts home-relative, absolute and Windows paths.
+var folderPath = regexp.MustCompile(`^(~/|~$|/|[A-Za-z]:\\)`)
 
 func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/snapshot", a.snapshot)
@@ -36,6 +42,10 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/{id}", a.getAgent)
 	mux.HandleFunc("PATCH /api/agents/{id}", a.updateAgent)
 	mux.HandleFunc("GET /api/agents/{id}/events", a.agentEvents)
+	mux.HandleFunc("POST /api/agents/{id}/interrupt", a.agentAction(interruptAgent))
+	mux.HandleFunc("POST /api/agents/{id}/stop", a.agentAction(stopAgent))
+	mux.HandleFunc("POST /api/agents/{id}/retry", a.agentAction(retryAgent))
+	mux.HandleFunc("POST /api/agents/{id}/subagents", a.addSubagent)
 
 	mux.HandleFunc("GET /api/accounts", a.listAccounts)
 
@@ -231,6 +241,10 @@ type agentBody struct {
 	AllowedTools *[]string `json:"allowedTools"`
 }
 
+func validFolder(path string) bool {
+	return folderPath.MatchString(path)
+}
+
 func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 	var body agentBody
 	if !readJSON(w, r, &body) {
@@ -238,6 +252,10 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.DailyCostCap != nil && *body.DailyCostCap < 0 {
 		writeError(w, http.StatusBadRequest, "a cost cap can't be negative")
+		return
+	}
+	if body.Folder != nil && !validFolder(*body.Folder) {
+		writeError(w, http.StatusBadRequest, "that doesn't look like a folder path")
 		return
 	}
 	var saved *models.Agent
@@ -251,7 +269,7 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 			badProject = true
 			return
 		}
-		applyAgentBody(agent, body)
+		a.applyAgentBody(agent, body)
 		a.engine.Touch(agent)
 		copied := agent.Agent
 		saved = &copied
@@ -263,24 +281,128 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 	respond(w, saved, err, "no such agent")
 }
 
-func applyAgentBody(agent *models.LiveAgent, body agentBody) {
-	if body.Model != nil {
+// laterWording is how a change reads for agents that apply it at a checkpoint.
+func laterWording(agent *models.LiveAgent, later string) (outcome, chip string) {
+	if agent.Provider == models.ProviderClaude {
+		return later, "amber"
+	}
+	return "Applied", "ok"
+}
+
+func (a *api) applyAgentBody(agent *models.LiveAgent, body agentBody) {
+	if body.Model != nil && *body.Model != agent.Model {
 		agent.Model = *body.Model
+		a.engine.AddEvent(agent, "instruction", "Model changed to "+agent.Model, nil)
+		outcome, chip := laterWording(agent, "At next checkpoint")
+		a.engine.Log(agent.Name, models.LogInstruction, "Switch model to "+agent.Model, outcome, chip)
 	}
-	if body.SubModel != nil {
-		agent.SubModel = *body.SubModel
-	}
-	if body.Project != nil {
-		agent.Project = body.Project
-	}
-	if body.Folder != nil {
+	if body.Folder != nil && *body.Folder != agent.Folder {
 		agent.Folder = *body.Folder
+		a.engine.AddEvent(agent, "instruction", "Working folder changed to "+agent.Folder, nil)
+		outcome, chip := laterWording(agent, "From next session")
+		a.engine.Log(agent.Name, models.LogInstruction, "Work in "+agent.Folder, outcome, chip)
 	}
 	if body.DailyCostCap != nil {
 		agent.DailyCostCap = body.DailyCostCap
 	}
 	if body.AllowedTools != nil {
 		agent.AllowedTools = *body.AllowedTools
+	}
+	if agent.Lead != nil {
+		return // A subagent's project and helpers follow its lead.
+	}
+	if body.SubModel != nil {
+		agent.SubModel = *body.SubModel
+	}
+	if body.Project != nil {
+		agent.Project = body.Project
+		for _, other := range a.engine.Agents() {
+			if other.Lead != nil && *other.Lead == agent.ID {
+				other.Project = body.Project
+				a.engine.Touch(other)
+			}
+		}
+	}
+}
+
+func interruptAgent(c events.Connector, agent *models.LiveAgent) { c.Interrupt(agent) }
+func stopAgent(c events.Connector, agent *models.LiveAgent)      { c.StopAgent(agent) }
+func retryAgent(c events.Connector, agent *models.LiveAgent)     { c.Retry(agent) }
+
+// agentAction runs a connector action on the agent in the path.
+func (a *api) agentAction(action func(events.Connector, *models.LiveAgent)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var found bool
+		err := a.engine.Do(func() {
+			agent := a.engine.Agent(r.PathValue("id"))
+			if agent == nil {
+				return
+			}
+			if connector := a.engine.ConnectorFor(agent); connector != nil {
+				found = true
+				action(connector, agent)
+			}
+		})
+		switch {
+		case err != nil:
+			internalError(w, err)
+		case !found:
+			writeError(w, http.StatusNotFound, "no such agent")
+		default:
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		}
+	}
+}
+
+type subagentBody struct {
+	Name  string `json:"name"`
+	Task  string `json:"task"`
+	Model string `json:"model"`
+}
+
+func (a *api) addSubagent(w http.ResponseWriter, r *http.Request) {
+	var body subagentBody
+	if !readJSON(w, r, &body) {
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" || len([]rune(name)) > maxAgentName {
+		writeError(w, http.StatusBadRequest, "Give the subagent a name.")
+		return
+	}
+	var helper *models.LiveAgent
+	var problem string
+	status := http.StatusConflict
+	err := a.engine.Do(func() {
+		lead := a.engine.Agent(r.PathValue("id"))
+		if lead == nil {
+			problem, status = "no such agent", http.StatusNotFound
+			return
+		}
+		if a.engine.AgentByName(name) != nil {
+			problem = "There is already an agent called " + name + "."
+			return
+		}
+		connector := a.engine.ConnectorFor(lead)
+		if connector == nil {
+			problem, status = "no such agent", http.StatusNotFound
+			return
+		}
+		task := strings.TrimSpace(body.Task)
+		if task == "" {
+			task = "Help " + lead.Name + " with " + strings.ToLower(lead.Task)
+		}
+		if helper = connector.AddSubagent(lead, name, task, body.Model); helper == nil {
+			problem = lead.Name + "'s office is full. Three subagents at most."
+		}
+	})
+	switch {
+	case err != nil:
+		internalError(w, err)
+	case problem != "":
+		writeError(w, status, problem)
+	default:
+		writeJSON(w, http.StatusCreated, helper.Agent)
 	}
 }
 

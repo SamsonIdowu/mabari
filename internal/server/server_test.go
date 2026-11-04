@@ -287,6 +287,118 @@ func TestAgentRoutes(t *testing.T) {
 	}
 }
 
+func agentNamed(t *testing.T, office *office, name string) models.LiveAgent {
+	t.Helper()
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	for _, agent := range snapshot.Agents {
+		if agent.Name == name {
+			return agent
+		}
+	}
+	t.Fatalf("no agent called %s", name)
+	return models.LiveAgent{}
+}
+
+func TestAgentActions(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	mori := agentNamed(t, office, "Mori")
+	if response := office.do(t, http.MethodPost, "/api/agents/"+mori.ID+"/retry", ""); response.Code != http.StatusOK {
+		t.Fatalf("retry = %d", response.Code)
+	}
+	if got := agentNamed(t, office, "Mori"); got.State != models.StateThinking || got.Error != "" {
+		t.Errorf("Mori = %s, %q", got.State, got.Error)
+	}
+
+	ledger := agentNamed(t, office, "Ledger")
+	if response := office.do(t, http.MethodPost, "/api/agents/"+ledger.ID+"/interrupt", ""); response.Code != http.StatusOK {
+		t.Fatalf("interrupt = %d", response.Code)
+	}
+	if got := agentNamed(t, office, "Ledger"); got.State != models.StatePaused || got.Estimate != nil {
+		t.Errorf("Ledger = %s, estimate %+v", got.State, got.Estimate)
+	}
+
+	if response := office.do(t, http.MethodPost, "/api/agents/"+ledger.ID+"/stop", ""); response.Code != http.StatusOK {
+		t.Fatalf("stop = %d", response.Code)
+	}
+	if got := agentNamed(t, office, "Ledger"); !got.Leaving {
+		t.Error("Ledger did not start leaving")
+	}
+	if response := office.do(t, http.MethodPost, "/api/agents/nope/stop", ""); response.Code != http.StatusNotFound {
+		t.Errorf("missing agent = %d", response.Code)
+	}
+}
+
+func TestAddSubagentLimitsAndNames(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	atlas := agentNamed(t, office, "Atlas")
+	path := "/api/agents/" + atlas.ID + "/subagents"
+
+	created := office.do(t, http.MethodPost, path, `{"name":"Atlas runner","task":"Run the tests"}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", created.Code, created.Body.String())
+	}
+	helper := decode[models.Agent](t, created)
+	if helper.Model != "claude-haiku-4-5" || *helper.Lead != atlas.ID || *helper.Project != "checkout" {
+		t.Errorf("helper = %+v", helper)
+	}
+
+	if response := office.do(t, http.MethodPost, path, `{"name":"Atlas runner"}`); response.Code != http.StatusConflict ||
+		!strings.Contains(response.Body.String(), "already an agent") {
+		t.Errorf("duplicate = %d %s", response.Code, response.Body.String())
+	}
+	if response := office.do(t, http.MethodPost, path, `{"name":"  "}`); response.Code != http.StatusBadRequest {
+		t.Errorf("blank = %d", response.Code)
+	}
+
+	third := decode[models.Agent](t, office.do(t, http.MethodPost, path, `{"name":"Atlas third"}`))
+	if !strings.HasPrefix(agentNamed(t, office, third.Name).Task, "Help Atlas with prepare") {
+		t.Errorf("task = %q", agentNamed(t, office, third.Name).Task)
+	}
+	response := office.do(t, http.MethodPost, path, `{"name":"Atlas fourth"}`)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "Three subagents") {
+		t.Errorf("fourth = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTeamEstimateCoversALeadAndItsSubagents(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	atlas := agentNamed(t, office, "Atlas")
+	if atlas.Estimate != nil {
+		t.Fatalf("Atlas is waiting, so it has no estimate of its own: %+v", atlas.Estimate)
+	}
+	scribe := agentNamed(t, office, "Atlas scribe")
+	if atlas.TeamEstimate == nil || atlas.TeamEstimate.SecondsLeft != scribe.Estimate.SecondsLeft {
+		t.Errorf("team = %+v, scribe = %+v", atlas.TeamEstimate, scribe.Estimate)
+	}
+	if ledger := agentNamed(t, office, "Ledger"); ledger.TeamEstimate != nil {
+		t.Errorf("Ledger has no subagents: %+v", ledger.TeamEstimate)
+	}
+}
+
+func TestAgentSettingsAreRecorded(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	atlas := agentNamed(t, office, "Atlas")
+	path := "/api/agents/" + atlas.ID
+	body := `{"model":"claude-sonnet-4-5","folder":"~/code/next","projectId":"docs","subModel":"inherit"}`
+	if response := office.do(t, http.MethodPatch, path, body); response.Code != http.StatusOK {
+		t.Fatalf("update = %d", response.Code)
+	}
+	if got := agentNamed(t, office, "Atlas scribe"); *got.Project != "docs" {
+		t.Errorf("the subagent stayed in %s", *got.Project)
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=Switch%20model", ""))
+	if len(rows) != 1 || rows[0].Outcome != "At next checkpoint" || rows[0].Chip != "amber" {
+		t.Errorf("rows = %+v", rows)
+	}
+	if response := office.do(t, http.MethodPatch, path, `{"folder":"not a path"}`); response.Code != http.StatusBadRequest {
+		t.Errorf("bad folder = %d", response.Code)
+	}
+}
+
 func TestAccountsListEveryKind(t *testing.T) {
 	accounts := decode[[]models.Account](t, newOffice(t).do(t, http.MethodGet, "/api/accounts", ""))
 	if len(accounts) != 5 || accounts[0].Kind != models.AccountCodex || accounts[0].Status != models.AccountOff {

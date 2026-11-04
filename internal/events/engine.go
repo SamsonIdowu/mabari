@@ -35,6 +35,12 @@ type Connector interface {
 	// Decide resumes an agent after the Engine has recorded the decision.
 	Decide(agent *models.LiveAgent, approval models.Approval)
 	Interrupt(agent *models.LiveAgent)
+	// StopAgent ends one agent's session.
+	StopAgent(agent *models.LiveAgent)
+	// Retry starts an agent again after an error.
+	Retry(agent *models.LiveAgent)
+	// AddSubagent seats a new agent in a lead's office, or returns nil if it can't.
+	AddSubagent(lead *models.LiveAgent, name, task, model string) *models.LiveAgent
 	Models() []string
 }
 
@@ -216,12 +222,19 @@ func (e *Engine) flush() {
 	}
 	now := e.now()
 	var changed []*models.LiveAgent
+	// A lead's whole team estimate moves with its subagents.
+	for _, agent := range e.agents {
+		if _, ok := e.dirty[agent.ID]; ok && agent.Lead != nil {
+			e.dirty[*agent.Lead] = struct{}{}
+		}
+		agent.Refresh(now)
+	}
 	e.record(e.store.Transaction(context.Background(), func() error {
 		for _, agent := range e.agents {
 			if _, ok := e.dirty[agent.ID]; !ok {
 				continue
 			}
-			agent.Refresh(now)
+			e.refreshTeam(agent)
 			if err := e.store.SaveAgent(context.Background(), *agent); err != nil {
 				return err
 			}
@@ -236,6 +249,21 @@ func (e *Engine) flush() {
 		e.broadcast(models.ServerMessage{Type: models.MsgAgent, Agent: &copied})
 	}
 	e.refreshProjects(now, true)
+}
+
+// refreshTeam works out when a lead and its subagents should all be done. Agents with no
+// subagents have no team estimate.
+func (e *Engine) refreshTeam(lead *models.LiveAgent) {
+	estimates := []*models.Estimate{lead.Estimate}
+	for _, agent := range e.agents {
+		if agent.Lead != nil && *agent.Lead == lead.ID {
+			estimates = append(estimates, agent.Estimate)
+		}
+	}
+	lead.TeamEstimate = nil
+	if len(estimates) > 1 {
+		lead.TeamEstimate = models.LatestFinish(estimates...)
+	}
 }
 
 // refreshProjects recomputes what the server derives from each project's agents.
@@ -270,6 +298,11 @@ func sameEstimate(a, b *models.Estimate) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// ConnectorFor returns the connector that runs an agent, or nil. Call inside Do.
+func (e *Engine) ConnectorFor(agent *models.LiveAgent) Connector {
+	return e.connectors[agent.Source]
 }
 
 // Now is the engine's clock.
@@ -750,6 +783,9 @@ func (e *Engine) Snapshot() models.Snapshot {
 	agents := make([]models.LiveAgent, 0, len(e.agents))
 	for _, agent := range e.agents {
 		agent.Refresh(now)
+	}
+	for _, agent := range e.agents {
+		e.refreshTeam(agent)
 		agents = append(agents, *agent)
 	}
 	projects := make([]models.Project, 0, len(e.projects))

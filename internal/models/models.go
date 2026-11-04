@@ -156,12 +156,14 @@ type SessionState struct {
 	// Rate is progress per office second, which drives the estimate.
 	Rate float64 `json:"rate"`
 	// Estimate is null unless the agent is working. See EstimateFor.
-	Estimate  *Estimate `json:"estimate"`
-	Elapsed   int64     `json:"elapsed"`
-	TokensIn  int64     `json:"tokensIn"`
-	TokensOut int64     `json:"tokensOut"`
-	Cost      float64   `json:"cost"`
-	Error     string    `json:"error"`
+	Estimate *Estimate `json:"estimate"`
+	// TeamEstimate is when a lead and its subagents should all be done, or null if it has none.
+	TeamEstimate *Estimate `json:"teamEstimate"`
+	Elapsed      int64     `json:"elapsed"`
+	TokensIn     int64     `json:"tokensIn"`
+	TokensOut    int64     `json:"tokensOut"`
+	Cost         float64   `json:"cost"`
+	Error        string    `json:"error"`
 	// Files are what the agent is working on, used by tool feeds and the dispatcher.
 	Files []string `json:"files"`
 	// Bubble is what the speech bubble says now, and BubbleKind is "", "reply" or "talk".

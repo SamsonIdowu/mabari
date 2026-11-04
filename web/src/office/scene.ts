@@ -41,10 +41,10 @@ export function officeBackground(theme: 'dark' | 'light'): HTMLCanvasElement {
 
 const HERO_AGENTS = [
   { x: 288, y: 182, provider: 'claude', state: 'editing' },
-  { x: 416, y: 182, provider: 'openai', state: 'thinking' },
-  { x: 110, y: 460, provider: 'custom', state: 'browsing' },
-  { x: 790, y: 520, provider: 'claude', state: 'idle' },
-  { x: 544, y: 278, provider: 'openai', state: 'approval' },
+  { x: 448, y: 182, provider: 'openai', state: 'thinking' },
+  { x: 90, y: 588, provider: 'custom', state: 'browsing' },
+  { x: 1046, y: 520, provider: 'claude', state: 'idle' },
+  { x: 608, y: 310, provider: 'openai', state: 'approval' },
 ];
 const HERO_SKINS = ['#F2C9A0', '#D9A27A', '#B07850', '#8C5A3A', '#6B4128'];
 const HERO_HAIR = ['#2A1B12', '#5A3A22', '#101010', '#B5651D', '#D9C27A'];
@@ -78,7 +78,7 @@ interface Mote {
 
 function makeMotes(): Mote[] {
   return Array.from({ length: 30 }, () => ({
-    x: 480 + Math.random() * 180,
+    x: 608 + Math.random() * 220,
     y: 70 + Math.random() * 180,
     s: Math.random() * 1.6 + 1,
     v: Math.random() * 0.2 + 0.05,
@@ -284,7 +284,7 @@ export class OfficeScene {
       mote.x += Math.sin(t / 1000 + mote.s * 3) * 0.1;
       if (mote.y > 250) {
         mote.y = 70;
-        mote.x = 480 + Math.random() * 180;
+        mote.x = 608 + Math.random() * 220;
       }
       c.fillRect(mote.x + (mote.y - 64) * 0.2, mote.y, mote.s, mote.s);
     }
@@ -332,8 +332,8 @@ export class OfficeScene {
   private drawServerRoom(walkers: Walker[], t: number): void {
     const c = this.context;
     const running = walkers.some((item) => item.state === 'running' && !item.path.length);
-    for (let sx = 22; sx < 30; sx++) {
-      if (sx === 25) continue;
+    for (let sx = 30; sx < 38; sx++) {
+      if (sx === 33) continue;
       for (let s2 = 0; s2 < 6; s2++) {
         const on = Math.sin(t / (running ? 90 : 420) + sx * 1.7 + s2 * 2.3) > 0.2;
         R(c, sx * 32 + 23, 65 + s2 * 8, 3, 3, on ? (s2 % 2 ? '#3FB97A' : '#F2B33D') : '#1A1B20');
@@ -347,10 +347,10 @@ export class OfficeScene {
         c.globalAlpha = 1;
       }
     }
-    R(c, 2, 13 * 32 + 10, 6, 40, Math.sin(t / 300) > 0 ? '#6CC7D9' : '#5AB3C4');
+    R(c, 2, 17 * 32 + 10, 6, 40, Math.sin(t / 300) > 0 ? '#6CC7D9' : '#5AB3C4');
     c.globalAlpha = 0.12;
     c.fillStyle = '#6CC7D9';
-    ell(c, 14, 13 * 32 + 30, 22, 28);
+    ell(c, 14, 17 * 32 + 30, 22, 28);
     c.globalAlpha = 1;
   }
 

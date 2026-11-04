@@ -66,8 +66,8 @@ export function Welcome() {
             <canvas
               id="heroCanvas"
               ref={hero}
-              width="960"
-              height="576"
+              width="1216"
+              height="704"
               aria-label="Preview of the pixel office"
             />
           </div>

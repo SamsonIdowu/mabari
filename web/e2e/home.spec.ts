@@ -126,7 +126,7 @@ test('asking through Vee leaves the answer on the agent', async ({ page, request
   await home(page, request);
   await ask(page, 'ask Ledger how it is going');
   await expect(page.locator('#veeSay')).toContainText("so it won't be interrupted");
-  await page.getByRole('link', { name: 'Office' }).click();
+  await page.getByRole('link', { name: 'Agents' }).click();
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel.locator('.answer')).toContainText('Ledger was not interrupted.');
 });
@@ -144,7 +144,7 @@ test('asking Vee to approve changes nothing', async ({ page, request }) => {
   await expect(page.locator('#veeSay')).toContainText('I never approve risky actions for you.');
   const pending = await request.get('/api/approvals');
   expect(JSON.stringify(await pending.json())).toContain('db:migrate');
-  await page.getByRole('link', { name: 'Office' }).click();
+  await page.getByRole('link', { name: 'Agents' }).click();
   await expect(page.locator('.board')).toContainText('Atlas');
 });
 

@@ -179,10 +179,10 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   useEscape(() => {
     if (document.querySelector('.scrim')) return;
     const ui = useOfficeUi.getState();
-    if (ui.maximised) ui.set({ maximised: false });
-    else if (menu) close();
+    if (menu) close();
     else if (ui.team) ui.set({ team: null });
     else if (ui.selected) ui.set({ selected: null, follow: false });
+    else if (ui.fullscreen) toggleFullscreen();
   });
 
   const project = office.projects.find((item) => item.id === filters.project);
@@ -398,7 +398,7 @@ function CanvasTools() {
   const set = useOfficeUi((state) => state.set);
   const zoomBy = useOfficeUi((state) => state.zoomBy);
   const fit = useOfficeUi((state) => state.fit);
-  const wide = useOfficeUi((state) => state.fullscreen || state.maximised);
+  const wide = useOfficeUi((state) => state.fullscreen);
   return (
     <div className="ctools" role="toolbar" aria-label="Office view">
       <button
@@ -479,7 +479,11 @@ function CanvasTools() {
 }
 
 function Stage({ office }: { office: Snapshot }) {
-  const maximised = useOfficeUi((state) => state.maximised);
+  const fullscreen = useOfficeUi((state) => state.fullscreen);
+  useEffect(() => {
+    document.body.classList.toggle('ofs', fullscreen);
+    return () => document.body.classList.remove('ofs');
+  }, [fullscreen]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const tags = useRef<HTMLDivElement>(null);
   const board = useRef<HTMLDivElement>(null);
@@ -525,7 +529,7 @@ function Stage({ office }: { office: Snapshot }) {
       }
     };
     const onFullscreen = () => {
-      useOfficeUi.getState().set({ fullscreen: !!document.fullscreenElement });
+      if (!document.fullscreenElement) useOfficeUi.getState().set({ fullscreen: false });
     };
     const onKey = (event: KeyboardEvent) => {
       const { tagName } = event.target as HTMLElement;
@@ -597,12 +601,12 @@ function Stage({ office }: { office: Snapshot }) {
 
   return (
     <div className="ofloor">
-      <div className={maximised ? 'stage max' : 'stage'} id="stage">
+      <div className="stage" id="stage">
         <canvas
           id="floor"
           ref={canvas}
-          width="960"
-          height="576"
+          width="1216"
+          height="704"
           aria-label="Office floor. Click an agent to inspect it."
           onClick={select}
           onMouseDown={(event) => {
@@ -658,7 +662,6 @@ export function Office() {
 
   const selected = office.agents.find((agent) => agent.id === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
-  const project = office.projects.find((item) => item.id === filters.project);
   const scoped = office.agents.filter((agent) => inScope(agent, filters, office.agents));
 
   return (
@@ -667,7 +670,7 @@ export function Office() {
         <div className="ocol">
           <div className="ohead">
             <div className="ohtitle">
-              <h1>{lead ? `${lead.name}'s office` : (project?.name ?? 'All projects')}</h1>
+              <h1>Agents</h1>
               <Summary scoped={scoped} />
             </div>
             <div className="ohact">

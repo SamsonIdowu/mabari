@@ -6,7 +6,7 @@ describe('desks', () => {
   it('has sixteen desks in a four by four grid', () => {
     expect(DESKS).toHaveLength(16);
     expect(DESKS[0]).toEqual({ x: 8, y: 4 });
-    expect(DESKS[5]).toEqual({ x: 11, y: 7 });
+    expect(DESKS[5]).toEqual({ x: 13, y: 8 });
   });
 
   it('seats an agent in front of its desk', () => {
@@ -18,10 +18,10 @@ describe('spotFor', () => {
   it('sends agents to the room for their state', () => {
     expect(spotFor('editing', 0, 1)).toEqual(deskSeat(0));
     expect(spotFor('reading', 0, 1)).toEqual({ x: 120, y: 118 });
-    expect(spotFor('running', 0, 1)).toEqual({ x: 786, y: 136 });
-    expect(spotFor('browsing', 0, 1)).toEqual({ x: 84, y: 440 });
-    expect(spotFor('spawning', 0, 1)).toEqual({ x: 822, y: 362 });
-    expect(spotFor('idle', 0, 1)).toEqual({ x: 790, y: 520 });
+    expect(spotFor('running', 0, 1)).toEqual({ x: 1042, y: 136 });
+    expect(spotFor('browsing', 0, 1)).toEqual({ x: 90, y: 568 });
+    expect(spotFor('spawning', 0, 1)).toEqual({ x: 1078, y: 362 });
+    expect(spotFor('idle', 0, 1)).toEqual({ x: 1046, y: 520 });
   });
 
   it('wraps round when a room has more agents than spots', () => {
@@ -43,13 +43,13 @@ describe('pathTo', () => {
   });
 
   it('uses the gap in the wall to reach the rooms on the right', () => {
-    expect(pathTo({ x: 300, y: 200 }, { x: 790, y: 520 })[0]).toEqual({ x: 660, y: 200 });
+    expect(pathTo({ x: 300, y: 200 }, { x: 1046, y: 520 })[0]).toEqual({ x: 912, y: 200 });
   });
 
   it('stays on the right side when moving between right hand rooms', () => {
-    expect(pathTo({ x: 800, y: 136 }, { x: 790, y: 520 })).toEqual([
-      { x: 800, y: 520 },
-      { x: 790, y: 520 },
+    expect(pathTo({ x: 1000, y: 136 }, { x: 1046, y: 520 })).toEqual([
+      { x: 1000, y: 520 },
+      { x: 1046, y: 520 },
     ]);
   });
 });

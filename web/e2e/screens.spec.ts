@@ -8,7 +8,7 @@ test.beforeEach(async ({ request }) => {
 async function loadDemo(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Explore a demo office' }).click();
-  await expect(page.locator('h1')).toHaveText('All projects');
+  await expect(page.locator('h1')).toHaveText('Agents');
 }
 
 const go = (page: Page, route: string) =>
@@ -29,7 +29,7 @@ const SCREENS: [route: string, heading: string][] = [
 
 test('first run opens the office, and home is the start page after that', async ({ page }) => {
   await loadDemo(page);
-  await expect(page.locator('h1')).toHaveText('All projects');
+  await expect(page.locator('h1')).toHaveText('Agents');
   await expect(page.getByText('Demo office loaded.')).toBeVisible();
   await page.goto('/');
   await expect(page.locator('#homeGreet')).toBeVisible();

@@ -205,10 +205,7 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
   const colour = done ? 'var(--ok)' : project.color;
   const canComplete = project.status === 'ready' || project.status === 'idle';
   return (
-    <article
-      className={done ? 'card eqcard pdone' : 'card eqcard'}
-      style={{ height: 470, boxShadow: `inset 0 4px 0 ${colour}` }}
-    >
+    <article className={done ? 'card eqcard pdone' : 'card eqcard'} style={{ height: 470 }}>
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {done ? (
@@ -284,7 +281,7 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
   const longest = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
   const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
-    <article className="card eqcard" style={{ height: 470, boxShadow: 'inset 0 4px 0 #8E8E93' }}>
+    <article className="card eqcard" style={{ height: 470 }}>
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <span className="pdot" style={{ background: '#8E8E93' }} />

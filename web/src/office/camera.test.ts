@@ -20,17 +20,17 @@ describe('viewMatrix', () => {
   });
 
   it('fits a wide area by height and centres the office', () => {
-    const matrix = viewMatrix(whole, { width: 1920, height: 576 });
+    const matrix = viewMatrix(whole, { width: W * 2, height: H });
     expect(matrix.a).toBe(1);
-    expect(matrix.e).toBe(480);
+    expect(matrix.e).toBe(W / 2);
     expect(matrix.f).toBe(0);
   });
 
   it('fits a tall area by width', () => {
-    const matrix = viewMatrix(whole, { width: 480, height: 1000 });
+    const matrix = viewMatrix(whole, { width: W / 2, height: 1000 });
     expect(matrix.a).toBe(0.5);
     expect(matrix.e).toBe(0);
-    expect(matrix.f).toBe((1000 - 288) / 2);
+    expect(matrix.f).toBe((1000 - H / 2) / 2);
   });
 });
 

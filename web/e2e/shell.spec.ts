@@ -7,7 +7,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 const NAV: [name: string, label: string, heading: string][] = [
-  ['Office', 'Office', 'All projects'],
+  ['Agents', 'Agents', 'Agents'],
   ['Projects', 'Projects', 'Projects'],
   ['Conversations', 'Chats', 'Conversations'],
   ['Accounts', 'Accounts', 'Accounts'],
@@ -81,7 +81,7 @@ test('the calmer page styles win over the older ones', async ({ page }) => {
   const heading = page.locator('.phead h1');
   await expect(heading).toHaveCSS('font-size', '34px');
   await expect(page.locator('.phead p')).toBeHidden();
-  await expect(page.locator('.page').first()).toHaveCSS('max-width', '1120px');
+  await expect(page.locator('.page').first()).toHaveCSS('max-width', 'none');
 });
 
 test('shows the local only status', async ({ page }) => {

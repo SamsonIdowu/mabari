@@ -95,7 +95,7 @@ test('filters and projects narrow the floor', async ({ page }) => {
 
   await page.getByRole('button', { name: /^Project/ }).click();
   await page.getByRole('menuitemradio', { name: /Docs site/ }).click();
-  await expect(page.locator('h1')).toHaveText('Docs site');
+  await expect(page.locator('.dd').first()).toContainText('Docs site');
   await expect(page.locator('.tag .nt:visible')).toHaveCount(3);
 
   await page.getByRole('button', { name: 'Clear filters' }).click();
@@ -111,7 +111,7 @@ test('opening a project from the Projects page filters the floor', async ({ page
     .locator('article', { hasText: 'Test coverage' })
     .getByRole('link', { name: 'Open in office' })
     .click();
-  await expect(page.locator('h1')).toHaveText('Test coverage');
+  await expect(page.locator('.dd').first()).toContainText('Test coverage');
   await page.getByRole('button', { name: 'Clear filters' }).click();
 });
 
@@ -165,30 +165,54 @@ test('shortcuts leave text boxes alone', async ({ page }) => {
   await expect(page.locator('#fsBtn')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('full screen toggles and falls back to filling the window', async ({ page }) => {
+test('full screen keeps the floor, the command bar and the panel', async ({ page }) => {
   await loadDemo(page);
-  await page.evaluate(() => {
-    Element.prototype.requestFullscreen = () => Promise.reject(new Error('refused'));
-  });
   const button = page.locator('#fsBtn');
   await expect(button).toHaveAttribute('title', 'Full screen (F)');
   await page.keyboard.press('f');
-  await expect(page.locator('#stage')).toHaveClass(/max/);
+  await expect(page.locator('body')).toHaveClass(/ofs/);
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   await expect(button).toHaveAttribute('title', 'Exit full screen (F or Esc)');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#stage')).not.toHaveClass(/max/);
+  await expect(page.locator('.rail')).toBeHidden();
+  await expect(page.locator('.topbar')).toBeHidden();
+  await expect(page.locator('.ohead')).toBeHidden();
+  await expect(page.locator('#floor')).toBeVisible();
+  await expect(page.locator('.cmdbar')).toBeVisible();
+  await page.keyboard.press('f');
+  await expect(page.locator('body')).not.toHaveClass(/ofs/);
 });
 
-test('an approval card leaves full screen so it can be seen', async ({ page }) => {
+test('escape leaves full screen last', async ({ page }) => {
   await loadDemo(page);
-  await page.evaluate(() => {
-    Element.prototype.requestFullscreen = () => Promise.reject(new Error('refused'));
-  });
   await page.keyboard.press('f');
-  await expect(page.locator('#stage')).toHaveClass(/max/);
+  await page.getByLabel('Send to').selectOption({ label: 'Scout' });
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel).toBeVisible();
+  await page.locator('h2', { hasText: 'Scout' }).click();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(page.locator('body')).toHaveClass(/ofs/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('body')).not.toHaveClass(/ofs/);
+});
+
+test('an approval card shows over full screen', async ({ page }) => {
+  await loadDemo(page);
+  await page.keyboard.press('f');
   await page.locator('.bitem').click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('#stage')).not.toHaveClass(/max/);
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Allow once' })).toBeVisible();
+  const card = page.getByRole('dialog');
+  await expect(card.getByRole('button', { name: 'Allow once' })).toBeVisible();
+  await expect(page.locator('body')).toHaveClass(/ofs/);
+});
+
+test('name tags grow and shrink with the zoom', async ({ page }) => {
+  await loadDemo(page);
+  const layer = page.locator('.ovl .tag').first().locator('..').locator('..');
+  const scale = async () =>
+    Number(await layer.evaluate((node) => node.style.getPropertyValue('--oz')));
+  await expect.poll(scale).toBeGreaterThan(0);
+  const start = await scale();
+  await page.keyboard.press('=');
+  await page.keyboard.press('=');
+  await expect.poll(scale).toBeGreaterThan(start);
 });

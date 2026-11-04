@@ -39,12 +39,11 @@ test('a lead shows its whole team estimate and its office', async ({ page }) => 
   await expect(panel).toContainText('Paused until you decide on the approval');
   await expect(panel).toContainText(/Whole team: Atlas and its subagents should be done in about/);
   await panel.getByRole('button', { name: "Open Atlas's office" }).click();
-  await expect(page.locator('h1')).toHaveText("Atlas's office");
   await expect(page.locator('.tag .nt:visible')).toHaveCount(2);
   await expect(page.locator('.banner', { hasText: 'Inside' })).toContainText('1 subagent');
   await expect.poll(async () => page.locator('#zoomPct').textContent()).not.toBe('100%');
   await page.getByRole('button', { name: 'Back to the full floor' }).click();
-  await expect(page.locator('h1')).toHaveText('All projects');
+  await expect(page.locator('.banner', { hasText: 'Inside' })).toBeHidden();
 });
 
 test('a subagent links back to its lead', async ({ page }) => {

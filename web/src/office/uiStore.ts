@@ -20,9 +20,6 @@ interface OfficeUi extends OfficeFilters {
   pan: { x: number; y: number };
   follow: boolean;
   spotlight: boolean;
-  /** Full screen without the browser's help, for when it refuses. */
-  maximised: boolean;
-  /** Real full screen is on. */
   fullscreen: boolean;
   mode: MessageMode;
   /** "auto", "selected", "everyone" or an agent id. */
@@ -57,7 +54,6 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   pan: { x: 0, y: 0 },
   follow: false,
   spotlight: true,
-  maximised: false,
   fullscreen: false,
   mode: 'instruct',
   target: 'auto',

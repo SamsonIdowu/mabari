@@ -859,7 +859,7 @@ tr:last-child td {
 }
 #heroCanvas {
   width: 100%;
-  aspect-ratio: 960/576;
+  aspect-ratio: 1216/704;
   border-radius: 16px;
   image-rendering: pixelated;
   box-shadow:

@@ -53,6 +53,15 @@ function fmtClock(value: number): string {
 const fmtK = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value));
 
 /** Name tags and speech bubbles, positioned over the canvas every frame. */
+/** Tags and bubbles grow and shrink with the office, and quiet bubbles hide when it's small. */
+function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
+  const scale = Math.max(0.72, Math.min(1.6, scene.matrix().a / 1.05)).toFixed(2);
+  if (layer.dataset.oz === scale) return;
+  layer.dataset.oz = scale;
+  layer.style.setProperty('--oz', scale);
+  layer.classList.toggle('far', Number(scale) < 0.86);
+}
+
 function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {
   const ui = useOfficeUi.getState();
   const { width, height } = scene.size;
@@ -313,6 +322,7 @@ export function renderOverlays(
   const walker = ui.selected ? (scene.walkers.get(ui.selected) ?? null) : null;
   const shown = walker && inScope(walker, ui, agents) && matches(walker, ui) ? walker : null;
   renderTags(elements.tags, scene, agents);
+  scaleTags(elements.tags, scene);
   renderBoard(elements.board, scene, agents);
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());

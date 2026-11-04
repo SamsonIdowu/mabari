@@ -191,7 +191,9 @@ section[data-screen='preferences'] p.muted {
 }
 .ohead h1,
 #oTitle {
-  font-size: 22px;
+  font-size: 37px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 .obar2 {
   padding-top: 4px !important;
@@ -442,4 +444,111 @@ section[data-screen='home'] {
 }
 .cmdbar .btn {
   min-height: 44px;
+}
+
+/* tags and bubbles follow the office zoom */
+.ovl .tag {
+  scale: var(--oz, 1);
+  transform-origin: 50% 0;
+}
+.ovl .bub {
+  scale: var(--oz, 1);
+  transform-origin: 50% 100%;
+  max-width: 190px;
+}
+.ovl.far .bub:not(.red):not(.reply) {
+  display: none;
+}
+/* office full screen: hide everything but the floor, the command bar, the agent panel and dialogs */
+body.ofs .app {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+body.ofs .topbar,
+body.ofs .rail,
+body.ofs .ohead,
+body.ofs .obar2,
+body.ofs #hookBanner {
+  display: none !important;
+}
+/* projects: lighter borders */
+section[data-screen='projects'] .card {
+  border-color: transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+section[data-screen='projects'] .cnt,
+section[data-screen='projects'] .arow,
+section[data-screen='projects'] .agrow {
+  border-color: transparent;
+}
+section[data-screen='projects'] .seg {
+  border-color: transparent;
+}
+/* conversations: edge to edge, lighter borders */
+section[data-screen='conversations'] .page {
+  max-width: none;
+  padding: 28px 24px 24px;
+  gap: 18px;
+  height: 100%;
+}
+section[data-screen='conversations'] {
+  height: 100%;
+}
+section[data-screen='conversations'] .convwrap {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+section[data-screen='conversations'] .card {
+  border-color: transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 0;
+}
+section[data-screen='conversations'] .cardhd {
+  border-bottom-color: var(--surface3);
+}
+section[data-screen='conversations'] #convTabs button,
+section[data-screen='conversations'] #convTabs .ptab {
+  border-color: transparent;
+}
+section[data-screen='conversations'] #convList > * {
+  border-bottom-color: var(--surface2);
+}
+section[data-screen='conversations'] .cb {
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: var(--surface2);
+}
+
+/* every page: edge to edge, lighter borders (same treatment as Conversations) */
+section[data-screen]:not([data-screen='home']):not([data-screen='welcome']):not(
+    [data-screen='office']
+  )
+  .page {
+  max-width: none;
+  padding: 28px 24px 32px;
+  gap: 20px;
+}
+section[data-screen]:not([data-screen='office']) .card {
+  border-color: transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+section[data-screen]:not([data-screen='office']) .cardhd {
+  border-bottom-color: var(--surface3);
+}
+section[data-screen]:not([data-screen='office']) .ptab,
+section[data-screen]:not([data-screen='office']) .seg {
+  border-color: transparent;
+}
+section[data-screen]:not([data-screen='office']) table th,
+section[data-screen]:not([data-screen='office']) table td {
+  border-color: var(--surface2);
+}
+section[data-screen]:not([data-screen='office']) .banner {
+  border-color: transparent;
+}
+section[data-screen]:not([data-screen='office']) details,
+section[data-screen]:not([data-screen='office']) .acc {
+  border-color: transparent;
 }

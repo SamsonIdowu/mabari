@@ -114,14 +114,14 @@ var defaultsKey = map[models.AccountKind]string{
 // Subagents work at the same time, so the longest task sets the pace.
 func Minutes(plan Plan) int {
 	longest := 20
-	any := false
+	found := false
 	for _, member := range plan.Members {
 		if !member.On {
 			continue
 		}
 		minutes := ruleFor(member.Role).minutes
-		if !any || minutes > longest {
-			longest, any = minutes, true
+		if !found || minutes > longest {
+			longest, found = minutes, true
 		}
 	}
 	return 10 + longest + 10

@@ -961,3 +961,6 @@ func (s *Simulator) seedConversations() {
 		s.engine.AddMessage(from, to, message.text, message.kind, message.ago)
 	}
 }
+
+// DemoActive reports whether the demo office is running. Call inside Do.
+func (s *Simulator) DemoActive() bool { return s.demoMode }

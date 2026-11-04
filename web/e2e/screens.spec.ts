@@ -98,7 +98,9 @@ test('conversations list threads and open one', async ({ page }) => {
 test('accounts show connections without pretending to connect', async ({ page }) => {
   await page.goto('/#accounts');
   await expect(page.locator('.chip', { hasText: 'Not connected' })).toHaveCount(3);
-  await expect(page.getByRole('button', { name: 'Sign in with ChatGPT' })).toBeDisabled();
+  // The test machine has no Codex CLI, so signing in explains what is missing.
+  await page.getByRole('button', { name: 'Sign in with ChatGPT' }).click();
+  await expect(page.getByText("the Codex CLI isn't installed")).toBeVisible();
 });
 
 test('API keys are checked, saved without being shown, and removed', async ({ page }) => {

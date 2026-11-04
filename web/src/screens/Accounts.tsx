@@ -6,7 +6,7 @@ import type { Account, AccountKind, AccountStatus } from '../gen/models.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
-import { LATER, PageHead } from './parts.tsx';
+import { PageHead } from './parts.tsx';
 
 function StatusChip({ status }: { status: AccountStatus }) {
   switch (status) {
@@ -61,7 +61,15 @@ function Models({ models }: { models: string[] }) {
 }
 
 function ChatGptCard({ account }: { account: Account }) {
+  const toast = useOfficeStore((state) => state.toast);
   const connected = account.status === 'connected';
+  const fail = (error: unknown) => toast(error instanceof Error ? error.message : 'Try again');
+  // Codex runs its own ChatGPT sign in. Mabari only opens the page Codex gives it.
+  const signIn = () =>
+    api
+      .codexLogin()
+      .then(({ authUrl }) => window.open(authUrl, '_blank', 'noopener,noreferrer'))
+      .catch(fail);
   return (
     <article className="card eqcard">
       <div className="acchead">
@@ -97,9 +105,24 @@ function ChatGptCard({ account }: { account: Account }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className={connected ? 'btn' : 'btn primary'} disabled title={LATER}>
-          {connected ? 'Sign out' : 'Sign in with ChatGPT'}
-        </button>
+        {connected ? (
+          <button type="button" className="btn" onClick={() => api.codexLogout().catch(fail)}>
+            Sign out
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={account.status === 'connecting'}
+            onClick={signIn}
+          >
+            {account.status === 'connecting'
+              ? 'Waiting for ChatGPT…'
+              : account.status === 'expired'
+                ? 'Sign in again'
+                : 'Sign in with ChatGPT'}
+          </button>
+        )}
       </div>
     </article>
   );

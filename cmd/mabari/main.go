@@ -21,6 +21,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/config"
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
+	"github.com/SamsonIdowu/mabari/internal/connectors/codex"
 	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
@@ -113,11 +114,17 @@ func serve(args []string, stdout, stderr io.Writer) error {
 			Claude:    claudeOptions(cfg, office),
 			Secrets:   office.secrets,
 			Hub:       office.hub,
+			Codex:     office.codex,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go office.engine.Run(ctx)
 	go watchClaude(ctx, office)
+	go func() {
+		if err := office.codex.Launch(ctx); err != nil {
+			slog.Info("Codex is not connected", "reason", err)
+		}
+	}()
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -147,6 +154,7 @@ type office struct {
 	secrets   secrets.Store
 	claude    *claudecode.Connector
 	hub       *hub.Connector
+	codex     *codex.Connector
 }
 
 func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
@@ -191,9 +199,11 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	engine.AddConnector(claudecode.Source, claude)
 	hubConnector := hub.New(engine)
 	engine.AddConnector(hub.Source, hubConnector)
+	codexConnector := codex.New(engine, version)
+	engine.AddConnector(codex.Source, codexConnector)
 	return &office{
 		store: database, engine: engine, simulator: sim, secrets: vault,
-		claude: claude, hub: hubConnector,
+		claude: claude, hub: hubConnector, codex: codexConnector,
 	}, nil
 }
 

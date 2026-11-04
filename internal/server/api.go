@@ -476,6 +476,10 @@ func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 			problem = "There's no room for another agent there."
 		default:
 			agent = created
+			// A signed-in Codex runs the agent as a real thread. The demo office stays simulated.
+			if body.Account == models.AccountCodex && a.codex != nil && !a.simulator.DemoActive() {
+				a.codex.StartAgent(created)
+			}
 		}
 	})
 	switch {

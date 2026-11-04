@@ -156,6 +156,8 @@ export const api = {
   deleteKey: (kind: AccountKind) => send<{ ok: boolean }>('DELETE', `/api/accounts/${kind}/key`),
   newHubToken: () => send<{ token: string }>('POST', '/api/accounts/hub/token'),
   revokeHubToken: () => send<{ ok: boolean }>('DELETE', '/api/accounts/hub/token'),
+  codexLogin: () => send<{ authUrl: string }>('POST', '/api/accounts/codex/login'),
+  codexLogout: () => send<{ ok: boolean }>('POST', '/api/accounts/codex/logout'),
   claudePlan: () => request<ClaudePlan>('/api/accounts/claude'),
   connectClaude: () =>
     send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),

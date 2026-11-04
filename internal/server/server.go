@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/codex"
 	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
@@ -33,6 +34,8 @@ type Options struct {
 	Secrets secrets.Store
 	// Hub takes reports from people's own apps. It needs Secrets.
 	Hub *hub.Connector
+	// Codex runs agents as Codex threads, or is nil.
+	Codex *codex.Connector
 }
 
 type api struct {
@@ -42,13 +45,14 @@ type api struct {
 	claude    *ClaudeOptions
 	secrets   secrets.Store
 	hub       *hub.Connector
+	codex     *codex.Connector
 }
 
 // New builds the handler. It is separate from listening so tests can drive it directly.
 func New(options Options) http.Handler {
 	a := &api{
 		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
-		claude: options.Claude, secrets: options.Secrets, hub: options.Hub,
+		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -57,6 +61,9 @@ func New(options Options) http.Handler {
 	a.routes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)
+	}
+	if a.codex != nil {
+		a.codexRoutes(mux)
 	}
 	if a.secrets != nil {
 		a.keyRoutes(mux)

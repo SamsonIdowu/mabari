@@ -9,7 +9,7 @@ import (
 
 func TestText(t *testing.T) {
 	secrets := []string{
-		"sk-ant-api03-abcdefghijklmnop", "sk-proj-abcdefghijklmnopqrstuv", "vju_abcdefghijkl",
+		"sk-ant-api03-abcdefghijklmnop", "sk-proj-abcdefghijklmnopqrstuv", "mab_abcdefghijkl",
 		"ghp_abcdefghijklmnopqrstuvwx", "github_pat_11ABCDEFG0abcdefghijkl", "AKIAIOSFODNN7EXAMPLE",
 		"xoxb-123456789-abcdefghij", "eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.abcdefghijkl",
 	}

@@ -17,7 +17,7 @@ var patterns = []*regexp.Regexp{
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)`),
 	regexp.MustCompile(`\bsk-ant-[A-Za-z0-9_-]{8,}`),
 	regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}`),
-	regexp.MustCompile(`\bvju_[A-Za-z0-9_-]{8,}`),
+	regexp.MustCompile(`\bmab_[A-Za-z0-9_-]{8,}`),
 	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{16,}`),
 	regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{16,}`),
 	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),

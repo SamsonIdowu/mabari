@@ -234,7 +234,7 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   c.font = '900 20px Nunito, sans-serif';
   c.fillStyle = P.ink;
   c.fillText('mabari', 31 * 32 + 10, 36);
-  R(c, 31 * 32 + 10, 42, 44, 2, P.ink);
+  R(c, 31 * 32 + 10, 42, Math.round(c.measureText('mabari').width), 2, P.ink);
   /* storage cabinets */
   for (let fx = 1; fx < 6; fx++) {
     const x = fx * 32;

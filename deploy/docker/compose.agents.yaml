@@ -8,7 +8,7 @@ services:
       target: agents
       args:
         VERSION: ${MABARI_VERSION:-dev}
-        # Set a whisper.cpp version, such as 1.8.2, to build Local Whisper in as well.
+        # Set a whisper.cpp version, such as 1.9.5, to build Local Whisper in as well.
         WHISPER_CPP_VERSION: ${WHISPER_CPP_VERSION:-}
     image: mabari-agents:latest
     user: node

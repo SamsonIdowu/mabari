@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Installed by the .deb and .rpm packages for every user. Turn it on for yourself with
+#   systemctl --user enable --now mabari
+# or use `mabari service install`, which writes your own copy with your PATH.
+[Unit]
+Description=Mabari, your AI agents at work
+
+[Service]
+ExecStart=/usr/bin/mabari serve --log-file %h/.mabari/logs/mabari.log
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

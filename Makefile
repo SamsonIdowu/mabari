@@ -62,5 +62,6 @@ docker-smoke:
 	MABARI_VERSION=$(VERSION) deploy/docker/smoke.sh
 	MABARI_VERSION=$(VERSION) deploy/docker/smoke.sh deploy/docker/compose.agents.yaml
 
+# Builds every archive and package into dist/, without signing or publishing anything.
 release-snapshot:
-	@echo "GoReleaser arrives in Stage 11."
+	goreleaser release --snapshot --clean --skip=sign,publish

@@ -75,6 +75,7 @@ func runService(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("service "+action, flag.ContinueOnError)
 	yes := flags.Bool("yes", false, "install without asking")
 	lines := flags.Int("lines", 50, "how many log lines to show")
+	ifInstalled := flags.Bool("if-installed", false, "do nothing, successfully, when not installed (for upgrades)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -109,6 +110,9 @@ func runService(args []string, stdin io.Reader, stdout io.Writer) error {
 		_, err := fmt.Fprintln(stdout, "Uninstalled. Mabari no longer starts at login. Your data is kept.")
 		return err
 	case "start", "stop", "restart":
+		if *ifInstalled && !s.Status(ctx).Installed {
+			return nil
+		}
 		act := map[string]func(context.Context) error{"start": s.Start, "stop": s.Stop, "restart": s.Restart}[action]
 		if err := act(ctx); err != nil {
 			return err

@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: Apache-2.0
+# Local check: goreleaser release --snapshot --clean --skip=sign,publish
+# Publishing (GitHub release, Homebrew tap, Scoop bucket) is a hard stop for the user.
+version: 2
+project_name: mabari
+
+before:
+  hooks:
+    - pnpm --dir web install --frozen-lockfile
+    - pnpm --dir web build
+
+builds:
+  - id: mabari
+    main: ./cmd/mabari
+    binary: mabari
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    tags: [embedweb]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, NOTICE, README.md, docs/INSTALL.md]
+
+snapshot:
+  # Packages need a version that starts with a digit.
+  version_template: "0.0.0-SNAPSHOT-{{ .ShortCommit }}"
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+signs:
+  # Keyless signing in CI through GitHub's OIDC token.
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args: ["sign-blob", "--yes", "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}"]
+
+nfpms:
+  - id: packages
+    package_name: mabari
+    formats: [deb, rpm]
+    maintainer: Samson Idowu
+    description: Shows your AI agents at work, as pixel art characters in a little office.
+    license: Apache-2.0
+    homepage: https://github.com/SamsonIdowu/mabari
+    bindir: /usr/bin
+    contents:
+      - src: deploy/service/mabari.service
+        dst: /usr/lib/systemd/user/mabari.service
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: deploy/service/postinstall.sh
+
+homebrew_casks:
+  - name: mabari
+    binaries: [mabari]
+    homepage: https://github.com/SamsonIdowu/mabari
+    description: Shows your AI agents at work, in a little office.
+    license: Apache-2.0
+    caveats: |
+      Start Mabari now and at every login with: mabari service install
+      Then open http://localhost:4317
+    repository:
+      owner: SamsonIdowu
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    hooks:
+      post:
+        # After an upgrade, a running service restarts on the new version. Nothing happens if
+        # Mabari isn't installed as a service.
+        install_steps: |
+          run "#{staged_path}/mabari", args: ["service", "restart", "--if-installed"]
+
+scoops:
+  - name: mabari
+    homepage: https://github.com/SamsonIdowu/mabari
+    description: Shows your AI agents at work, in a little office.
+    license: Apache-2.0
+    post_install:
+      - "mabari service restart --if-installed"
+    repository:
+      owner: SamsonIdowu
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+
+release:
+  draft: true
+
+changelog:
+  use: git

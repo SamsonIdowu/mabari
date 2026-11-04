@@ -50,15 +50,62 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: docker build -f deploy/docker/Dockerfile -t mabari:ci .
-      # A build alone has missed a container that exits at start, so start it and ask it.
-      - name: Health check the running container
+      # Starts each image with compose, loads the demo, checks the WebSocket, the 127.0.0.1-only
+      # port and the hardening, and checks the default image stays under 40 MB.
+      - run: deploy/docker/smoke.sh
+      - name: Container Structure Tests
         run: |
-          docker run -d --name mabari-ci -p 127.0.0.1:4317:4317 --read-only --tmpfs /tmp \
-            -e MABARI_MASTER_KEY="$(openssl rand -base64 32)" mabari:ci
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:4317/api/health; then exit 0; fi
-            sleep 1
-          done
-          docker logs mabari-ci
-          exit 1
+          curl -fsSLo cst https://github.com/GoogleContainerTools/container-structure-test/releases/download/v1.22.1/container-structure-test-linux-amd64
+          chmod +x cst
+          ./cst test --image mabari:latest --config deploy/docker/structure-test.yaml
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: mabari:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - run: deploy/docker/smoke.sh deploy/docker/compose.agents.yaml
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: mabari-agents:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # Installs, crashes and uninstalls a real service on each system, under a test name.
+  service:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Start the user's systemd
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 0.5; done
+      # Two builds with different versions, so the test can upgrade one to the other.
+      - run: |
+          go build -ldflags "-X main.version=ci-old" -o "${{ runner.temp }}/old/mabari${{ runner.os == 'Windows' && '.exe' || '' }}" ./cmd/mabari
+          go build -ldflags "-X main.version=ci-new" -o "${{ runner.temp }}/new/mabari${{ runner.os == 'Windows' && '.exe' || '' }}" ./cmd/mabari
+        shell: bash
+      - run: go test -run TestRealService -count=1 -v ./internal/service
+        env:
+          MABARI_SERVICE_E2E: "1"
+          MABARI_BINARY: ${{ runner.temp }}/old/mabari${{ runner.os == 'Windows' && '.exe' || '' }}
+          MABARI_BINARY_NEXT: ${{ runner.temp }}/new/mabari${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  release-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check

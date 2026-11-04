@@ -4,8 +4,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -291,23 +293,37 @@ func TestStatusAndControls(t *testing.T) {
 	}
 }
 
-// TestRealLaunchAgent loads a real LaunchAgent from a temporary folder, checks Mabari answers,
-// crashes it to see launchd restart it, then removes it. It needs MABARI_SERVICE_E2E=1 and a
-// built mabari in MABARI_BINARY, because it runs real launchd jobs.
-func TestRealLaunchAgent(t *testing.T) {
+// TestRealService installs a real service under a test name, checks Mabari answers, crashes it
+// to see it restarted, then uninstalls it. It needs MABARI_SERVICE_E2E=1 and a built mabari in
+// MABARI_BINARY, because it runs real launchd, systemd or Task Scheduler jobs. CI runs it on
+// all three systems; on Linux it writes to the real ~/.config/systemd/user, so run it on a
+// throwaway machine there.
+func TestRealService(t *testing.T) {
 	binary := os.Getenv("MABARI_BINARY")
-	if os.Getenv("MABARI_SERVICE_E2E") != "1" || binary == "" || runtime.GOOS != "darwin" {
-		t.Skip("set MABARI_SERVICE_E2E=1 and MABARI_BINARY on macOS to run a real LaunchAgent")
+	if os.Getenv("MABARI_SERVICE_E2E") != "1" || binary == "" {
+		t.Skip("set MABARI_SERVICE_E2E=1 and MABARI_BINARY to install a real service")
 	}
 	home := t.TempDir()
 	port := "4391"
+	realHome, _ := os.UserHomeDir()
+	// The service runs a copy, so the upgrade below can replace it as a package manager would.
+	installed := filepath.Join(home, "bin", filepath.Base(binary))
+	copyFile(t, binary, installed)
 	s := Service{
-		OS: "darwin", Home: home, UID: os.Getuid(), Binary: binary, Label: "dev.mabari.test",
+		OS: runtime.GOOS, Home: home, AppData: filepath.Join(home, "AppData"), UID: os.Getuid(),
+		Binary: installed, Label: "dev.mabari.test",
 		Env: [][2]string{
-			{"PATH", "/usr/bin:/bin"}, {"MABARI_PORT", port}, {"MABARI_DATA_DIR", filepath.Join(home, "data")},
+			{"PATH", os.Getenv("PATH")}, {"MABARI_PORT", port}, {"MABARI_DATA_DIR", filepath.Join(home, "data")},
 			{"MABARI_SECRETS", "encrypted-file"}, {"MABARI_MASTER_KEY_FILE", writeKey(t, home)},
 		},
 		Run: Exec,
+	}
+	switch runtime.GOOS {
+	case "linux":
+		// systemd only reads units from the real config folder.
+		s.Home, s.Label = realHome, "mabari-test"
+	case "windows":
+		s.Label = "MabariTest"
 	}
 	ctx := context.Background()
 	if err := s.Enable(ctx, true); err != nil {
@@ -318,19 +334,62 @@ func TestRealLaunchAgent(t *testing.T) {
 	if !s.Status(ctx).Running {
 		t.Fatal("not running")
 	}
-	// A crash is restarted.
-	out, _ := Exec(ctx, "launchctl", "kill", "SIGKILL", "gui/"+strconv.Itoa(os.Getuid())+"/dev.mabari.test")
-	t.Log(out)
-	time.Sleep(time.Second)
-	waitHealthy(t, binary, port)
+	// A crash is restarted. Task Scheduler waits at least a minute before a restart, so Windows
+	// checks only install, run and uninstall.
+	switch runtime.GOOS {
+	case "darwin":
+		_, _ = Exec(ctx, "launchctl", "kill", "SIGKILL", "gui/"+strconv.Itoa(os.Getuid())+"/"+s.Label)
+	case "linux":
+		_, _ = Exec(ctx, "systemctl", "--user", "kill", "-s", "SIGKILL", s.Label+".service")
+	}
+	if runtime.GOOS != "windows" {
+		time.Sleep(time.Second)
+		waitHealthy(t, binary, port)
+	}
+	// An upgrade keeps data and settings: change a setting, put the next build in place,
+	// restart as the packages do, and check the new version still has it.
+	if next := os.Getenv("MABARI_BINARY_NEXT"); next != "" {
+		base := "http://127.0.0.1:" + port
+		request, _ := http.NewRequest(http.MethodPatch, base+"/api/settings", strings.NewReader(`{"retentionDays":90}`))
+		request.Header.Set("Content-Type", "application/json")
+		if response, err := http.DefaultClient.Do(request); err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("settings: %v %v", response, err)
+		}
+		before := version(t, base)
+		copyFile(t, next, installed)
+		if err := s.Restart(ctx); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for now := version(t, base); (now == "" || now == before) && time.Now().Before(deadline); now = version(t, base) {
+			time.Sleep(300 * time.Millisecond)
+		}
+		if after := version(t, base); after == before {
+			t.Fatalf("still on %s after the upgrade", before)
+		}
+		response, err := http.Get(base + "/api/settings")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var settings struct {
+			RetentionDays int `json:"retentionDays"`
+		}
+		_ = json.NewDecoder(response.Body).Decode(&settings)
+		_ = response.Body.Close()
+		if settings.RetentionDays != 90 {
+			t.Errorf("the setting was lost: %d", settings.RetentionDays)
+		}
+	}
 	if err := s.Disable(ctx, true); err != nil {
 		t.Fatal(err)
 	}
 	if s.Status(ctx).Installed {
 		t.Error("still installed")
 	}
-	if _, err := os.Stat(s.LogPath()); err != nil {
-		t.Errorf("no log file: %v", err)
+	if runtime.GOOS != "linux" {
+		if _, err := os.Stat(s.LogPath()); err != nil {
+			t.Errorf("no log file: %v", err)
+		}
 	}
 }
 
@@ -354,4 +413,37 @@ func waitHealthy(t *testing.T, binary, port string) {
 		time.Sleep(300 * time.Millisecond)
 	}
 	t.Fatal("Mabari never answered")
+}
+
+// copyFile writes src to dst through a rename, so a running binary is replaced, not changed.
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	content, err := os.ReadFile(src) // #nosec G304 -- test input
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst+".new", content, 0o700); err != nil { // #nosec G306 -- an executable
+		t.Fatal(err)
+	}
+	if err := os.Rename(dst+".new", dst); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// version asks Mabari which version is answering, or "" if none is.
+func version(t *testing.T, base string) string {
+	t.Helper()
+	response, err := http.Get(base + "/api/health")
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = response.Body.Close() }()
+	var health struct {
+		Version string `json:"version"`
+	}
+	_ = json.NewDecoder(response.Body).Decode(&health)
+	return health.Version
 }

@@ -57,7 +57,7 @@ function Summary({ scoped }: { scoped: LiveAgent[] }) {
 function ProjectMenu({ office, close }: { office: Snapshot; close: () => void }) {
   const current = useOfficeUi((state) => state.project);
   const set = useOfficeUi((state) => state.set);
-  const items = [{ id: 'all', name: 'All projects', color: '#A99CFF' }, ...office.projects];
+  const items = [{ id: 'all', name: 'All projects', color: '#8E8E93' }, ...office.projects];
   return (
     <div className="menu" role="menu">
       {items.map((project) => {
@@ -200,7 +200,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
           onClick={() => toggle('project')}
         >
           <span className="ddl">Project</span>
-          <span className="pdot" style={{ background: project?.color ?? '#A99CFF' }} />
+          <span className="pdot" style={{ background: project?.color ?? '#8E8E93' }} />
           <b>{project?.name ?? 'All projects'}</b>
           <Icon>
             <path d={CHEVRON} />

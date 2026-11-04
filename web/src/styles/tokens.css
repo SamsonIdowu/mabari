@@ -6,12 +6,12 @@
   --surface3:#1C1C20;
   --line:#202024;
   --line2:#303036;
-  --fg:#ECEAF2;
-  --fg2:#C7C4D2;
-  --muted:#A19EAE;
-  --accent:#A99CFF;
-  --accent-fg:#14112A;
-  --accent-soft:#1E1A38;
+  --fg:#EDEDEE;
+  --fg2:#C4C4C7;
+  --muted:#9A9A9F;
+  --accent:#FFFFFF;
+  --accent-fg:#000000;
+  --accent-soft:#232326;
   --query:#7CCFE0;
   --query-soft:#14272C;
   --claude:#E8894A;
@@ -33,18 +33,18 @@
   color-scheme:dark;
 }
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
-  --bg:#F4F3F7;
+  --bg:#EDEDEE;
   --surface:#FFFFFF;
-  --surface2:#F3F2F7;
-  --surface3:#E9E7F0;
-  --line:#E2E0EA;
-  --line2:#CDCAD8;
-  --fg:#17151F;
-  --fg2:#3A3647;
-  --muted:#5E5A6B;
-  --accent:#5B4BD6;
+  --surface2:#F5F5F6;
+  --surface3:#E6E6E8;
+  --line:#DEDEE0;
+  --line2:#BCBCBC;
+  --fg:#0C0C0C;
+  --fg2:#3A3A3C;
+  --muted:#6A6A6E;
+  --accent:#0C0C0C;
   --accent-fg:#FFFFFF;
-  --accent-soft:#ECE9FC;
+  --accent-soft:#E4E4E6;
   --query:#0F7C92;
   --query-soft:#E3F4F7;
   --claude-ink:#B85A1E;
@@ -56,23 +56,23 @@
   --amber-soft:#FCF1DA;
   --ok:#1C8250;
   --ok-soft:#E3F4EA;
-  --code-bg:#F6F5FA;
-  --shadow:0 16px 40px rgba(30,25,60,.14);
+  --code-bg:#F5F5F6;
+  --shadow:0 12px 32px rgba(0,0,0,.08);
   color-scheme:light;
 }}
 :root[data-theme="light"]{
-  --bg:#F4F3F7;
+  --bg:#EDEDEE;
   --surface:#FFFFFF;
-  --surface2:#F3F2F7;
-  --surface3:#E9E7F0;
-  --line:#E2E0EA;
-  --line2:#CDCAD8;
-  --fg:#17151F;
-  --fg2:#3A3647;
-  --muted:#5E5A6B;
-  --accent:#5B4BD6;
+  --surface2:#F5F5F6;
+  --surface3:#E6E6E8;
+  --line:#DEDEE0;
+  --line2:#BCBCBC;
+  --fg:#0C0C0C;
+  --fg2:#3A3A3C;
+  --muted:#6A6A6E;
+  --accent:#0C0C0C;
   --accent-fg:#FFFFFF;
-  --accent-soft:#ECE9FC;
+  --accent-soft:#E4E4E6;
   --query:#0F7C92;
   --query-soft:#E3F4F7;
   --claude-ink:#B85A1E;
@@ -84,7 +84,7 @@
   --amber-soft:#FCF1DA;
   --ok:#1C8250;
   --ok-soft:#E3F4EA;
-  --code-bg:#F6F5FA;
-  --shadow:0 16px 40px rgba(30,25,60,.14);
+  --code-bg:#F5F5F6;
+  --shadow:0 12px 32px rgba(0,0,0,.08);
   color-scheme:light;
 }

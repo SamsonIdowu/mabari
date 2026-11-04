@@ -106,7 +106,7 @@ export function Conversations() {
   const current = threads.find((thread) => thread.key === selected);
   const hueOf = (name: string) =>
     office.agents.find((agent: LiveAgent) => agent.name === name)?.hue;
-  const tabs = [{ id: 'all', name: 'All projects', color: '#A99CFF' }, ...office.projects];
+  const tabs = [{ id: 'all', name: 'All projects', color: '#8E8E93' }, ...office.projects];
 
   return (
     <section data-screen="conversations">

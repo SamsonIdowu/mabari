@@ -4,70 +4,94 @@ import { DESKS, H, W } from './layout.ts';
 
 export const PAL = {
   dark: {
-    floorA: '#3A2F2C',
-    floorB: '#3F332E',
-    plank: '#30272A',
-    wallTop: '#4A4268',
-    wall: '#332D4C',
-    wallLow: '#2A2540',
-    wainscot: '#3A3352',
-    base: '#1C1829',
-    win: '#1B2B4D',
-    winLite: '#2D4678',
-    star: '#E8E3FF',
-    shaft: 'rgba(140,170,255,.07)',
-    server: '#2A2C33',
-    serverB: '#2E3038',
-    carpet: '#2C3C3F',
-    carpetB: '#304346',
-    pantA: '#4A4652',
-    pantB: '#504C59',
-    rug: '#5B2F3A',
-    rugB: '#6A3A45',
-    desk: '#8E623F',
-    deskFront: '#6A4529',
-    deskEdge: '#A57650',
-    chair: '#3F3A58',
-    chairTop: '#4E4870',
-    metal: '#9AA0AE',
-    cab: '#8A8F9C',
-    cabD: '#666B78',
-    shadow: 'rgba(0,0,0,.32)',
-    night: 'rgba(12,10,40,.22)',
-    vig: 'rgba(0,0,0,.38)',
+    floorA: '#141416',
+    floorB: '#17171A',
+    plank: '#1E1E22',
+    wallTop: '#26262A',
+    wall: '#1B1B1E',
+    wallLow: '#2A2A2F',
+    wainscot: '#1B1B1E',
+    base: '#0A0A0B',
+    win: '#0E1622',
+    winLite: '#16212F',
+    star: '#E8E8EA',
+    shaft: 'rgba(255,255,255,.035)',
+    server: '#0E0E10',
+    serverB: '#101012',
+    carpet: '#1C1C20',
+    carpetB: '#1E1E22',
+    pantA: '#202024',
+    pantB: '#232327',
+    rug: '#202024',
+    rugB: '#2A2A2F',
+    desk: '#2C2C31',
+    deskFront: '#1A1A1D',
+    deskEdge: '#3A3A40',
+    chair: '#0A0A0B',
+    chairTop: '#26262A',
+    metal: '#6B6B72',
+    cab: '#2A2A2F',
+    cabD: '#1A1A1D',
+    shadow: 'rgba(0,0,0,.45)',
+    night: '',
+    vig: '',
+    label: 'rgba(255,255,255,.28)',
+    ink: '#EDEDEE',
+    paper: '#2A2A2F',
+    frame: '#3A3A40',
+    art: '#121214',
+    pot: '#E8E8EA',
+    potD: '#BDBDC2',
+    leaf: '#3E8A55',
+    leafB: '#4FA868',
+    wood: '#3A3A40',
+    woodD: '#232327',
+    glass: 'rgba(255,255,255,.06)',
   },
   light: {
-    floorA: '#D9BE98',
-    floorB: '#DDC4A0',
-    plank: '#C9AC85',
-    wallTop: '#D8D2EA',
-    wall: '#C3BBD9',
-    wallLow: '#B3AACD',
-    wainscot: '#BDB4D4',
-    base: '#8E85AD',
-    win: '#9FD3F2',
-    winLite: '#D2EEFC',
+    floorA: '#E7E6E3',
+    floorB: '#E3E2DF',
+    plank: '#D6D5D1',
+    wallTop: '#FFFFFF',
+    wall: '#F6F6F5',
+    wallLow: '#DADAD7',
+    wainscot: '#F6F6F5',
+    base: '#1A1A1A',
+    win: '#CFE0EC',
+    winLite: '#E6F0F7',
     star: '#FFFFFF',
-    shaft: 'rgba(255,250,220,.24)',
-    server: '#8F94A0',
-    serverB: '#979CA8',
-    carpet: '#8FB9B4',
-    carpetB: '#97C1BC',
-    pantA: '#ECE8F0',
-    pantB: '#E2DDE8',
-    rug: '#B65A62',
-    rugB: '#C2666E',
-    desk: '#B57E52',
-    deskFront: '#8E5E38',
-    deskEdge: '#C9946A',
-    chair: '#6E6790',
-    chairTop: '#857DA8',
-    metal: '#B5BAC6',
-    cab: '#A7ACB8',
-    cabD: '#848A97',
-    shadow: 'rgba(60,30,0,.2)',
+    shaft: 'rgba(255,255,255,.35)',
+    server: '#CFCFCC',
+    serverB: '#CBCBC8',
+    carpet: '#DCDCD9',
+    carpetB: '#D9D9D6',
+    pantA: '#F1F1EF',
+    pantB: '#EDEDEB',
+    rug: '#D2D2CF',
+    rugB: '#F4F4F2',
+    desk: '#FBFBFA',
+    deskFront: '#D9D9D6',
+    deskEdge: '#FFFFFF',
+    chair: '#141414',
+    chairTop: '#2B2B2D',
+    metal: '#9A9A9E',
+    cab: '#F2F2F0',
+    cabD: '#CFCFCC',
+    shadow: 'rgba(0,0,0,.12)',
     night: '',
-    vig: 'rgba(60,40,20,.14)',
+    vig: '',
+    label: 'rgba(0,0,0,.32)',
+    ink: '#111111',
+    paper: '#FFFFFF',
+    frame: '#111111',
+    art: '#EDEDEB',
+    pot: '#141414',
+    potD: '#2B2B2D',
+    leaf: '#3E8A55',
+    leafB: '#57B072',
+    wood: '#E4E4E1',
+    woodD: '#C9C9C6',
+    glass: 'rgba(255,255,255,.5)',
   },
 };
 
@@ -109,20 +133,28 @@ function blk(
   edge?: string,
 ) {
   c.fillStyle = P.shadow;
-  c.fillRect(x + 4, y + h + d, w, 5);
-  c.fillRect(x + w, y + 5, 4, h + d);
+  c.fillRect(x + 3, y + h + d, w, 4);
+  c.fillRect(x + w, y + 4, 3, h + d);
   R(c, x, y + h, w, d, front);
   R(c, x, y, w, h, top);
-  R(c, x, y, w, 1, edge || 'rgba(255,255,255,.2)');
-  R(c, x, y + h, w, 1, 'rgba(0,0,0,.2)');
+  R(c, x, y, w, 1, edge || 'rgba(255,255,255,.18)');
+  R(c, x, y + h, w, 1, 'rgba(0,0,0,.18)');
 }
 function plant(c: Ctx, x: number, y: number, P: Palette) {
-  blk(c, x + 4, y + 20, 16, 4, 10, '#B5653F', '#8A4A2C', P);
-  c.fillStyle = '#3E8A55';
-  ell(c, x + 12, y + 12, 11, 10);
-  c.fillStyle = '#4FA868';
-  ell(c, x + 9, y + 8, 6, 6);
-  ell(c, x + 16, y + 11, 5, 5);
+  R(c, x + 6, y + 18, 12, 1, 'rgba(0,0,0,.2)');
+  blk(c, x + 6, y + 18, 12, 3, 9, P.pot, P.potD, P);
+  c.fillStyle = P.leaf;
+  ell(c, x + 12, y + 11, 9, 8);
+  c.fillStyle = P.leafB;
+  ell(c, x + 9, y + 7, 5, 5);
+  ell(c, x + 15, y + 9, 4, 4);
+  ell(c, x + 11, y + 13, 3, 3);
+}
+function floorLabel(c: Ctx, txt: string, x: number, y: number, P: Palette) {
+  c.font = '800 9px Nunito, sans-serif';
+  c.fillStyle = P.label;
+  const s = txt.split('').join(String.fromCharCode(8202));
+  c.fillText(s, x, y);
 }
 export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   const cv = document.createElement('canvas');
@@ -130,39 +162,37 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   cv.height = H;
   const c = cv.getContext('2d')!;
   const P: Palette = PAL[theme];
+  /* floor: large calm tiles, darker server room, soft carpet in meeting room, pale pantry */
   for (let ty = 2; ty < 18; ty++)
     for (let tx = 0; tx < 30; tx++) {
       const n = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
-      const v = (n % 6) / 100;
-      let col = (tx + ty) % 2 ? P.floorA : P.floorB;
-      if (tx >= 22 && ty >= 2 && ty <= 6) col = (tx + ty) % 2 ? P.server : P.serverB;
-      else if (tx >= 22 && ty >= 8 && ty <= 11) col = (tx + ty) % 2 ? P.carpet : P.carpetB;
+      const v = (n % 4) / 250;
+      let col: string = P.floorA;
+      if (tx >= 22 && ty >= 2 && ty <= 6) col = P.server;
+      else if (tx >= 22 && ty >= 8 && ty <= 11) col = P.carpet;
       else if (tx >= 22 && ty >= 13) col = (tx + ty) % 2 ? P.pantA : P.pantB;
       R(c, tx * 32, ty * 32, 32, 32, col);
       c.fillStyle = 'rgba(0,0,0,' + v + ')';
       c.fillRect(tx * 32, ty * 32, 32, 32);
       if (tx < 21) {
-        R(c, tx * 32, ty * 32 + 31, 32, 1, P.plank);
-        if ((tx + ty) % 3 === 0) R(c, tx * 32 + 15, ty * 32, 1, 32, P.plank);
+        if (ty % 2 === 0) R(c, tx * 32, ty * 32, 32, 1, P.plank);
+        if (tx % 2 === 0) R(c, tx * 32, ty * 32, 1, 32, P.plank);
       }
     }
+  /* back wall: clean, thin dark skirting */
   R(c, 0, 0, W, 64, P.wall);
-  R(c, 0, 0, W, 8, P.wallTop);
-  R(c, 0, 36, W, 22, P.wainscot);
-  for (let wx0 = 0; wx0 < W; wx0 += 48) R(c, wx0, 38, 1, 18, P.wallLow);
-  R(c, 0, 36, W, 2, P.wallTop);
-  R(c, 0, 58, W, 6, P.base);
-  c.fillStyle = 'rgba(0,0,0,.24)';
-  c.fillRect(0, 64, W, 8);
-  c.fillStyle = 'rgba(0,0,0,.1)';
-  c.fillRect(0, 72, W, 8);
+  R(c, 0, 0, W, 4, P.wallTop);
+  R(c, 0, 60, W, 4, P.base);
+  c.fillStyle = 'rgba(0,0,0,.14)';
+  c.fillRect(0, 64, W, 5);
+  c.fillStyle = 'rgba(0,0,0,.06)';
+  c.fillRect(0, 69, W, 6);
   for (let wx = 15; wx < 20; wx += 2) {
     const X = wx * 32;
-    R(c, X + 2, 8, 60, 46, P.base);
-    R(c, X + 5, 11, 54, 40, P.win);
-    R(c, X + 5, 11, 54, 14, P.winLite);
-    R(c, X + 31, 11, 2, 40, P.base);
-    R(c, X + 5, 30, 54, 2, P.base);
+    R(c, X + 2, 8, 60, 46, P.frame);
+    R(c, X + 4, 10, 56, 42, P.win);
+    R(c, X + 4, 10, 56, 12, P.winLite);
+    R(c, X + 31, 10, 2, 42, P.frame);
     if (theme === 'dark') {
       R(c, X + 12, 18, 2, 2, P.star);
       R(c, X + 46, 15, 2, 2, P.star);
@@ -177,90 +207,152 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     c.closePath();
     c.fill();
   }
-  R(c, 8 * 32 - 4, 4, 6 * 32 + 8, 52, '#6B4A2C');
-  R(c, 8 * 32, 8, 6 * 32, 44, '#C49A64');
-  c.fillStyle = '#E8E3D6';
-  ell(c, 21 * 32 - 20, 28, 10, 10);
-  R(c, 21 * 32 - 21, 20, 2, 9, '#333');
-  R(c, 21 * 32 - 21, 27, 7, 2, '#333');
+  /* whiteboard behind the notice board overlay */
+  R(c, 8 * 32 - 4, 6, 6 * 32 + 8, 48, P.frame);
+  R(c, 8 * 32 - 1, 9, 6 * 32 + 2, 42, P.paper);
+  /* clock */
+  c.fillStyle = P.frame;
+  ell(c, 21 * 32 - 20, 28, 11, 11);
+  c.fillStyle = P.paper;
+  ell(c, 21 * 32 - 20, 28, 9, 9);
+  R(c, 21 * 32 - 21, 21, 2, 8, P.ink);
+  R(c, 21 * 32 - 21, 27, 7, 2, P.ink);
+  /* framed monochrome prints and the wordmark */
+  [
+    [6 * 32 + 6, 14],
+    [7 * 32 + 2, 20],
+  ].forEach(function (f, i) {
+    R(c, f[0]! - 2, f[1]! - 2, i ? 18 : 22, i ? 22 : 28, P.frame);
+    R(c, f[0]!, f[1]!, i ? 14 : 18, i ? 18 : 24, P.art);
+    c.fillStyle = P.ink;
+    if (i) ell(c, f[0]! + 7, f[1]! + 9, 4, 4);
+    else {
+      c.beginPath();
+      c.moveTo(f[0]! + 2, f[1]! + 20);
+      c.lineTo(f[0]! + 9, f[1]! + 8);
+      c.lineTo(f[0]! + 16, f[1]! + 20);
+      c.closePath();
+      c.fill();
+    }
+  });
+  c.font = '900 20px Nunito, sans-serif';
+  c.fillStyle = P.ink;
+  c.fillText('mabari', 22 * 32 + 14, 36);
+  R(c, 22 * 32 + 14, 42, 44, 2, P.ink);
+  /* storage cabinets */
   for (let fx = 1; fx < 6; fx++) {
     const x = fx * 32;
     blk(c, x + 2, 58, 28, 8, 44, P.cab, P.cabD, P);
     for (let d = 0; d < 3; d++) {
-      R(c, x + 4, 70 + d * 14, 24, 1, 'rgba(0,0,0,.25)');
-      R(c, x + 12, 74 + d * 14, 8, 3, P.metal);
+      R(c, x + 4, 70 + d * 14, 24, 1, 'rgba(0,0,0,.18)');
+      R(c, x + 12, 74 + d * 14, 8, 2, P.metal);
     }
   }
   plant(c, 6, 104, P);
-  R(c, 21 * 32 + 10, 64, 12, H - 64, P.wallLow);
-  R(c, 21 * 32 + 10, 64, 12, 4, P.wallTop);
+  /* glass partition between the work floor and the rooms */
+  R(c, 21 * 32 + 12, 64, 8, H - 64, P.glass);
+  R(c, 21 * 32 + 12, 64, 1, H - 64, P.wallLow);
+  R(c, 21 * 32 + 19, 64, 1, H - 64, P.wallLow);
   [5, 10, 15].forEach(function (gy) {
-    R(c, 21 * 32 + 10, gy * 32 - 10, 12, 58, gy % 2 ? P.floorA : P.floorB);
+    R(c, 21 * 32 + 10, gy * 32 - 10, 12, 58, P.floorA);
   });
   [7, 12].forEach(function (ry) {
     const Y = ry * 32 + 6;
-    R(c, 22 * 32, Y, 8 * 32, 6, P.wallTop);
-    R(c, 22 * 32, Y + 6, 8 * 32, 14, P.wallLow);
-    R(c, 24 * 32, Y, 48, 20, ry === 7 ? P.carpet : P.pantA);
+    R(c, 22 * 32, Y, 8 * 32, 4, P.wallTop);
+    R(c, 22 * 32, Y + 4, 8 * 32, 10, P.wallLow);
+    R(c, 22 * 32, Y + 14, 8 * 32, 2, 'rgba(0,0,0,.12)');
+    R(c, 24 * 32, Y, 48, 16, ry === 7 ? P.carpet : P.pantA);
   });
+  /* server racks */
   for (let sx = 22; sx < 30; sx++) {
     if (sx === 25) continue;
     const x2 = sx * 32;
-    blk(c, x2 + 3, 54, 26, 6, 58, '#3A3C45', '#1C1D22', P);
-    for (let s2 = 0; s2 < 6; s2++) R(c, x2 + 6, 64 + s2 * 8, 20, 5, '#2B2D35');
+    blk(
+      c,
+      x2 + 3,
+      54,
+      26,
+      6,
+      58,
+      theme === 'dark' ? '#202024' : '#2A2A2D',
+      theme === 'dark' ? '#0C0C0E' : '#141416',
+      P,
+    );
+    for (let s2 = 0; s2 < 6; s2++)
+      R(c, x2 + 6, 64 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
   }
+  floorLabel(c, 'SERVER ROOM', 22 * 32 + 10, 132 + 14, P);
+  /* meeting room */
   for (let mx = 0; mx < 4; mx++)
     blk(c, 24 * 32 + mx * 32 - 6, 8 * 32 + 10, 20, 8, 8, P.chairTop, P.chair, P);
-  blk(c, 23 * 32 + 12, 9 * 32 + 2, 4 * 32 + 8, 34, 10, '#8A6447', '#5E422E', P);
-  R(c, 23 * 32 + 40, 9 * 32 + 10, 22, 14, '#EFEBE0');
-  R(c, 25 * 32 + 24, 9 * 32 + 12, 14, 10, '#EFEBE0');
-  R(c, 26 * 32 + 20, 9 * 32 + 14, 10, 6, '#7CCFE0');
+  blk(c, 23 * 32 + 12, 9 * 32 + 2, 4 * 32 + 8, 34, 10, P.desk, P.deskFront, P, P.deskEdge);
+  R(c, 23 * 32 + 40, 9 * 32 + 10, 22, 14, P.paper);
+  R(c, 23 * 32 + 40, 9 * 32 + 10, 22, 1, P.wallLow);
+  R(c, 25 * 32 + 24, 9 * 32 + 12, 14, 10, P.paper);
+  R(c, 26 * 32 + 20, 9 * 32 + 14, 10, 6, P.ink);
   for (let mx2 = 0; mx2 < 4; mx2++)
     blk(c, 24 * 32 + mx2 * 32 - 6, 10 * 32 + 20, 20, 8, 8, P.chairTop, P.chair, P);
-  blk(c, 22 * 32, 13 * 32 + 4, 8 * 32, 14, 20, '#D3D6DE', '#9EA2AD', P);
-  blk(c, 23 * 32, 13 * 32 - 18, 24, 10, 22, '#4A4A55', '#2E2E36', P);
+  floorLabel(c, 'MEETING', 22 * 32 + 10, 8 * 32 + 6, P);
+  /* pantry */
+  blk(c, 22 * 32, 13 * 32 + 4, 8 * 32, 14, 20, P.desk, P.deskFront, P, P.deskEdge);
+  blk(
+    c,
+    23 * 32,
+    13 * 32 - 18,
+    24,
+    10,
+    22,
+    theme === 'dark' ? '#2A2A2F' : '#1E1E21',
+    theme === 'dark' ? '#151518' : '#0E0E10',
+    P,
+  );
   R(c, 23 * 32 + 7, 13 * 32 - 4, 10, 6, '#E8894A');
-  blk(c, 28 * 32 + 4, 12 * 32 + 10, 26, 10, 46, '#F4F5F8', '#D7DAE1', P);
-  R(c, 28 * 32 + 26, 12 * 32 + 30, 2, 10, '#9EA2AD');
-  blk(c, 25 * 32, 15 * 32, 40, 18, 10, '#A87A52', '#7A5536', P);
+  blk(c, 28 * 32 + 4, 12 * 32 + 10, 26, 10, 46, P.paper, P.deskFront, P);
+  R(c, 28 * 32 + 26, 12 * 32 + 30, 2, 10, P.metal);
+  blk(c, 25 * 32, 15 * 32, 40, 18, 10, P.wood, P.woodD, P);
+  floorLabel(c, 'PANTRY', 22 * 32 + 10, 13 * 32 - 24, P);
+  /* library corner: soft rug, shelves with muted spines, sofa */
   R(c, 1 * 32, 12 * 32 + 14, 6 * 32, 4 * 32, P.rug);
-  R(c, 1 * 32 + 8, 12 * 32 + 22, 6 * 32 - 16, 4 * 32 - 16, P.rugB);
+  R(c, 1 * 32 + 6, 12 * 32 + 20, 6 * 32 - 12, 4 * 32 - 12, P.rugB);
+  const spines =
+    theme === 'dark'
+      ? ['#3A3A40', '#5B5B63', '#2A2A2F', '#E8E8EA', '#7A7A82', '#4A4A52']
+      : ['#1A1A1A', '#9A9A9E', '#E4E4E1', '#4A4A4E', '#C9C9C6', '#2B2B2D'];
   for (let bx = 1; bx < 7; bx++) {
     const x3 = bx * 32;
-    blk(c, x3, 11 * 32 - 16, 32, 6, 40, '#6B4A32', '#4A3020', P);
+    blk(c, x3, 11 * 32 - 16, 32, 6, 40, P.wood, P.woodD, P);
     for (let bk = 0; bk < 6; bk++) {
-      R(
-        c,
-        x3 + 3 + bk * 5,
-        11 * 32 - 6,
-        4,
-        13,
-        ['#C0504D', '#4F81BD', '#9BBB59', '#F2B233', '#8064A2', '#4BACC6'][(bk + bx) % 6]!,
-      );
-      R(
-        c,
-        x3 + 3 + bk * 5,
-        11 * 32 + 10,
-        4,
-        12,
-        ['#4BACC6', '#C0504D', '#F2B233', '#4F81BD', '#9BBB59', '#8064A2'][(bk + bx) % 6]!,
-      );
+      R(c, x3 + 3 + bk * 5, 11 * 32 - 6, 4, 13, spines[(bk + bx) % 6]!);
+      R(c, x3 + 3 + bk * 5, 11 * 32 + 10, 4, 12, spines[(bk + bx + 3) % 6]!);
     }
   }
-  R(c, 0, 13 * 32 + 6, 10, 48, '#2A2C33');
-  blk(c, 5 * 32 + 8, 14 * 32 + 6, 36, 14, 16, '#9A6474', '#6E4250', P);
+  R(c, 0, 13 * 32 + 6, 10, 48, P.frame);
+  blk(
+    c,
+    5 * 32 + 8,
+    14 * 32 + 6,
+    36,
+    14,
+    16,
+    theme === 'dark' ? '#2E2E33' : '#2B2B2D',
+    theme === 'dark' ? '#1A1A1D' : '#141414',
+    P,
+  );
   plant(c, 24, 15 * 32 + 6, P);
+  floorLabel(c, 'LIBRARY', 1 * 32 + 10, 16 * 32 + 10, P);
+  /* desks: white tops, black chairs, dark monitors */
   DESKS.forEach(function (dk) {
     const x = dk.x * 32,
       y = dk.y * 32;
     blk(c, x + 4, y + 2, 60, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
-    R(c, x + 8, y + 34, 3, 6, P.deskFront);
-    R(c, x + 57, y + 34, 3, 6, P.deskFront);
-    R(c, x + 29, y + 4, 6, 6, '#24232B');
-    R(c, x + 18, y - 12, 28, 18, '#1C1B22');
-    R(c, x + 20, y - 10, 24, 14, '#2E3A4F');
-    R(c, x + 20, y + 12, 22, 5, '#2A2930');
-    R(c, x + 48, y + 8, 10, 7, '#EFEBE0');
+    R(c, x + 8, y + 34, 2, 6, P.chair);
+    R(c, x + 58, y + 34, 2, 6, P.chair);
+    R(c, x + 29, y + 4, 6, 5, '#111113');
+    R(c, x + 18, y - 12, 28, 18, '#111113');
+    R(c, x + 20, y - 10, 24, 14, theme === 'dark' ? '#1C2430' : '#26303D');
+    R(c, x + 20, y + 12, 22, 4, theme === 'dark' ? '#0E0E10' : '#1A1A1C');
+    R(c, x + 48, y + 8, 8, 8, P.paper);
+    R(c, x + 49, y + 9, 6, 6, theme === 'dark' ? '#3A3A40' : '#E7E6E3');
     blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
   });
   [
@@ -270,16 +362,7 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   ].forEach(function (p) {
     plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
   });
-  R(c, 14 * 32, H - 8, 64, 8, '#1C1829');
-  R(c, 14 * 32 + 4, H - 22, 56, 14, '#6E5039');
-  const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, P.vig);
-  c.fillStyle = g;
-  c.fillRect(0, 0, W, H);
-  if (P.night) {
-    c.fillStyle = P.night;
-    c.fillRect(0, 0, W, H);
-  }
+  R(c, 14 * 32, H - 8, 64, 8, P.base);
+  R(c, 14 * 32 + 4, H - 20, 56, 12, P.wallLow);
   return cv;
 }

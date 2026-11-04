@@ -14,11 +14,11 @@ import {
 describe('tokens', () => {
   it('matches spot values from the prototype', () => {
     expect(themes.dark.bg).toBe('#000000');
-    expect(themes.dark.accent).toBe('#A99CFF');
-    expect(themes.light.bg).toBe('#F4F3F7');
-    expect(themes.light.accent).toBe('#5B4BD6');
+    expect(themes.dark.accent).toBe('#FFFFFF');
+    expect(themes.light.bg).toBe('#EDEDEE');
+    expect(themes.light.accent).toBe('#0C0C0C');
     expect(providers.claude.color).toBe('#E8894A');
-    expect(decisionColors.run_shell).toBe('#F368E0');
+    expect(decisionColors.run_shell).toBe('#FF6FA8');
     expect(identityHues).toHaveLength(14);
     expect(projectColors).toHaveLength(6);
   });

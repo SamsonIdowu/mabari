@@ -14,7 +14,7 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
     moving = !!(a.path && a.path.length),
     st = a.state,
     P = providers[a.provider as ProviderName] ?? providers.custom,
-    hue = a.hue || '#A99CFF';
+    hue = a.hue || '#8E8E93';
   const back =
     !a.front &&
     !moving &&
@@ -153,7 +153,7 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
           hy - 12 - Math.sin(ang) * 16 * (1 - ph) + ph * ph * 34,
           3,
           3,
-          ['#F2B33D', '#5B9BF0', '#E8894A', '#3FB97A', '#A99CFF', '#FF6B9A'][k2 % 6]!,
+          ['#F2B33D', '#5B9BF0', '#E8894A', '#3FB97A', '#8E8E93', '#FF6B9A'][k2 % 6]!,
         );
       }
     }

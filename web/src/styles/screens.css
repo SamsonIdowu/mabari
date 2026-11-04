@@ -72,7 +72,7 @@
   z-index: 6;
   pointer-events: none;
   background: rgba(14, 13, 18, 0.72);
-  color: #e8e6ef;
+  color: #ededee;
   font-size: 12px;
   font-weight: 600;
   padding: 5px 10px;
@@ -106,7 +106,7 @@
   align-items: center;
   gap: 5px;
   background: rgba(14, 13, 18, 0.86);
-  color: #f3f1f8;
+  color: #f5f5f5;
   border-radius: 7px;
   padding: 2px 7px;
   font-size: 11px;
@@ -116,13 +116,13 @@
 }
 .tag .nt small {
   font-weight: 600;
-  color: #c9c5d6;
+  color: #c9c9ce;
   font-size: 10px;
 }
 .tag .nt em {
   font-style: normal;
   font-weight: 700;
-  color: #c9c5d6;
+  color: #c9c9ce;
   font-size: 10px;
 }
 .tag.sel .nt {
@@ -174,12 +174,12 @@
   top: 0;
   width: 200px;
   pointer-events: auto;
-  background: #f3e6cb;
-  color: #2a1f12;
-  border: 3px solid #7a5634;
-  border-radius: 6px;
+  background: #ffffff;
+  color: #0c0c0c;
+  border: 2px solid #0c0c0c;
+  border-radius: 8px;
   padding: 6px 8px;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   font-size: 11.5px;
   max-height: 38%;
   overflow-y: auto;
@@ -199,18 +199,18 @@
   gap: 6px;
   width: 100%;
   text-align: left;
-  border: 0;
-  background: #fff9ec;
-  border-radius: 4px;
+  border: 1px solid #e2e2e4;
+  background: #f5f5f6;
+  border-radius: 6px;
   padding: 4px 6px;
   margin-top: 4px;
   cursor: pointer;
   font-weight: 700;
-  color: #2a1f12;
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  color: #0c0c0c;
 }
 .bitem:hover {
   background: #fff;
+  border-color: #0c0c0c;
 }
 .bitem i {
   width: 8px;
@@ -1919,7 +1919,7 @@ tr:last-child td {
   animation: fadein 0.2s ease;
 }
 :root[data-theme='light'] .fscrim {
-  background: rgba(244, 243, 247, 0.82);
+  background: rgba(237, 237, 238, 0.82);
 }
 @keyframes fadein {
   from {

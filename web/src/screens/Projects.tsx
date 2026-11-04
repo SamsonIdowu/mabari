@@ -285,10 +285,10 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
   const longest = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
   const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
-    <article className="card eqcard" style={{ height: 470, boxShadow: 'inset 0 4px 0 #A99CFF' }}>
+    <article className="card eqcard" style={{ height: 470, boxShadow: 'inset 0 4px 0 #8E8E93' }}>
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span className="pdot" style={{ background: '#A99CFF' }} />
+          <span className="pdot" style={{ background: '#8E8E93' }} />
           <span>All projects</span>
         </h2>
         <span className="chip">

@@ -259,28 +259,26 @@ export class OfficeScene {
     const tile = 32 * m.a;
     if (tile > 4) {
       c.fillStyle = P.plank;
-      for (let y = m.f % tile; y < height; y += tile) c.fillRect(0, Math.round(y), width, 1);
+      for (let y = m.f % (tile * 2); y < height; y += tile * 2) {
+        c.fillRect(0, Math.round(y), width, 1);
+      }
     }
     const wallBottom = m.f + 64 * m.a;
     if (wallBottom > 0) {
       c.fillStyle = P.wall;
       c.fillRect(0, 0, width, wallBottom);
-      c.fillStyle = P.wainscot;
-      c.fillRect(0, m.f + 36 * m.a, width, 22 * m.a);
+      c.fillStyle = P.wallTop;
+      c.fillRect(0, m.f, width, 4 * m.a);
       c.fillStyle = P.base;
-      c.fillRect(0, m.f + 58 * m.a, width, 6 * m.a);
-      c.fillStyle = 'rgba(0,0,0,.22)';
-      c.fillRect(0, wallBottom, width, 8 * m.a);
-    }
-    if (P.night) {
-      c.fillStyle = P.night;
-      c.fillRect(0, 0, width, height);
+      c.fillRect(0, m.f + 60 * m.a, width, 4 * m.a);
+      c.fillStyle = 'rgba(0,0,0,.14)';
+      c.fillRect(0, wallBottom, width, 5 * m.a);
     }
   }
 
   private drawMotes(theme: 'dark' | 'light', t: number, dt: number): void {
     const c = this.context;
-    c.fillStyle = theme === 'dark' ? 'rgba(200,210,255,.35)' : 'rgba(255,250,230,.85)';
+    c.fillStyle = theme === 'dark' ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.9)';
     for (const mote of this.motes) {
       mote.y += ((mote.v * dt) / 16) * 0.35;
       mote.x += Math.sin(t / 1000 + mote.s * 3) * 0.1;
@@ -326,7 +324,7 @@ export class OfficeScene {
       c.fillStyle = lead.hue;
       rrect(c, x0 + 10, y1 - 8, c.measureText(label).width + 14, 15, 5);
       c.fill();
-      c.fillStyle = '#111';
+      c.fillStyle = '#0C0C0C';
       c.fillText(label, x0 + 17, y1 + 3);
     }
   }
@@ -376,9 +374,9 @@ export class OfficeScene {
       glow = '#3FB97A';
       R(c, x + 20, y - 10, 24, 14, glow);
     } else if (walker.estimate) {
-      R(c, x + 20, y - 10, 24, 14, '#3B4A66');
-      R(c, x + 22, y - 6, 12, 1, '#6C85B5');
-      R(c, x + 22, y - 3, 16, 1, '#6C85B5');
+      R(c, x + 20, y - 10, 24, 14, '#2A3546');
+      R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
+      R(c, x + 22, y - 3, 16, 1, '#9FB3CC');
     }
     if (glow) {
       c.globalAlpha = 0.16;
@@ -391,11 +389,12 @@ export class OfficeScene {
       R(c, x + 6, y - 2, 8, 10, '#3A2A2A');
       R(c, x + 7, y - 4, 6, 5, lit ? '#FF4D4F' : '#9E2A2C');
       if (lit) {
-        const halo = c.createRadialGradient(x + 10, y, 1, x + 10, y, 34);
-        halo.addColorStop(0, 'rgba(255,77,79,.45)');
-        halo.addColorStop(1, 'rgba(255,77,79,0)');
-        c.fillStyle = halo;
-        c.fillRect(x - 24, y - 34, 68, 68);
+        c.globalAlpha = 0.18;
+        c.fillStyle = '#FF4D4F';
+        ell(c, x + 10, y, 26, 20);
+        c.globalAlpha = 0.25;
+        ell(c, x + 10, y, 12, 10);
+        c.globalAlpha = 1;
       }
     }
     if (walker.queued?.length) {

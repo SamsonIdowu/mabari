@@ -66,8 +66,13 @@ test('the conversations tab shows who the agent talks to', async ({ page }) => {
   const panel = await open(page, 'Ledger');
   await panel.getByRole('button', { name: 'Conversations' }).click();
   await expect(panel).toContainText("Ledger's conversations");
-  await expect(panel.getByRole('link', { name: /Sage · \d+/ })).toBeVisible();
   await expect(panel.locator('.cmsg').first()).toContainText('Are you touching src/api/routes.ts');
+  // The chip opens their thread, with buttons back to either agent.
+  await panel.getByRole('button', { name: /Sage · \d+/ }).click();
+  await expect(page.locator('h1')).toHaveText('Conversations');
+  await expect(page.locator('.thread.on')).toContainText('Ledger and Sage');
+  await page.getByRole('button', { name: 'Open Sage' }).click();
+  await expect(panel.getByRole('heading', { name: 'Sage', exact: true })).toBeVisible();
 });
 
 test('adding subagents stops at three', async ({ page }) => {

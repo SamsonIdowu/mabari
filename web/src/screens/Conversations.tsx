@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText } from '../format.ts';
-import type { LiveAgent, Message } from '../gen/models.ts';
+import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
+import { openAgent, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
 
@@ -15,6 +16,8 @@ const KINDS: Record<string, { color: string; label: string }> = {
 };
 
 const LIVE_MS = 5000;
+/** Within this many pixels of the bottom, a new message keeps the view at the bottom. */
+const NEAR_BOTTOM_PX = 80;
 
 interface Thread {
   key: string;
@@ -27,7 +30,7 @@ function threadsOf(messages: Message[]): Thread[] {
   const threads = new Map<string, Thread>();
   for (const message of messages) {
     const [first, second] = [message.fromName, message.toName].sort() as [string, string];
-    const key = `${first}|${second}`;
+    const key = threadKey(first, second);
     const thread = threads.get(key) ?? { key, first, second, messages: [] };
     thread.messages.push(message);
     threads.set(key, thread);
@@ -74,6 +77,17 @@ export function MessageBubble(props: {
   );
 }
 
+function ThreadProject({ office, id }: { office: Snapshot; id: string | null }) {
+  const project = office.projects.find((item) => item.id === id);
+  if (!project) return null;
+  return (
+    <span className="chip" style={{ marginLeft: 4 }}>
+      <span className="pdot" style={{ background: project.color }} />
+      {project.name}
+    </span>
+  );
+}
+
 /** The time, refreshed every second, so a thread's live marker fades without a new message. */
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
@@ -87,14 +101,32 @@ function useNow(): number {
 export function Conversations() {
   const now = useNow();
   const office = useOfficeStore((state) => state.office);
-  const [project, setProject] = useState('all');
+  // Kept in the UI store, so an agent's panel can open a thread here.
+  const project = useOfficeUi((state) => state.threadProject);
+  const selected = useOfficeUi((state) => state.thread);
+  const set = useOfficeUi((state) => state.set);
+  const setProject = (threadProject: string) => set({ threadProject });
+  const setSelected = (thread: string) => set({ thread });
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState('all');
   const messages = office?.messages;
   const inProject = useMemo(
     () => (messages ?? []).filter((item) => project === 'all' || item.projectId === project),
     [messages, project],
   );
+  const body = useRef<HTMLDivElement>(null);
+  const shown = useRef({ thread: '', count: 0 });
+  const count = inProject.length;
+  // Newest at the bottom: jump there on a new thread, and follow new messages while near it.
+  useLayoutEffect(() => {
+    const pane = body.current;
+    if (!pane) return;
+    const near = pane.scrollHeight - pane.scrollTop - pane.clientHeight < NEAR_BOTTOM_PX;
+    const before = shown.current;
+    if (before.thread !== selected || (count !== before.count && near) || before.count === 0) {
+      pane.scrollTop = pane.scrollHeight;
+    }
+    shown.current = { thread: selected, count };
+  });
   if (!office) return null;
 
   const query = search.toLowerCase();
@@ -213,13 +245,31 @@ export function Conversations() {
           <div className="card">
             <div className="cardhd">
               {current ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <Dot hue={hueOf(current.first)} />
-                  <b>{current.first}</b>
-                  <span className="muted">and</span>
-                  <Dot hue={hueOf(current.second)} />
-                  <b>{current.second}</b>
-                </div>
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <Dot hue={hueOf(current.first)} />
+                    <b>{current.first}</b>
+                    <span className="muted">and</span>
+                    <Dot hue={hueOf(current.second)} />
+                    <b>{current.second}</b>
+                    <ThreadProject office={office} id={current.messages[0]?.projectId ?? null} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[current.first, current.second].map((name) => {
+                      const agent = office.agents.find((item) => item.name === name);
+                      return agent ? (
+                        <button
+                          type="button"
+                          className="btn sm"
+                          key={name}
+                          onClick={() => openAgent(agent, office.agents)}
+                        >
+                          Open {name}
+                        </button>
+                      ) : null;
+                    })}
+                  </div>
+                </>
               ) : (
                 <div>
                   <b>Everything</b>{' '}
@@ -230,6 +280,8 @@ export function Conversations() {
               )}
             </div>
             <div
+              ref={body}
+              data-testid="convBody"
               style={{
                 flex: 1,
                 minHeight: 0,

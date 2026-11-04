@@ -14,7 +14,7 @@ import {
   stateLabel,
 } from '../format.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
-import { useOfficeUi } from '../office/uiStore.ts';
+import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { LATER, PageHead } from './parts.tsx';
 
@@ -34,7 +34,10 @@ function AgentRow({ agent, sub }: { agent: LiveAgent; sub: boolean }) {
     <a
       className={`subrow p-${agent.provider}`}
       href="#office"
-      onClick={() => useOfficeUi.getState().set({ selected: agent.id })}
+      onClick={(event) => {
+        event.preventDefault();
+        openAgent(agent, useOfficeStore.getState().office?.agents ?? []);
+      }}
       style={{
         ['--ac' as string]: agent.hue,
         textDecoration: 'none',
@@ -319,7 +322,11 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
         <AgentRows agents={agents} />
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <a className="btn sm primary" href="#office">
+        <a
+          className="btn sm primary"
+          href="#office"
+          onClick={() => useOfficeUi.getState().set({ project: 'all', team: null })}
+        >
           Open in office
         </a>
       </div>

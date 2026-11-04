@@ -37,13 +37,19 @@ interface OfficeUi extends OfficeFilters {
   autoDialog: boolean;
   answers: Record<string, Answer>;
   teamAnswer: { question: string; lines: TeamLine[] } | null;
+  /** The open conversation: "all" or a thread key, the two names sorted and joined by "|". */
+  thread: string;
+  /** The Conversations page's project tab. */
+  threadProject: string;
   zoomBy: (direction: number) => void;
   fit: () => void;
   set: (patch: Partial<OfficeUiFields>) => void;
   clearFilters: () => void;
+  /** Forgets what the office was showing, after a wipe or a demo load replaced it. */
+  resetOffice: () => void;
 }
 
-type OfficeUiFields = Omit<OfficeUi, 'set' | 'clearFilters'>;
+type OfficeUiFields = Omit<OfficeUi, 'set' | 'clearFilters' | 'resetOffice'>;
 
 const NO_FILTERS: OfficeFilters = {
   project: 'all',
@@ -53,17 +59,15 @@ const NO_FILTERS: OfficeFilters = {
   team: null,
 };
 
-export const useOfficeUi = create<OfficeUi>((set) => ({
+/** What a fresh office shows. Layout choices such as spotlight and full screen are kept. */
+const FRESH_VIEW = {
   ...NO_FILTERS,
   selected: null,
   zoom: 1,
   pan: { x: 0, y: 0 },
   follow: false,
-  spotlight: true,
-  fullscreen: false,
   autoBanner: false,
   newAgent: null,
-  mode: 'instruct',
   target: 'auto',
   panelTab: 'live',
   highlight: null,
@@ -72,6 +76,15 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   autoDialog: false,
   answers: {},
   teamAnswer: null,
+  thread: 'all',
+  threadProject: 'all',
+} satisfies Partial<OfficeUiFields>;
+
+export const useOfficeUi = create<OfficeUi>((set) => ({
+  ...FRESH_VIEW,
+  spotlight: true,
+  fullscreen: false,
+  mode: 'instruct',
   zoomBy: (direction) =>
     set((state) => {
       const zoom = nextZoom(state.zoom, direction);
@@ -80,7 +93,30 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   fit: () => set({ zoom: 1, pan: { x: 0, y: 0 }, follow: false, team: null }),
   set: (patch) => set(patch),
   clearFilters: () => set(NO_FILTERS),
+  resetOffice: () => set(FRESH_VIEW),
 }));
+
+/**
+ * Opens an agent from anywhere, as the prototype does: the floor widens only if the agent is out of
+ * view, and messages typed next go to that agent.
+ */
+export function openAgent(agent: LiveAgent, agents: LiveAgent[]): void {
+  const ui = useOfficeUi.getState();
+  const widen = inScope(agent, ui, agents) ? {} : { project: 'all', team: null };
+  ui.set({ ...widen, selected: agent.id, target: 'selected' });
+  window.location.hash = '#office';
+}
+
+/** The key of the conversation between two agents, by name. */
+export function threadKey(first: string, second: string): string {
+  return [first, second].sort().join('|');
+}
+
+/** Opens one conversation on the Conversations page, across every project. */
+export function openThread(key: string): void {
+  useOfficeUi.getState().set({ thread: key, threadProject: 'all' });
+  window.location.hash = '#conversations';
+}
 
 const working = (agent: LiveAgent) => agent.estimate !== null;
 

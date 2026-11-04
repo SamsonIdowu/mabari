@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Estimate, LiveAgent } from '../gen/models.ts';
-import { inScope, matches, needsYou, type OfficeFilters } from './uiStore.ts';
+import {
+  inScope,
+  matches,
+  needsYou,
+  openAgent,
+  openThread,
+  threadKey,
+  useOfficeUi,
+  type OfficeFilters,
+} from './uiStore.ts';
 
 const agent = (overrides: Partial<LiveAgent> = {}) =>
   ({
@@ -63,5 +72,46 @@ describe('matches', () => {
   it('treats agents with an estimate as working', () => {
     expect(matches(agent(), filters({ status: 'active' }))).toBe(true);
     expect(matches(agent({ estimate: null }), filters({ status: 'active' }))).toBe(false);
+  });
+});
+
+describe('opening an agent', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', { location: { hash: '' } });
+    useOfficeUi.getState().resetOffice();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends the next message to that agent and keeps a filter that already shows it', () => {
+    const docs = agent({ id: 'd', projectId: 'docs' });
+    useOfficeUi.getState().set({ project: 'docs' });
+    openAgent(docs, [docs]);
+    const ui = useOfficeUi.getState();
+    expect([ui.selected, ui.target, ui.project]).toEqual(['d', 'selected', 'docs']);
+    expect(window.location.hash).toBe('#office');
+  });
+
+  it('widens the floor when the agent is out of view', () => {
+    const lead = agent({ id: 'lead', projectId: 'docs' });
+    const other = agent({ id: 'o', projectId: 'tests' });
+    useOfficeUi.getState().set({ project: 'docs', team: 'lead' });
+    openAgent(other, [lead, other]);
+    const ui = useOfficeUi.getState();
+    expect([ui.selected, ui.project, ui.team]).toEqual(['o', 'all', null]);
+  });
+
+  it('opens a thread across every project', () => {
+    useOfficeUi.getState().set({ threadProject: 'docs' });
+    openThread(threadKey('Sage', 'Ledger'));
+    const ui = useOfficeUi.getState();
+    expect([ui.thread, ui.threadProject]).toEqual(['Ledger|Sage', 'all']);
+    expect(window.location.hash).toBe('#conversations');
+  });
+
+  it('forgets the view after a reset', () => {
+    useOfficeUi.getState().set({ selected: 'a', project: 'docs', target: 'a', thread: 'A|B' });
+    useOfficeUi.getState().resetOffice();
+    const ui = useOfficeUi.getState();
+    expect([ui.selected, ui.project, ui.target, ui.thread]).toEqual([null, 'all', 'auto', 'all']);
   });
 });

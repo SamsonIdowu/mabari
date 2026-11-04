@@ -5,7 +5,7 @@ import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText, shortMinutes } from '../format.ts';
 import type { Snapshot } from '../gen/models.ts';
-import { useOfficeUi } from '../office/uiStore.ts';
+import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import {
   drawMascot,
   GESTURE_LABELS,
@@ -51,9 +51,10 @@ function Summary({ office }: { office: Snapshot }) {
   );
 }
 
-function openAgent(id: string) {
-  useOfficeUi.getState().set({ selected: id, target: 'selected', project: 'all', team: null });
-  window.location.hash = '#office';
+function openAgentById(id: string) {
+  const agents = useOfficeStore.getState().office?.agents ?? [];
+  const agent = agents.find((item) => item.id === id);
+  if (agent) openAgent(agent, agents);
 }
 
 function Dot({ hue }: { hue: string }) {
@@ -71,7 +72,7 @@ function NeedLine({ line }: { line: VeeLine }) {
           Review
         </button>
       ) : (
-        <button type="button" className="btn sm" onClick={() => openAgent(line.agentId)}>
+        <button type="button" className="btn sm" onClick={() => openAgentById(line.agentId)}>
           Open
         </button>
       )}
@@ -131,7 +132,7 @@ function Lines({ reply }: { reply: VeeReply }) {
       <ul className="hclist">
         {lines.map((line) => (
           <li key={line.agentId}>
-            <button type="button" className="linkbtn" onClick={() => openAgent(line.agentId)}>
+            <button type="button" className="linkbtn" onClick={() => openAgentById(line.agentId)}>
               <Dot hue={line.hue} />
               <b>{line.name}</b>
             </button>{' '}

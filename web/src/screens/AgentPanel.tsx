@@ -4,7 +4,7 @@ import { api } from '../data/api.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
-import { useOfficeUi } from '../office/uiStore.ts';
+import { openThread, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import {
   decisionColors,
   decisionFallbackColor,
@@ -50,7 +50,7 @@ function SubagentRow({ agent }: { agent: LiveAgent }) {
       type="button"
       className={`subrow p-${agent.provider}`}
       style={{ ['--ac' as string]: agent.hue }}
-      onClick={() => set({ selected: agent.id })}
+      onClick={() => set({ selected: agent.id, target: 'selected' })}
     >
       <span className="idot" />
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -348,10 +348,15 @@ function Chats({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
             const peer = office.agents.find((item) => item.id === id);
             if (!peer) return null;
             return (
-              <a className="btn sm" href="#conversations" key={id}>
+              <button
+                type="button"
+                className="btn sm"
+                key={id}
+                onClick={() => openThread(threadKey(agent.name, peer.name))}
+              >
                 <span className="idot" style={{ ['--ac' as string]: peer.hue }} />
                 {peer.name} · {count}
-              </a>
+              </button>
             );
           })}
         </div>

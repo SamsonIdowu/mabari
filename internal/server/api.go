@@ -29,6 +29,8 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects", a.createProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", a.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
+	mux.HandleFunc("POST /api/projects/{id}/complete", a.completeProject)
+	mux.HandleFunc("POST /api/projects/{id}/reopen", a.reopenProject)
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)
 	mux.HandleFunc("GET /api/agents/{id}", a.getAgent)
@@ -160,6 +162,39 @@ func (a *api) deleteProject(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (a *api) completeProject(w http.ResponseWriter, r *http.Request) {
+	var saved *models.Project
+	var notReady bool
+	err := a.engine.Do(func() {
+		existing := a.engine.Project(r.PathValue("id"))
+		if existing == nil {
+			return
+		}
+		if existing.Status != models.ProjectReady && existing.Status != models.ProjectIdle {
+			notReady = true
+			return
+		}
+		result := a.engine.CompleteProject(*existing)
+		saved = &result
+	})
+	if notReady {
+		writeError(w, http.StatusConflict, "this project still has work in progress")
+		return
+	}
+	respond(w, saved, err, "no such project")
+}
+
+func (a *api) reopenProject(w http.ResponseWriter, r *http.Request) {
+	var saved *models.Project
+	err := a.engine.Do(func() {
+		if existing := a.engine.Project(r.PathValue("id")); existing != nil {
+			result := a.engine.ReopenProject(*existing)
+			saved = &result
+		}
+	})
+	respond(w, saved, err, "no such project")
 }
 
 func respond[T any](w http.ResponseWriter, value *T, err error, missing string) {

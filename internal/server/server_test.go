@@ -195,6 +195,38 @@ func TestProjectRoutes(t *testing.T) {
 	}
 }
 
+func TestCompleteAndReopenProject(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	if response := office.do(t, http.MethodPost, "/api/projects/checkout/complete", ""); response.Code != http.StatusConflict {
+		t.Errorf("busy project = %d", response.Code)
+	}
+	if response := office.do(t, http.MethodPost, "/api/projects/nope/complete", ""); response.Code != http.StatusNotFound {
+		t.Errorf("missing project = %d", response.Code)
+	}
+	reopened := decode[models.Project](t, office.do(t, http.MethodPost, "/api/projects/landing/reopen", ""))
+	if reopened.Done != nil || reopened.Status != models.ProjectNew {
+		t.Errorf("reopened = %+v", reopened)
+	}
+	created := decode[models.Project](t, office.do(t, http.MethodPost, "/api/projects", `{"name":"Idle","color":"#fff"}`))
+	err := office.engine.Do(func() {
+		pixel := office.engine.AgentByName("Pixel")
+		pixel.Project = &created.ID
+		office.engine.Touch(pixel)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := decode[models.Project](t, office.do(t, http.MethodPost, "/api/projects/"+created.ID+"/complete", ""))
+	if completed.Done == nil || completed.Done.Agents != 1 || completed.Status != models.ProjectCompleted {
+		t.Errorf("completed = %+v", completed)
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=Marked", ""))
+	if len(rows) != 1 || rows[0].Agent != "You" {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
 func TestProjectValidation(t *testing.T) {
 	office := newOffice(t)
 	for _, body := range []string{

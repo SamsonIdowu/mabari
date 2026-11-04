@@ -180,7 +180,7 @@ func (e *Engine) resetMemory() {
 	e.accounts = map[models.AccountKind]*models.Account{}
 	for _, kind := range models.AccountKinds {
 		e.accounts[kind] = &models.Account{
-			ID: string(kind), Kind: kind, Status: models.AccountOff, Models: []string{},
+			ID: string(kind), Kind: kind, Status: models.AccountOff, Models: models.Models[kind],
 		}
 	}
 }
@@ -590,6 +590,37 @@ func (e *Engine) SaveProject(project models.Project) models.Project {
 	saved := *e.Project(project.ID)
 	e.record(e.store.SaveProject(context.Background(), saved))
 	e.broadcast(models.ServerMessage{Type: models.MsgProject, Project: &saved})
+	return saved
+}
+
+// CompleteProject marks a project as done and records its summary. Call inside Do.
+func (e *Engine) CompleteProject(project models.Project) models.Project {
+	now := e.now().UnixMilli()
+	done := models.ProjectDone{At: now, Mins: 1, Tasks: []string{}}
+	for _, agent := range e.agents {
+		if agent.Project == nil || *agent.Project != project.ID {
+			continue
+		}
+		agent.Refresh(e.now())
+		done.Agents++
+		done.Cost += agent.Cost
+		done.Mins = max(done.Mins, int((now-agent.CreatedAt)/60000))
+		if agent.Progress >= 1 || agent.State == models.StateDone {
+			done.Tasks = append(done.Tasks, agent.Task)
+		}
+	}
+	project.Done = &done
+	saved := e.SaveProject(project)
+	e.Log("You", models.LogSession, "Marked "+project.Name+" as complete", "Completed", "ok")
+	e.Toast(project.Name + " is marked as complete")
+	return saved
+}
+
+// ReopenProject clears a project's completion. Call inside Do.
+func (e *Engine) ReopenProject(project models.Project) models.Project {
+	project.Done = nil
+	saved := e.SaveProject(project)
+	e.Toast(project.Name + " is open again")
 	return saved
 }
 

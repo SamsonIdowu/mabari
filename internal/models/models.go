@@ -272,6 +272,14 @@ const (
 	RiskHigh RiskLevel = "high"
 )
 
+// Decisions on an approval, and who made them.
+const (
+	DecisionAllowed = "allowed"
+	DecisionDenied  = "denied"
+	DecidedByUser   = "user"
+	DecidedByAuto   = "auto"
+)
+
 // Approval is a risky action waiting for a decision.
 type Approval struct {
 	ID     string         `json:"id"`

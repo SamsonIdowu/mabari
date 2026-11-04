@@ -5,6 +5,7 @@ package models
 import (
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -152,9 +153,12 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 
 var addressedTo = regexp.MustCompile(`^[A-Za-z]+,\s*`)
 
+// WithoutName drops a leading "Sage, " from an instruction.
+func WithoutName(text string) string { return addressedTo.ReplaceAllString(text, "") }
+
 // Ack is an agent's reply to an instruction, such as "I'll update the docs."
 func Ack(text string) string {
-	body := addressedTo.ReplaceAllString(text, "")
+	body := WithoutName(text)
 	if len(body) > 60 {
 		return "I'll do that next."
 	}
@@ -170,18 +174,7 @@ func ETAWords(a *LiveAgent) string {
 		return "a few minutes"
 	}
 	minutes := max(1, int(math.Round((1-a.Progress)/a.Rate/60)))
-	return "about " + itoa(minutes) + " min"
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var digits []byte
-	for ; n > 0; n /= 10 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-	}
-	return string(digits)
+	return "about " + strconv.Itoa(minutes) + " min"
 }
 
 // ProjectState works out a project's status and progress from its agents, as the prototype's

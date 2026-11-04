@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: CI
 
 on:
@@ -17,6 +18,10 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./...
+      # The same linter and rules as `make lint`. .golangci.yml uses the version 2 format.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
       - run: go test -race ./...
 
   web:
@@ -46,3 +51,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: docker build -f deploy/docker/Dockerfile -t mabari:ci .
+      # A build alone has missed a container that exits at start, so start it and ask it.
+      - name: Health check the running container
+        run: |
+          docker run -d --name mabari-ci -p 127.0.0.1:4317:4317 --read-only --tmpfs /tmp mabari:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4317/api/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs mabari-ci
+          exit 1

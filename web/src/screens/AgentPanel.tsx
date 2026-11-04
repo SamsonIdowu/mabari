@@ -209,10 +209,11 @@ function AnswerCard({ agent }: { agent: LiveAgent }) {
         <Icon>
           <path d="M4 6h16M4 12h16M4 18h10" />
         </Icon>
-        Answered from the log
+        {answer.answeredBy ? 'Answered from the log by the query model' : 'Answered from the log'}
       </span>
       <span className="q">{answer.question}</span>
-      <span>
+      {answer.text ? <span data-testid="modelAnswer">{answer.text}</span> : null}
+      <span hidden={Boolean(answer.text)}>
         {answer.name} is <b>{answer.state.toLowerCase()}</b> on “{answer.task}”. So far it read{' '}
         {plural(answer.reads, 'file')}, made {plural(answer.edits, 'edit')}
         {answer.runs ? ` and ran a command ${plural(answer.runs, 'time')}` : ''}.{' '}
@@ -224,7 +225,7 @@ function AnswerCard({ agent }: { agent: LiveAgent }) {
         {answer.estimate}.
       </span>
       <span className="help">
-        By {answer.model}. {answer.name} was not interrupted.
+        By {answer.answeredBy || answer.model}. {answer.name} was not interrupted.
       </span>
       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="help">Based on</span>

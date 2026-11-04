@@ -3,10 +3,13 @@
 package server
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
+	mabanswer "github.com/SamsonIdowu/mabari/internal/answer"
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/query"
@@ -67,6 +70,9 @@ type messageResult struct {
 	Answer *query.Answer      `json:"answer"`
 	Team   []query.TeamLine   `json:"team"`
 	Routed *dispatch.Decision `json:"routed"`
+	// facts and model are taken inside the lock, for a model to answer after it.
+	facts string
+	model string
 }
 
 // targets resolves who a message is for.
@@ -111,6 +117,7 @@ func (a *api) ask(agents []*models.LiveAgent, text string, result *messageResult
 	agent := agents[0]
 	answer := query.Ask(agent, text, a.engine.Settings().QueryModel, now)
 	result.Answer = &answer
+	result.facts, result.model = mabanswer.Facts(agent, now), a.engine.Settings().QueryModel
 	a.engine.Log(agent.Name, models.LogQuery, text, "Answered from the log", "")
 	a.engine.SetReply(agent, query.Short(agent, now), replyMillis)
 }
@@ -167,8 +174,45 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	case !delivered:
 		writeError(w, http.StatusBadRequest, "Pick an agent first. Click one on the floor or choose it in Send to.")
 	default:
+		a.modelAnswer(r.Context(), &result)
 		writeJSON(w, http.StatusOK, result)
 	}
+}
+
+// modelAnswer has the query model write the answer when an Anthropic key is saved and a Claude
+// model is chosen. Otherwise, or if the call fails, the answer from the log stands.
+func (a *api) modelAnswer(ctx context.Context, result *messageResult) {
+	if result.Answer == nil || a.secrets == nil || !mabanswer.IsClaude(result.model) {
+		return
+	}
+	key, err := a.secrets.Get(string(models.AccountAnthropicKey))
+	if err != nil || key == "" {
+		return
+	}
+	call, cancel := context.WithTimeout(ctx, mabanswer.Wait)
+	defer cancel()
+	text, err := a.answerer(key).Answer(call, result.model, result.Answer.Question, result.facts)
+	if err != nil {
+		slog.Warn("the query model could not answer; using the log", "model", result.model, "error", err)
+		return
+	}
+	result.Answer.Text, result.Answer.AnsweredBy = text, result.model
+	_ = a.engine.Do(func() {
+		if agent := a.engine.Agent(result.Answer.AgentID); agent != nil {
+			a.engine.Log(agent.Name, models.LogQuery, result.Answer.Question, "Answered by "+result.model, "")
+			a.engine.SetReply(agent, firstSentence(text), replyMillis)
+		}
+	})
+}
+
+func firstSentence(text string) string {
+	if cut := strings.IndexAny(text, ".!?"); cut > 0 && cut < 120 {
+		return text[:cut+1]
+	}
+	if runes := []rune(text); len(runes) > 90 {
+		return string(runes[:89]) + "…"
+	}
+	return text
 }
 
 // deliver is the one way a message reaches an agent. It runs inside engine.Do, and reports false

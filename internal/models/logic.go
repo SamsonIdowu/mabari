@@ -39,7 +39,7 @@ var StateLabels = map[AgentState]string{
 var Models = map[AccountKind][]string{
 	AccountCodex:        {"gpt-5-codex", "gpt-5", "gpt-5-mini"},
 	AccountClaudeCode:   {"claude-opus-4-1", "claude-sonnet-4-5", "claude-haiku-4-5"},
-	AccountAnthropicKey: {"claude-opus-4-1", "claude-sonnet-4-5", "claude-haiku-4-5"},
+	AccountAnthropicKey: {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"},
 	AccountOpenAIKey:    {"gpt-5", "gpt-5-mini", "gpt-4.1"},
 	AccountHub:          {"any model your app reports"},
 }

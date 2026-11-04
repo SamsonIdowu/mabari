@@ -72,6 +72,9 @@ export interface Answer {
   estimate: string;
   model: string;
   events: string[];
+  /** The query model's own answer, when one answered. */
+  text: string;
+  answeredBy: string;
 }
 
 export interface TeamLine {

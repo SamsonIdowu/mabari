@@ -134,3 +134,32 @@ func TestWipeRemovesKeysAndTokens(t *testing.T) {
 		t.Errorf("left after a wipe: %v", names)
 	}
 }
+
+type fakeAnswerer struct{ text, model, facts string }
+
+func (f *fakeAnswerer) Answer(_ context.Context, model, _, facts string) (string, error) {
+	f.model, f.facts = model, facts
+	return f.text, nil
+}
+
+func TestQueriesUseTheClaudeQueryModelWhenAKeyIsSaved(t *testing.T) {
+	o, vault := newKeyOffice(t)
+	fake := &fakeAnswerer{text: "Ledger is refactoring the totals. It should finish soon."}
+	o.handler = New(Options{
+		Engine: o.engine, Simulator: o.simulator, Secrets: vault,
+		Answerer: func(string) QueryAnswerer { return fake },
+	})
+	o.demo(t)
+	query := `{"text":"What is Ledger doing?","mode":"query","target":"auto","projectId":"","teamId":""}`
+	before := decode[messageResult](t, o.do(t, http.MethodPost, "/api/messages", query))
+	if before.Answer == nil || before.Answer.Text != "" {
+		t.Fatalf("without a key the log answers: %+v", before.Answer)
+	}
+	o.do(t, http.MethodPut, "/api/accounts/anthropic_key/key", `{"key":"sk-ant-api03-`+strings.Repeat("a", 40)+`"}`)
+	o.do(t, http.MethodPatch, "/api/settings", `{"queryModel":"claude-opus-5-5"}`)
+	after := decode[messageResult](t, o.do(t, http.MethodPost, "/api/messages", query))
+	if after.Answer == nil || after.Answer.Text != fake.text || after.Answer.AnsweredBy != "claude-opus-5-5" ||
+		!strings.Contains(fake.facts, "Ledger") {
+		t.Errorf("answer = %+v, facts = %q", after.Answer, fake.facts)
+	}
+}

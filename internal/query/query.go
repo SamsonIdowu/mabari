@@ -27,6 +27,10 @@ type Answer struct {
 	Model         string `json:"model"`
 	// Events are the ids of the log entries this answer used.
 	Events []string `json:"events"`
+	// Text is the model's own answer, and AnsweredBy the model, when one answered. Empty means
+	// the answer is the summary above, built from the log.
+	Text       string `json:"text"`
+	AnsweredBy string `json:"answeredBy"`
 }
 
 func firstOf(feed []models.Event, tool string) string {

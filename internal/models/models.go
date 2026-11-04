@@ -405,3 +405,15 @@ type ServerMessage struct {
 	Settings *Settings  `json:"settings,omitempty"`
 	Text     string     `json:"text,omitempty"`
 }
+
+// WhisperStatus is what Settings shows about Local Whisper.
+type WhisperStatus struct {
+	// Installed is true when whisper.cpp's whisper-cli was found.
+	Installed bool `json:"installed"`
+	// Ready is true when the model is downloaded and checked.
+	Ready       bool   `json:"ready"`
+	Downloading bool   `json:"downloading"`
+	Done        int64  `json:"done"`
+	Total       int64  `json:"total"`
+	Error       string `json:"error"`
+}

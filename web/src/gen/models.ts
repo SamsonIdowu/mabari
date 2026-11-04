@@ -649,3 +649,20 @@ export interface ServerMessage {
   settings: Settings | null;
   text: string | null;
 }
+/**
+ * WhisperStatus is what Settings shows about Local Whisper.
+ */
+export interface WhisperStatus {
+  /**
+   * Installed is true when whisper.cpp's whisper-cli was found.
+   */
+  installed: boolean;
+  /**
+   * Ready is true when the model is downloaded and checked.
+   */
+  ready: boolean;
+  downloading: boolean;
+  done: number /* int64 */;
+  total: number /* int64 */;
+  error: string;
+}

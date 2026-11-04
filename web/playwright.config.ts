@@ -9,7 +9,8 @@ const dataDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
 
 export default defineConfig({
   testDir: 'e2e',
-  fullyParallel: true,
+  // Tests share one server and its demo office, so they run one at a time.
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:4317',

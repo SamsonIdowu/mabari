@@ -1,16 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef } from 'react';
+import { useOfficeStore } from '../data/officeStore.ts';
+import { useOfficeSync } from '../data/useOfficeSync.ts';
+import type { Route } from '../routes.ts';
+import { Accounts } from '../screens/Accounts.tsx';
+import { Activity } from '../screens/Activity.tsx';
+import { ComponentSheet } from '../screens/ComponentSheet.tsx';
+import { Conversations } from '../screens/Conversations.tsx';
+import { PageHead } from '../screens/parts.tsx';
+import { Projects } from '../screens/Projects.tsx';
+import { Settings } from '../screens/Settings.tsx';
+import { StatusScreens } from '../screens/StatusScreens.tsx';
+import { Welcome } from '../screens/Welcome.tsx';
 import { useHashRoute } from '../useHashRoute.ts';
-import { PlaceholderPage } from './PlaceholderPage.tsx';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
+import { Toasts } from './Toasts.tsx';
 import { Topbar } from './Topbar.tsx';
 
-/** Stage 1 replaces this with whether any account or agent exists. */
-const FIRST_RUN = true;
+function Screen({ route }: { route: Route }) {
+  switch (route) {
+    case 'welcome':
+      return <Welcome />;
+    case 'projects':
+      return <Projects />;
+    case 'conversations':
+      return <Conversations />;
+    case 'accounts':
+      return <Accounts />;
+    case 'activity':
+      return <Activity />;
+    case 'preferences':
+      return <Settings />;
+    case 'components':
+      return <ComponentSheet />;
+    case 'states':
+      return <StatusScreens />;
+    case 'office':
+      return (
+        <section data-screen="office">
+          <div className="page">
+            <PageHead title="Office" />
+          </div>
+        </section>
+      );
+  }
+}
 
 export function Shell() {
-  const route = useHashRoute(FIRST_RUN);
+  useOfficeSync();
+  const firstRun = useOfficeStore((state) => state.office?.firstRun ?? true);
+  const route = useHashRoute(firstRun);
   const collapsed = useRailStore((state) => state.collapsed);
   const screenRef = useRef<HTMLElement>(null);
 
@@ -23,8 +63,9 @@ export function Shell() {
       <Topbar />
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef}>
-        <PlaceholderPage route={route} />
+        <Screen route={route} />
       </main>
+      <Toasts />
     </div>
   );
 }

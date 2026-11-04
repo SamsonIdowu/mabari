@@ -2,6 +2,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { themes } from '../src/shared/tokens.ts';
 
+test.beforeEach(async ({ request }) => {
+  await request.post('/api/wipe', { data: { confirm: true } });
+});
+
 const NAV: [name: string, label: string, heading: string][] = [
   ['Office', 'Office', 'Office'],
   ['Projects', 'Projects', 'Projects'],

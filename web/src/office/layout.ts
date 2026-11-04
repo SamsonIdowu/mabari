@@ -45,9 +45,9 @@ export const SPOTS: Record<Exclude<Location, 'desk'> | 'door', Point[]> = {
 };
 
 /**
- * Where each state works. Every state stays at the desk: agents walk only to arrive, to leave or
- * to sit beside their lead (decision 29, the user's call over the prototype, which sent them to
- * the server room, the library and the pantry).
+ * Where each state works, as in the prototype. Work happens at the desk, where the monitor shows
+ * it. Agents walk only when it means something: arriving, briefing a new subagent in the meeting
+ * room, and the pantry when idle (decision 37, replacing decision 29).
  */
 export const STATE_LOCATIONS: Record<AgentState, Location> = {
   thinking: 'desk',
@@ -56,8 +56,8 @@ export const STATE_LOCATIONS: Record<AgentState, Location> = {
   running: 'desk',
   browsing: 'desk',
   approval: 'desk',
-  spawning: 'desk',
-  idle: 'desk',
+  spawning: 'meeting',
+  idle: 'pantry',
   done: 'desk',
   error: 'desk',
   paused: 'desk',

@@ -15,8 +15,7 @@ describe('desks', () => {
 });
 
 describe('spotFor', () => {
-  // Decision 29: agents stay at their desks whatever they are doing.
-  it('keeps every state at the desk', () => {
+  it('keeps work at the desk', () => {
     for (const state of [
       'thinking',
       'reading',
@@ -24,14 +23,18 @@ describe('spotFor', () => {
       'running',
       'browsing',
       'approval',
-      'spawning',
-      'idle',
       'done',
       'error',
       'paused',
     ] as const) {
       expect(spotFor(state, 3, 1)).toEqual(deskSeat(3));
     }
+  });
+
+  it('briefs subagents in the meeting room and rests in the pantry', () => {
+    expect(spotFor('spawning', 0, 1)).toEqual({ x: 1078, y: 362 });
+    expect(spotFor('idle', 0, 1)).toEqual({ x: 1046, y: 520 });
+    expect(spotFor('idle', 0, 5)).toEqual(spotFor('idle', 0, 1));
   });
 });
 

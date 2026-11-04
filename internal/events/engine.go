@@ -27,7 +27,7 @@ const (
 )
 
 // Connector is a source of agents. The simulator is the first; Claude Code, Codex and the hub
-// follow in Stage 6. Its methods run inside Engine.Do, so they must not call Do themselves.
+// follow in Stage 7. Its methods run inside Engine.Do, so they must not call Do themselves.
 type Connector interface {
 	Start()
 	Stop()
@@ -670,7 +670,7 @@ func (e *Engine) ClearOffice() {
 }
 
 // Wipe removes everything Mabari stores and returns to first run. Restoring settings backups joins
-// this in Stage 6. Call inside Do.
+// this in Stage 7. Call inside Do.
 func (e *Engine) Wipe() {
 	for _, connector := range e.connectors {
 		connector.Stop()

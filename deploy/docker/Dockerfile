@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# First version, so Docker never drifts behind. Finished in Stage 10.
+# First version, so Docker never drifts behind. Finished in Stage 11.
 
 FROM node:22-alpine AS web
 WORKDIR /src/web

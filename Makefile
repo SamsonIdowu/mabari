@@ -49,4 +49,4 @@ docker:
 	docker build -f deploy/docker/Dockerfile -t mabari:dev --build-arg VERSION=$(VERSION) .
 
 release-snapshot:
-	@echo "GoReleaser arrives in Stage 10."
+	@echo "GoReleaser arrives in Stage 11."

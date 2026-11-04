@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package simulator reproduces the prototype's demo office as a connector. The UI is built against
-// it until Stage 6. Random numbers are drawn in the prototype's exact order, which the golden test
+// it until Stage 7. Random numbers are drawn in the prototype's exact order, which the golden test
 // checks, so reorder them only together with the prototype.
 package simulator
 

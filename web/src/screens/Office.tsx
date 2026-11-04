@@ -437,18 +437,6 @@ function CanvasTools() {
       </button>
       <button
         type="button"
-        id="fsBtn"
-        title={wide ? 'Exit full screen (F or Esc)' : 'Full screen (F)'}
-        aria-label="Full screen"
-        aria-pressed={wide}
-        onClick={toggleFullscreen}
-      >
-        <Icon>
-          <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
-        </Icon>
-      </button>
-      <button
-        type="button"
         title="Follow the selected agent"
         aria-label="Follow the selected agent"
         aria-pressed={follow && selected !== null}
@@ -458,6 +446,18 @@ function CanvasTools() {
         <Icon>
           <circle cx="12" cy="12" r="3" />
           <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        id="fsBtn"
+        title={wide ? 'Exit full screen (F or Esc)' : 'Full screen (F)'}
+        aria-label="Full screen"
+        aria-pressed={wide}
+        onClick={toggleFullscreen}
+      >
+        <Icon>
+          <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
         </Icon>
       </button>
       <button

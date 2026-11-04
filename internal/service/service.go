@@ -30,11 +30,11 @@ func Exec(ctx context.Context, name string, args ...string) (string, error) {
 	var cmd *exec.Cmd
 	switch name {
 	case "launchctl":
-		cmd = exec.CommandContext(ctx, "launchctl", args...)
+		cmd = exec.CommandContext(ctx, "launchctl", args...) // #nosec G204 -- a fixed program; arguments Mabari builds
 	case "systemctl":
-		cmd = exec.CommandContext(ctx, "systemctl", args...)
+		cmd = exec.CommandContext(ctx, "systemctl", args...) // #nosec G204 -- a fixed program; arguments Mabari builds
 	case "schtasks":
-		cmd = exec.CommandContext(ctx, "schtasks", args...)
+		cmd = exec.CommandContext(ctx, "schtasks", args...) // #nosec G204 -- a fixed program; arguments Mabari builds
 	default:
 		return "", fmt.Errorf("%q is not a service manager Mabari runs", name)
 	}

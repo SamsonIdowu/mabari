@@ -28,6 +28,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/server"
 	"github.com/SamsonIdowu/mabari/internal/store"
+	"github.com/SamsonIdowu/mabari/internal/whisper"
 	"github.com/SamsonIdowu/mabari/web"
 )
 
@@ -115,6 +116,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 			Secrets:   office.secrets,
 			Hub:       office.hub,
 			Codex:     office.codex,
+			Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

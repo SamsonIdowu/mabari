@@ -19,6 +19,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
+	"github.com/SamsonIdowu/mabari/internal/whisper"
 )
 
 const maxBodyBytes = 1 << 20
@@ -40,6 +41,8 @@ type Options struct {
 	Codex *codex.Connector
 	// Answerer makes the client that writes query answers from a key. Nil uses Claude.
 	Answerer func(key string) QueryAnswerer
+	// Whisper turns recordings into text on this computer. With nil, those routes aren't served.
+	Whisper *whisper.Whisper
 }
 
 type api struct {
@@ -51,6 +54,7 @@ type api struct {
 	hub       *hub.Connector
 	codex     *codex.Connector
 	answerer  func(key string) QueryAnswerer
+	whisper   *whisper.Whisper
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -63,7 +67,7 @@ func New(options Options) http.Handler {
 	a := &api{
 		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
-		answerer: options.Answerer,
+		answerer: options.Answerer, whisper: options.Whisper,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -79,6 +83,9 @@ func New(options Options) http.Handler {
 	}
 	if a.codex != nil {
 		a.codexRoutes(mux)
+	}
+	if a.whisper != nil {
+		a.voiceRoutes(mux)
 	}
 	if a.secrets != nil {
 		a.keyRoutes(mux)

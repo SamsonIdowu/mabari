@@ -455,6 +455,11 @@ export const DecisionAllowed = "allowed";
  */
 export const DecisionDenied = "denied";
 /**
+ * DecisionCancelled settles an approval nobody decided, because the agent stopped or asked
+ * for something else first. It is never sent to the agent.
+ */
+export const DecisionCancelled = "cancelled";
+/**
  * Decisions on an approval, and who made them.
  */
 export const DecidedByUser = "user";

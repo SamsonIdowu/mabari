@@ -278,8 +278,11 @@ const (
 const (
 	DecisionAllowed = "allowed"
 	DecisionDenied  = "denied"
-	DecidedByUser   = "user"
-	DecidedByAuto   = "auto"
+	// DecisionCancelled settles an approval nobody decided, because the agent stopped or asked
+	// for something else first. It is never sent to the agent.
+	DecisionCancelled = "cancelled"
+	DecidedByUser     = "user"
+	DecidedByAuto     = "auto"
 )
 
 // Approval is a risky action waiting for a decision.

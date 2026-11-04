@@ -517,3 +517,50 @@ func TestHelpersSitNearestTheirLead(t *testing.T) {
 		t.Errorf("desks = %v, want [11 15 14]", desks)
 	}
 }
+
+func pendingFor(t *testing.T, engine *events.Engine, agentID string) []models.Approval {
+	t.Helper()
+	pending, err := engine.Store().Approvals(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mine []models.Approval
+	for _, approval := range pending {
+		if approval.Agent == agentID {
+			mine = append(mine, approval)
+		}
+	}
+	return mine
+}
+
+// An agent waits on one approval at a time. A stop, or a second request, settles the earlier one,
+// and a restart restores the newest.
+func TestNoApprovalIsLeftBehind(t *testing.T) {
+	sim, engine, _ := restartedDemo(t, func(sim *Simulator, engine *events.Engine) {
+		atlas := engine.AgentByName("Atlas")
+		engine.RequestApproval(atlas, models.Approval{Type: models.ApprovalCommand,
+			Title: "Run a command", Detail: models.ApprovalDetail{Cmd: "npm test"}})
+	})
+	var atlas *models.LiveAgent
+	if err := engine.Do(func() { atlas = engine.AgentByName("Atlas") }); err != nil {
+		t.Fatal(err)
+	}
+	pending := pendingFor(t, engine, atlas.ID)
+	if len(pending) != 1 || atlas.Approval == nil || atlas.Approval.ID != pending[0].ID ||
+		atlas.Approval.Detail.Cmd != "npm test" {
+		t.Fatalf("pending = %+v, restored = %+v", pending, atlas.Approval)
+	}
+	if err := engine.Do(func() { sim.StopAgent(atlas) }); err != nil {
+		t.Fatal(err)
+	}
+	if left := pendingFor(t, engine, atlas.ID); len(left) != 0 || atlas.Approval != nil {
+		t.Errorf("after stop: pending = %+v", left)
+	}
+	rows, err := engine.Store().Log(context.Background(), store.LogQuery{Type: models.LogApproval})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].Outcome != "Cancelled" {
+		t.Errorf("newest row = %+v", rows[0])
+	}
+}

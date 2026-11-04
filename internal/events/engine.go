@@ -171,10 +171,12 @@ func (e *Engine) loadAgents(ctx context.Context) error {
 		if agent.Queued, err = e.store.WaitingInstructions(ctx, agent.ID); err != nil {
 			return err
 		}
+		// Pending approvals come newest first, and the newest is the one the agent waits on.
 		for _, approval := range pending {
 			if approval.Agent == agent.ID {
 				copied := approval
 				agent.Approval = &copied
+				break
 			}
 		}
 		e.agents = append(e.agents, agent)
@@ -367,6 +369,7 @@ func (e *Engine) Touch(agent *models.LiveAgent) { e.dirty[agent.ID] = struct{}{}
 func (e *Engine) RemoveAgent(id string) {
 	for index, agent := range e.agents {
 		if agent.ID == id {
+			e.CancelApproval(agent)
 			e.agents = append(e.agents[:index:index], e.agents[index+1:]...)
 			break
 		}
@@ -517,6 +520,8 @@ func (e *Engine) autoCovers(a models.Approval) bool {
 // RequestApproval pauses an agent until the user decides. Auto approve may decide at once.
 // Call inside Do.
 func (e *Engine) RequestApproval(agent *models.LiveAgent, approval models.Approval) {
+	// An agent waits on one approval at a time, so an earlier one is no longer asked.
+	e.CancelApproval(agent)
 	approval.ID = newID("approval-")
 	approval.Agent = agent.ID
 	approval.Time = e.now().UnixMilli()
@@ -542,6 +547,21 @@ func (e *Engine) RequestApprovalQuietly(agent *models.LiveAgent, approval models
 	approval.Agent = agent.ID
 	approval.Time = e.now().UnixMilli()
 	agent.Approval = &approval
+	e.Touch(agent)
+	e.record(e.store.SaveApproval(context.Background(), approval))
+}
+
+// CancelApproval settles an agent's pending approval without a decision, when the agent stops or
+// moves on. The agent is not told, and the activity log records it as cancelled. Call inside Do.
+func (e *Engine) CancelApproval(agent *models.LiveAgent) {
+	if agent.Approval == nil {
+		return
+	}
+	approval := *agent.Approval
+	decision, by := models.DecisionCancelled, models.DecidedByUser
+	approval.Decision, approval.DecidedBy = &decision, &by
+	e.Log(agent.Name, models.LogApproval, approvalSummary(approval), "Cancelled", "")
+	agent.Approval = nil
 	e.Touch(agent)
 	e.record(e.store.SaveApproval(context.Background(), approval))
 }

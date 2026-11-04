@@ -848,6 +848,7 @@ func (s *Simulator) StopAgent(agent *models.LiveAgent) {
 	s.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")
 	agent.Leaving = true
 	agent.State = models.StateIdle
+	s.engine.CancelApproval(agent)
 	s.engine.Touch(agent)
 	s.engine.Toast(agent.Name + " stopped and left the office")
 	s.after(leaveAfter, func() {

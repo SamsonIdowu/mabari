@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Lets Claude Code on this computer report to Mabari in Docker. First run, on the host:
+#   mabari connect claude --token-file ~/.mabari/hook_token
+# then: docker compose -f deploy/docker/compose.yaml -f deploy/docker/compose.claude.yaml up -d
+services:
+  mabari:
+    secrets: [mabari_master_key, mabari_hook_token]
+
+secrets:
+  mabari_hook_token:
+    file: ${HOME}/.mabari/hook_token

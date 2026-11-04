@@ -1,21 +1,33 @@
 # SPDX-License-Identifier: Apache-2.0
-# First version, so the safe way to run Mabari in Docker exists from the start. Finished in Stage 11.
+# docker compose -f deploy/docker/compose.yaml up -d, then open http://localhost:4317.
+# `make docker-key` makes the master key first. See docs/INSTALL.md for the other options.
 services:
   mabari:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
+      args:
+        VERSION: ${MABARI_VERSION:-dev}
+    image: mabari:latest
     ports:
       # Mabari has no login yet, so it must only be reachable from this computer.
-      - 127.0.0.1:4317:4317
+      - 127.0.0.1:${MABARI_HOST_PORT:-4317}:4317
     volumes:
       - mabari-data:/data
+      # Project folders: mount each one under /workspace, read-write, for example
+      # - ~/code/shop:/workspace/shop
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
-    # Keys and tokens are kept in an encrypted file sealed with this key. `make docker-key` makes one.
+    user: nonroot
+    # Keys and tokens are kept in an encrypted file sealed with this key.
     secrets: [mabari_master_key]
+    healthcheck:
+      test: ["CMD", "/mabari", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
     restart: unless-stopped
 
 secrets:

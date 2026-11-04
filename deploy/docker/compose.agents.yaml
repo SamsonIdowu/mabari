@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# The larger image with the Claude Code and Codex CLIs, so agents run inside the container.
+#   docker compose -f deploy/docker/compose.yaml -f deploy/docker/compose.agents.yaml up -d
+# Sign in once inside it: docker compose ... exec mabari claude, and ... exec mabari codex login
+services:
+  mabari:
+    build:
+      target: agents
+      args:
+        VERSION: ${MABARI_VERSION:-dev}
+        # Set a whisper.cpp version, such as 1.8.2, to build Local Whisper in as well.
+        WHISPER_CPP_VERSION: ${WHISPER_CPP_VERSION:-}
+    image: mabari-agents:latest
+    user: node
+    volumes:
+      - mabari-agents-home:/home/node
+    healthcheck:
+      test: ["CMD", "mabari", "healthcheck"]
+
+volumes:
+  mabari-agents-home:

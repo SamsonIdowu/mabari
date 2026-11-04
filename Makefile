@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-key release-snapshot
+.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-agents docker-smoke docker-key release-snapshot
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PNPM = pnpm --dir web
@@ -52,7 +52,15 @@ docker-key:
 		echo "Wrote deploy/docker/mabari_master_key. Keep it: without it the stored keys can't be read.")
 
 docker:
-	docker build -f deploy/docker/Dockerfile -t mabari:dev --build-arg VERSION=$(VERSION) .
+	docker build -f deploy/docker/Dockerfile -t mabari:latest --build-arg VERSION=$(VERSION) .
+
+docker-agents:
+	docker build -f deploy/docker/Dockerfile --target agents -t mabari-agents:latest --build-arg VERSION=$(VERSION) .
+
+# Starts each image with compose on port 4398, checks it, and removes it again.
+docker-smoke:
+	MABARI_VERSION=$(VERSION) deploy/docker/smoke.sh
+	MABARI_VERSION=$(VERSION) deploy/docker/smoke.sh deploy/docker/compose.agents.yaml
 
 release-snapshot:
 	@echo "GoReleaser arrives in Stage 11."

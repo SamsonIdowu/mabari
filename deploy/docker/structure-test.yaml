@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# Container Structure Tests for the default image:
+#   container-structure-test test --image mabari:latest --config deploy/docker/structure-test.yaml
+schemaVersion: 2.0.0
+
+metadataTest:
+  user: "65532"
+  exposedPorts: ["4317"]
+  volumes: ["/data"]
+  entrypoint: ["/mabari", "serve"]
+  envVars:
+    - key: MABARI_BIND
+      value: 0.0.0.0
+    - key: MABARI_IN_CONTAINER
+      value: "1"
+    - key: MABARI_DATA_DIR
+      value: /data
+
+fileExistenceTests:
+  - name: the binary
+    path: /mabari
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: the data folder belongs to nonroot
+    path: /data
+    shouldExist: true
+    uid: 65532
+    gid: 65532
+  - name: no shell
+    path: /bin/sh
+    shouldExist: false
+
+commandTests:
+  - name: version
+    command: /mabari
+    args: ["version"]
+    exitCode: 0
+  - name: healthcheck fails cleanly with nothing running
+    command: /mabari
+    args: ["healthcheck"]
+    exitCode: 1
+    expectedError: ["isn't answering"]

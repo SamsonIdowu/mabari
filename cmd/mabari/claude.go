@@ -190,7 +190,7 @@ const HookTokenSecret = "/run/secrets/mabari_hook_token" // #nosec G101 -- a pat
 // claudeOptions turns on the Claude Code routes. A container can't reach the host's settings, so
 // there the Accounts page shows the host command instead (Stage 11).
 func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
-	if os.Getenv("MABARI_IN_CONTAINER") == "1" {
+	if os.Getenv("MABARI_IN_CONTAINER") == "1" && os.Getenv("MABARI_AGENTS_IMAGE") != "1" {
 		// Claude Code on the host reports here when the hook token is shared as a Docker secret.
 		if _, err := claudecode.ReadTokenFile(HookTokenSecret); err != nil {
 			return nil

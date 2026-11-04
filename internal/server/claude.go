@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -20,6 +21,8 @@ type ClaudeOptions struct {
 	ConfigDir string
 	// Hook is the binary and port written into settings.json.
 	Hook claudecode.Hook
+
+	seen claudecode.Seen
 }
 
 const maxHookBody = 4 << 20
@@ -44,10 +47,15 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, "request is too large")
 		return
 	}
-	nonce := r.Header.Get(claudecode.NonceHeader)
-	want := claudecode.SignRequest(token, nonce, r.PathValue("event"), body)
+	nonce, sent := r.Header.Get(claudecode.NonceHeader), r.Header.Get(claudecode.TimeHeader)
+	want := claudecode.SignRequest(token, nonce, sent, r.PathValue("event"), body)
 	if len(nonce) < 16 || !claudecode.Verify(want, r.Header.Get(claudecode.SignatureHeader)) {
 		writeError(w, http.StatusUnauthorized, "this hook call is not signed with the install's token")
+		return
+	}
+	// Checked after the signature, so only real calls are remembered.
+	if !a.claude.seen.Fresh(nonce, sent, time.Now()) {
+		writeError(w, http.StatusUnauthorized, "this hook call is too old or was already used")
 		return
 	}
 	reply := a.claude.Connector.Handle(r.Context(), body)

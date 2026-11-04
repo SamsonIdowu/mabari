@@ -411,7 +411,7 @@ func approvalFor(in input) models.Approval {
 	var args toolInput
 	_ = json.Unmarshal(in.ToolInput, &args)
 	switch in.ToolName {
-	case "Bash", "PowerShell":
+	case "Bash":
 		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: args.Command, Folder: in.Cwd})
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Run a command",

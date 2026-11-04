@@ -11,9 +11,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 const maxBodyBytes = 1 << 20
@@ -27,6 +29,10 @@ type Options struct {
 	WebFiles fs.FS
 	// Claude connects Claude Code sessions, or is nil.
 	Claude *ClaudeOptions
+	// Secrets holds API keys and the hub token. With nil, those routes aren't served.
+	Secrets secrets.Store
+	// Hub takes reports from people's own apps. It needs Secrets.
+	Hub *hub.Connector
 }
 
 type api struct {
@@ -34,13 +40,15 @@ type api struct {
 	simulator *simulator.Simulator
 	router    dispatch.Router
 	claude    *ClaudeOptions
+	secrets   secrets.Store
+	hub       *hub.Connector
 }
 
 // New builds the handler. It is separate from listening so tests can drive it directly.
 func New(options Options) http.Handler {
 	a := &api{
 		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
-		claude: options.Claude,
+		claude: options.Claude, secrets: options.Secrets, hub: options.Hub,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -49,6 +57,12 @@ func New(options Options) http.Handler {
 	a.routes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)
+	}
+	if a.secrets != nil {
+		a.keyRoutes(mux)
+		if a.hub != nil {
+			a.hubRoutes(mux)
+		}
 	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")

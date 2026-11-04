@@ -58,8 +58,10 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 		return
 	}
 	nonceText := hex.EncodeToString(nonce)
+	sent := strconv.FormatInt(time.Now().Unix(), 10)
 	request.Header.Set(NonceHeader, nonceText)
-	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, event, body))
+	request.Header.Set(TimeHeader, sent)
+	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, sent, event, body))
 	request.Header.Set("Content-Type", "application/json")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

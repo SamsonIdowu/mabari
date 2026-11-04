@@ -99,6 +99,18 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Keys and tokens live in the secret store, not the database, so they go separately.
+	if a.secrets != nil {
+		for _, name := range []string{
+			string(models.AccountAnthropicKey), string(models.AccountOpenAIKey), secretHubToken,
+			claudecode.TokenName,
+		} {
+			if err := a.secrets.Delete(name); err != nil {
+				internalError(w, err)
+				return
+			}
+		}
+	}
 	if err := a.engine.Do(a.engine.Wipe); err != nil {
 		internalError(w, err)
 		return

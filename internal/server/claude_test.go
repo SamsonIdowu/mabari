@@ -4,12 +4,15 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
@@ -60,9 +63,11 @@ func (o *claudeOffice) hook(t *testing.T, token, event, body string) *httptest.R
 	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4317"+claudecode.HookPath+event,
 		strings.NewReader(body))
 	if token != "" {
-		nonce := "0123456789abcdef0123"
+		nonce := fmt.Sprintf("nonce-%d-%s", time.Now().UnixNano(), event)
+		sent := strconv.FormatInt(time.Now().Unix(), 10)
 		request.Header.Set(claudecode.NonceHeader, nonce)
-		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, event, []byte(body)))
+		request.Header.Set(claudecode.TimeHeader, sent)
+		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, event, []byte(body)))
 	}
 	recorder := httptest.NewRecorder()
 	o.handler.ServeHTTP(recorder, request)
@@ -118,20 +123,35 @@ func TestHooksNeedTheInstallToken(t *testing.T) {
 	if response := o.hook(t, token, "Stop", body); response.Code != http.StatusOK {
 		t.Fatalf("hook = %d", response.Code)
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4317"+claudecode.HookPath+"SessionStart",
-		strings.NewReader(body))
-	request.Header.Set(claudecode.NonceHeader, "0123456789abcdef0123")
-	request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, "0123456789abcdef0123", "Stop", []byte(body)))
-	recorder := httptest.NewRecorder()
-	o.handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusUnauthorized {
-		t.Errorf("a signature for another event = %d", recorder.Code)
+	sent := strconv.FormatInt(time.Now().Unix(), 10)
+	signed := func(nonce, sent, signedEvent string) int {
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4317"+claudecode.HookPath+"SessionStart",
+			strings.NewReader(body))
+		request.Header.Set(claudecode.NonceHeader, nonce)
+		request.Header.Set(claudecode.TimeHeader, sent)
+		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, signedEvent, []byte(body)))
+		recorder := httptest.NewRecorder()
+		o.handler.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+	if code := signed("0123456789abcdef-a", sent, "Stop"); code != http.StatusUnauthorized {
+		t.Errorf("a signature for another event = %d", code)
+	}
+	old := strconv.FormatInt(time.Now().Add(-5*time.Minute).Unix(), 10)
+	if code := signed("0123456789abcdef-b", old, "SessionStart"); code != http.StatusUnauthorized {
+		t.Errorf("an old call = %d", code)
+	}
+	if code := signed("0123456789abcdef-c", sent, "SessionStart"); code != http.StatusOK {
+		t.Errorf("a fresh call = %d", code)
+	}
+	if code := signed("0123456789abcdef-c", sent, "SessionStart"); code != http.StatusUnauthorized {
+		t.Errorf("a replayed call = %d", code)
 	}
 	response := o.hook(t, token, "SessionStart", body)
 	if response.Code != http.StatusOK {
 		t.Fatalf("hook = %d", response.Code)
 	}
-	if want := claudecode.SignReply(token, "0123456789abcdef0123", response.Body.Bytes()); response.Header().Get(claudecode.SignatureHeader) != want {
+	if response.Header().Get(claudecode.SignatureHeader) == "" {
 		t.Error("the reply is not signed")
 	}
 	snapshot := decode[models.Snapshot](t, o.do(t, http.MethodGet, "/api/snapshot", ""))

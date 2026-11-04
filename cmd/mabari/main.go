@@ -21,6 +21,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/config"
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
+	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
@@ -110,6 +111,8 @@ func serve(args []string, stdout, stderr io.Writer) error {
 			Simulator: office.simulator,
 			WebFiles:  web.Files(),
 			Claude:    claudeOptions(cfg, office),
+			Secrets:   office.secrets,
+			Hub:       office.hub,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -143,6 +146,7 @@ type office struct {
 	simulator *simulator.Simulator
 	secrets   secrets.Store
 	claude    *claudecode.Connector
+	hub       *hub.Connector
 }
 
 func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
@@ -185,7 +189,12 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	}
 	claude := claudecode.New(engine)
 	engine.AddConnector(claudecode.Source, claude)
-	return &office{store: database, engine: engine, simulator: sim, secrets: vault, claude: claude}, nil
+	hubConnector := hub.New(engine)
+	engine.AddConnector(hub.Source, hubConnector)
+	return &office{
+		store: database, engine: engine, simulator: sim, secrets: vault,
+		claude: claude, hub: hubConnector,
+	}, nil
 }
 
 func (o *office) close(stderr io.Writer) {

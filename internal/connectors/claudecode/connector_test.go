@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -397,5 +398,26 @@ func TestRiskFollowsTheToolNotItsArguments(t *testing.T) {
 		if got.RiskLevel != tc.want {
 			t.Errorf("%s %v = %s, want %s", tc.tool, tc.args, got.RiskLevel, tc.want)
 		}
+	}
+}
+
+// A session joins the project whose folder it starts in, even when the project keeps the folder
+// as ~/code/shop.
+func TestASessionJoinsTheProjectForItsFolder(t *testing.T) {
+	c, engine := newConnector(t)
+	home, _ := os.UserHomeDir()
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "shop", Name: "Shop", Repository: &models.Repository{Path: "~/code/shop"}})
+	})
+	data, _ := json.Marshal(map[string]any{"session_id": "s9", "cwd": home + "/code/shop/web", "hook_event_name": "SessionStart"})
+	c.Handle(context.Background(), data)
+	var project string
+	_ = engine.Do(func() {
+		if agent := engine.Agent("cc-s9"); agent != nil && agent.Project != nil {
+			project = *agent.Project
+		}
+	})
+	if project != "shop" {
+		t.Errorf("project = %q", project)
 	}
 }

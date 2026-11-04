@@ -5,6 +5,7 @@ package claudecode
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -201,7 +202,7 @@ func (c *Connector) freshName() string {
 func (c *Connector) projectFor(folder string) string {
 	projects := c.engine.Projects()
 	for _, project := range projects {
-		if repo := project.Repository; repo != nil && repo.Path != "" && within(folder, repo.Path) {
+		if repo := project.Repository; repo != nil && repo.Path != "" && within(folder, expandHome(repo.Path)) {
 			return project.ID
 		}
 	}
@@ -209,6 +210,19 @@ func (c *Connector) projectFor(folder string) string {
 		return projects[0].ID
 	}
 	return ""
+}
+
+// expandHome turns a leading ~ into the home folder, as projects keep paths the way people type
+// them.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~"))
 }
 
 func within(path, folder string) bool {

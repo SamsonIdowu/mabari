@@ -32,7 +32,9 @@ type Config struct {
 	Secrets       string
 	MasterKeyFile string
 	LogLevel      string
-	PrintConfig   bool
+	// LogFile also writes the log to this file, rotated. The local service sets it.
+	LogFile     string
+	PrintConfig bool
 }
 
 // Address is the host and port to listen on.
@@ -48,8 +50,8 @@ func (c Config) Printable() string {
 		keyFile = c.MasterKeyFile
 	}
 	return fmt.Sprintf(
-		"bind=%s\nport=%d\ndata_dir=%s\nsecrets=%s\nmaster_key_file=%s\nlog_level=%s\n",
-		c.Bind, c.Port, c.DataDir, c.Secrets, keyFile, c.LogLevel,
+		"bind=%s\nport=%d\ndata_dir=%s\nsecrets=%s\nmaster_key_file=%s\nlog_level=%s\nlog_file=%s\n",
+		c.Bind, c.Port, c.DataDir, c.Secrets, keyFile, c.LogLevel, c.LogFile,
 	)
 }
 
@@ -62,6 +64,7 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 		Secrets:       orDefault(getenv("MABARI_SECRETS"), defaultSecrets(getenv)),
 		MasterKeyFile: getenv("MABARI_MASTER_KEY_FILE"),
 		LogLevel:      orDefault(getenv("MABARI_LOG_LEVEL"), DefaultLog),
+		LogFile:       getenv("MABARI_LOG_FILE"),
 	}
 	if raw := getenv("MABARI_PORT"); raw != "" {
 		port, err := strconv.Atoi(raw)
@@ -77,6 +80,7 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 	flags.IntVar(&cfg.Port, "port", cfg.Port, "port to listen on")
 	flags.StringVar(&cfg.DataDir, "data-dir", cfg.DataDir, "where Mabari keeps its data")
 	flags.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "debug, info, warn or error")
+	flags.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "also write the log to this file, rotated")
 	flags.BoolVar(&cfg.PrintConfig, "print-config", false, "print the configuration and exit")
 	if err := flags.Parse(args); err != nil {
 		return Config{}, err

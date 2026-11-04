@@ -13,6 +13,7 @@ require (
 	github.com/gzuidhof/tygo v0.2.21
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.58.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0
 	modernc.org/sqlite v1.61.1
 )

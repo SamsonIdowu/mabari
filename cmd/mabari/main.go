@@ -42,6 +42,9 @@ Usage:
   mabari connect claude       Add Mabari's hooks to Claude Code, after showing the change
   mabari disconnect claude    Take Mabari's hooks out of Claude Code again
   mabari hook <event>         Run by Claude Code itself; not for typing
+  mabari service <action>     Run Mabari at login: install, uninstall, start, stop,
+                              restart, status or logs
+  mabari healthcheck          Ask a running Mabari whether it is well
   mabari version              Print the version
 `
 
@@ -63,6 +66,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	case "version":
 		_, err := fmt.Fprintln(stdout, version)
 		return err
+	case "healthcheck":
+		return healthcheck(args, stdout, stderr)
+	case "service":
+		return runService(args, os.Stdin, stdout)
 	case "hook":
 		return runHook(args, os.Stdin, stdout)
 	case "connect", "disconnect":
@@ -93,6 +100,13 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	if level, err := cfg.Level(); err == nil {
 		slog.SetLogLoggerLevel(level)
 	}
+	if cfg.LogFile != "" {
+		logFile, err := openLogFile(cfg.LogFile, stderr)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = logFile.Close() }()
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -106,6 +120,13 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer office.close(stderr)
+	var login server.LoginService
+	loginReason := ""
+	if s, err := thisService(); err != nil {
+		loginReason = err.Error()
+	} else {
+		login = s
+	}
 	httpServer := &http.Server{
 		Handler: server.New(server.Options{
 			Version:   version,
@@ -117,6 +138,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 			Hub:       office.hub,
 			Codex:     office.codex,
 			Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
+			Login:     login, LoginReason: loginReason,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

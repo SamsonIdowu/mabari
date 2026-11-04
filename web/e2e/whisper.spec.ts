@@ -58,7 +58,7 @@ test('a recording becomes text on release, and still waits for Enter', async ({ 
   );
   await hold(page);
   await expect(page.locator('#vTitle')).toHaveText('Turning it into text on this computer…');
-  await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   whisper.release();
   await expect(page.locator('#vText')).toContainText('Ask Scout how the endpoint is going');
   await expect(page.locator('#vTitle')).toHaveText('Ready to send');

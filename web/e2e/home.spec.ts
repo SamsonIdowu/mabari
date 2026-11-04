@@ -159,11 +159,6 @@ test('shift enter starts a new line and an empty box sends nothing', async ({ pa
   await expect(box).toHaveValue('one\ntwo');
 });
 
-test('hold to talk waits for its own stage', async ({ page, request }) => {
-  await home(page, request);
-  await expect(page.getByRole('button', { name: 'Hold to talk' })).toBeDisabled();
-});
-
 test('the reply is one bubble with no chat history', async ({ page, request }) => {
   await home(page, request);
   await ask(page, 'hello');

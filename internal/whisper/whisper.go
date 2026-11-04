@@ -283,6 +283,9 @@ func (w *Whisper) Transcribe(ctx context.Context, audio []byte, lang string) (st
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	threads := fmt.Sprint(max(1, min(8, runtime.NumCPU())))
+	// The binary is found by a fixed name, every argument is fixed or checked (Language allows
+	// only auto or two or three letters), and there is no shell.
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(ctx, binary, // #nosec G204 -- the user's whisper-cli, fixed arguments
 		"-m", w.modelPath(), "-f", file.Name(), "-l", Language(lang), "-t", threads, "-nt", "-np")
 	var stdout, stderr bytes.Buffer

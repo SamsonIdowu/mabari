@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package store
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/SamsonIdowu/mabari/internal/models"
+)
+
+func open(t *testing.T) *Store {
+	t.Helper()
+	s, err := Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMigratesFromEmpty(t *testing.T) {
+	version, err := open(t).SchemaVersion(context.Background())
+	must(t, err)
+	if version != 1 {
+		t.Errorf("version = %d", version)
+	}
+}
+
+func TestReopenKeepsDataAndDoesNotRerunMigrations(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "nested", "mabari.db")
+	first, err := Open(ctx, path)
+	must(t, err)
+	must(t, first.SaveProject(ctx, models.Project{ID: "p", Name: "Docs", Files: []string{"a"}}))
+	must(t, first.Close())
+
+	second, err := Open(ctx, path)
+	must(t, err)
+	defer func() { _ = second.Close() }()
+	projects, err := second.Projects(ctx)
+	must(t, err)
+	if len(projects) != 1 || projects[0].Name != "Docs" || projects[0].Files[0] != "a" {
+		t.Errorf("projects = %+v", projects)
+	}
+}
+
+func TestDatabaseIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes")
+	}
+	path := filepath.Join(t.TempDir(), "data", "mabari.db")
+	s, err := Open(context.Background(), path)
+	must(t, err)
+	defer func() { _ = s.Close() }()
+	file, err := os.Stat(path)
+	must(t, err)
+	if file.Mode().Perm() != 0o600 {
+		t.Errorf("file mode = %o", file.Mode().Perm())
+	}
+	dir, err := os.Stat(filepath.Dir(path))
+	must(t, err)
+	if dir.Mode().Perm() != 0o700 {
+		t.Errorf("folder mode = %o", dir.Mode().Perm())
+	}
+}
+
+func TestAgentRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	agent := models.LiveAgent{
+		Agent:        models.Agent{ID: "a", Name: "Scout", AllowedTools: []string{"read"}},
+		SessionState: models.SessionState{State: models.StateEditing, Progress: 0.4},
+	}
+	agent.Estimate = &models.Estimate{SecondsLeft: 10}
+	must(t, s.SaveAgent(ctx, agent))
+	agent.Progress = 0.5
+	must(t, s.SaveAgent(ctx, agent))
+
+	agents, err := s.Agents(ctx)
+	must(t, err)
+	if len(agents) != 1 || agents[0].Name != "Scout" || agents[0].Progress != 0.5 ||
+		agents[0].Estimate == nil || agents[0].AllowedTools[0] != "read" {
+		t.Errorf("agents = %+v", agents)
+	}
+
+	must(t, s.DeleteAgent(ctx, "a"))
+	agents, err = s.Agents(ctx)
+	must(t, err)
+	if len(agents) != 0 {
+		t.Errorf("after delete: %+v", agents)
+	}
+}
+
+func TestEventsNewestFirstWithPaging(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	for i, id := range []string{"x-1", "x-2", "x-3"} {
+		must(t, s.AddEvent(ctx, models.Event{ID: id, Agent: "a", Time: int64(i + 1), Tool: "t"}))
+	}
+	events, err := s.Events(ctx, "a", 2, 0)
+	must(t, err)
+	if len(events) != 2 || events[0].ID != "x-3" {
+		t.Errorf("events = %+v", events)
+	}
+	events, err = s.Events(ctx, "a", 2, 2)
+	must(t, err)
+	if len(events) != 1 || events[0].ID != "x-1" {
+		t.Errorf("page = %+v", events)
+	}
+}
+
+func TestLogSearchAndFilter(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	rows := []models.LogEntry{
+		{ID: "1", Time: 1, Agent: "Sage", Type: models.LogInstruction, Message: "Add 100% coverage"},
+		{ID: "2", Time: 2, Agent: "Scout", Type: models.LogQuery, Message: "What now"},
+		{ID: "3", Time: 3, Agent: "Atlas", Type: models.LogApproval, Outcome: "Denied"},
+	}
+	for _, row := range rows {
+		must(t, s.SaveLog(ctx, row))
+	}
+	cases := []struct {
+		query LogQuery
+		want  []string
+	}{
+		{LogQuery{}, []string{"3", "2", "1"}},
+		{LogQuery{Type: models.LogQuery}, []string{"2"}},
+		{LogQuery{Search: "sage"}, []string{"1"}},
+		{LogQuery{Search: "denied"}, []string{"3"}},
+		{LogQuery{Search: "%"}, []string{"1"}},
+		{LogQuery{Search: "_"}, nil},
+		{LogQuery{Limit: 1}, []string{"3"}},
+	}
+	for _, tc := range cases {
+		entries, err := s.Log(ctx, tc.query)
+		must(t, err)
+		var got []string
+		for _, entry := range entries {
+			got = append(got, entry.ID)
+		}
+		if len(got) != len(tc.want) {
+			t.Errorf("%+v: got %v, want %v", tc.query, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("%+v: got %v, want %v", tc.query, got, tc.want)
+			}
+		}
+	}
+}
+
+func TestRetentionBoundary(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	must(t, s.AddEvent(ctx, models.Event{ID: "old", Agent: "a", Time: 99}))
+	must(t, s.AddEvent(ctx, models.Event{ID: "keep", Agent: "a", Time: 100}))
+	must(t, s.SaveLog(ctx, models.LogEntry{ID: "old", Time: 99}))
+	must(t, s.SaveLog(ctx, models.LogEntry{ID: "keep", Time: 100}))
+
+	events, log, err := s.DeleteOlderThan(ctx, 100)
+	must(t, err)
+	if events != 1 || log != 1 {
+		t.Errorf("deleted %d events and %d log rows", events, log)
+	}
+	left, err := s.Events(ctx, "a", 10, 0)
+	must(t, err)
+	if len(left) != 1 || left[0].ID != "keep" {
+		t.Errorf("left = %+v", left)
+	}
+}
+
+func TestSettingsFillInDefaults(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	settings, err := s.Settings(ctx)
+	must(t, err)
+	if settings.RetentionDays != 30 {
+		t.Errorf("default retention = %d", settings.RetentionDays)
+	}
+	settings.RetentionDays = 7
+	must(t, s.SaveSettings(ctx, settings))
+	settings, err = s.Settings(ctx)
+	must(t, err)
+	if settings.RetentionDays != 7 || settings.QueryModel == "" {
+		t.Errorf("settings = %+v", settings)
+	}
+}
+
+func TestWipeEmptiesEverything(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	must(t, s.SaveProject(ctx, models.Project{ID: "p"}))
+	must(t, s.SaveAccount(ctx, models.Account{ID: "a", Kind: models.AccountHub}))
+	must(t, s.SetMeta(ctx, "k", "v"))
+	must(t, s.Wipe(ctx))
+	projects, err := s.Projects(ctx)
+	must(t, err)
+	accounts, err := s.Accounts(ctx)
+	must(t, err)
+	value, err := s.Meta(ctx, "k")
+	must(t, err)
+	if len(projects) != 0 || len(accounts) != 0 || value != "" {
+		t.Errorf("left: %v %v %q", projects, accounts, value)
+	}
+}

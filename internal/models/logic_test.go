@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package models
+
+import (
+	"math"
+	"testing"
+	"time"
+)
+
+func TestCostOf(t *testing.T) {
+	if got := CostOf(800, 200, "claude-opus-4-1"); math.Abs(got-0.045) > 1e-9 {
+		t.Errorf("CostOf = %v", got)
+	}
+	if got := CostOf(800, 200, "local"); got != 0 {
+		t.Errorf("unknown model costs %v", got)
+	}
+}
+
+func TestAck(t *testing.T) {
+	cases := map[string]string{
+		"Sage, Also update the API docs.": "I'll also update the API docs.",
+		"Fix the bug":                     "I'll fix the bug.",
+		"Use the money helper instead of toFixed and also rewrite every test": "I'll do that next.",
+	}
+	for in, want := range cases {
+		if got := Ack(in); got != want {
+			t.Errorf("Ack(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestNeedsMe(t *testing.T) {
+	for state := range StateLabels {
+		want := state == StateApproval || state == StateError
+		if state.NeedsMe() != want {
+			t.Errorf("%s.NeedsMe() = %v", state, !want)
+		}
+	}
+}
+
+func TestRefreshBubbles(t *testing.T) {
+	now := time.UnixMilli(5000)
+	newAgent := func(state AgentState) *LiveAgent {
+		return &LiveAgent{SessionState: SessionState{State: state, Rate: 0.001, Task: "Ship it"}}
+	}
+
+	a := newAgent(StateEditing)
+	a.Feed = []Event{{Tool: "edit_file", Summary: "src/app.ts  +3 −1"}}
+	a.Refresh(now)
+	if a.Bubble != "Editing app.ts" || a.BubbleKind != "" {
+		t.Errorf("bubble = %q, kind %q", a.Bubble, a.BubbleKind)
+	}
+
+	a.Talk, a.TalkUntil = "To Ledger: hi", 6000
+	a.Refresh(now)
+	if a.Bubble != "To Ledger: hi" || a.BubbleKind != "talk" {
+		t.Errorf("talk bubble = %q, kind %q", a.Bubble, a.BubbleKind)
+	}
+
+	a.Reply, a.ReplyUntil = "Got it.", 6000
+	a.Refresh(now)
+	if a.Bubble != "Got it." || a.BubbleKind != "reply" {
+		t.Errorf("reply bubble = %q, kind %q", a.Bubble, a.BubbleKind)
+	}
+
+	a.Reply, a.ReplyUntil, a.TalkUntil = "Old", 1, 1
+	a.Refresh(now)
+	if a.Bubble != "Editing app.ts" {
+		t.Errorf("expired bubble = %q", a.Bubble)
+	}
+
+	done := newAgent(StateDone)
+	done.Refresh(now)
+	if done.Bubble != "Finished: Ship it" {
+		t.Errorf("done bubble = %q", done.Bubble)
+	}
+}
+
+func TestRefreshSetsEstimateOnlyWhileWorking(t *testing.T) {
+	now := time.UnixMilli(0)
+	a := &LiveAgent{SessionState: SessionState{State: StateEditing, Progress: 0.5, Rate: 0.001}}
+	a.Refresh(now)
+	if a.Estimate == nil || a.Estimate.SecondsLeft != 500 {
+		t.Fatalf("working estimate = %+v", a.Estimate)
+	}
+	a.State = StateApproval
+	a.Refresh(now)
+	if a.Estimate != nil {
+		t.Errorf("waiting estimate = %+v", a.Estimate)
+	}
+}
+
+func TestProjectState(t *testing.T) {
+	agent := func(state AgentState, progress float64) *LiveAgent {
+		return &LiveAgent{SessionState: SessionState{State: state, Progress: progress}}
+	}
+	cases := []struct {
+		name     string
+		project  Project
+		agents   []*LiveAgent
+		status   ProjectStatus
+		progress float64
+	}{
+		{"done", Project{Done: &ProjectDone{}}, nil, ProjectCompleted, 1},
+		{"new", Project{}, nil, ProjectNew, 0},
+		{"needs you beats active", Project{},
+			[]*LiveAgent{agent(StateEditing, 0.5), agent(StateError, 0.5)}, ProjectNeeds, 0.5},
+		{"active", Project{}, []*LiveAgent{agent(StateEditing, 0.25)}, ProjectActive, 0.25},
+		{"all finished", Project{}, []*LiveAgent{agent(StateDone, 1)}, ProjectReady, 1},
+		{"waiting skips unstarted agents", Project{},
+			[]*LiveAgent{agent(StateIdle, 0), agent(StateIdle, 0.5)}, ProjectIdle, 0.5},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, progress := ProjectState(&tc.project, tc.agents)
+			if status != tc.status || progress != tc.progress {
+				t.Errorf("got %s %v, want %s %v", status, progress, tc.status, tc.progress)
+			}
+		})
+	}
+}

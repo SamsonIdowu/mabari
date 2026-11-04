@@ -82,8 +82,35 @@ type Project struct {
 	Files        []string    `json:"files"`
 	Repository   *Repository `json:"repository"`
 	CreatedAt    int64       `json:"createdAt"`
+	// Done is the completion summary, or null while the project is open.
+	Done *ProjectDone `json:"done"`
+	// Status, Progress and Estimate are computed by the server from the project's agents.
+	Status   ProjectStatus `json:"status"`
+	Progress float64       `json:"progress"`
 	// Estimate is when the project's working agents should finish, or null if none are working.
 	Estimate *Estimate `json:"estimate"`
+}
+
+// ProjectStatus says where a project stands.
+type ProjectStatus string
+
+// Project statuses.
+const (
+	ProjectNew       ProjectStatus = "new"
+	ProjectActive    ProjectStatus = "active"
+	ProjectNeeds     ProjectStatus = "needs"
+	ProjectIdle      ProjectStatus = "idle"
+	ProjectReady     ProjectStatus = "ready"
+	ProjectCompleted ProjectStatus = "done"
+)
+
+// ProjectDone summarises a completed project.
+type ProjectDone struct {
+	At     int64    `json:"at"`
+	Agents int      `json:"agents"`
+	Mins   int      `json:"mins"`
+	Cost   float64  `json:"cost"`
+	Tasks  []string `json:"tasks"`
 }
 
 // Account is a connection that agents come from.
@@ -104,6 +131,8 @@ type Agent struct {
 	Provider Provider    `json:"provider"`
 	Model    string      `json:"model"`
 	Account  AccountKind `json:"account"`
+	// Source is the connector that reports this agent, such as "sim".
+	Source string `json:"source"`
 	// Lead is the agent whose office this subagent works in, or null for a lead.
 	Lead *string `json:"leadId"`
 	// SubModel is the model this agent's subagents use, or "inherit" for its own.
@@ -113,20 +142,47 @@ type Agent struct {
 	AllowedTools []string `json:"allowedTools"`
 	DailyCostCap *float64 `json:"dailyCostCap"`
 	Hue          string   `json:"hue"`
+	Skin         string   `json:"skin"`
+	Hair         string   `json:"hair"`
+	CreatedAt    int64    `json:"createdAt"`
 }
 
 // SessionState is what an agent is doing and how far along it is.
 type SessionState struct {
-	AgentID string     `json:"agentId"`
-	State   AgentState `json:"state"`
-	Task    string     `json:"task"`
+	State AgentState `json:"state"`
+	Task  string     `json:"task"`
 	// Progress runs from 0 to 1.
 	Progress float64 `json:"progress"`
+	// Rate is progress per office second, which drives the estimate.
+	Rate float64 `json:"rate"`
 	// Estimate is null unless the agent is working. See EstimateFor.
 	Estimate  *Estimate `json:"estimate"`
+	Elapsed   int64     `json:"elapsed"`
 	TokensIn  int64     `json:"tokensIn"`
 	TokensOut int64     `json:"tokensOut"`
 	Cost      float64   `json:"cost"`
+	Error     string    `json:"error"`
+	// Files are what the agent is working on, used by tool feeds and the dispatcher.
+	Files []string `json:"files"`
+	// Bubble is what the speech bubble says now, and BubbleKind is "", "reply" or "talk".
+	Bubble     string `json:"bubble"`
+	BubbleKind string `json:"bubbleKind"`
+	Reply      string `json:"reply"`
+	ReplyUntil int64  `json:"replyUntil"`
+	Talk       string `json:"talk"`
+	TalkUntil  int64  `json:"talkUntil"`
+	TalkColor  string `json:"talkColor"`
+	Leaving    bool   `json:"leaving"`
+}
+
+// LiveAgent is an agent as the UI sees it: identity, session, and what is waiting on it.
+type LiveAgent struct {
+	Agent        `tstype:",extends"`
+	SessionState `tstype:",extends"`
+	// Feed is the newest events first. Live updates leave it out and send events separately.
+	Feed     []Event       `json:"feed"`
+	Queued   []Instruction `json:"queued"`
+	Approval *Approval     `json:"approval"`
 }
 
 // Event is one thing an agent did, such as a tool call.
@@ -154,12 +210,15 @@ const (
 
 // Message is something one agent said to others.
 type Message struct {
-	ID   string      `json:"id"`
-	From string      `json:"fromAgent"`
-	To   []string    `json:"toAgents"`
-	Kind MessageKind `json:"kind"`
-	Text string      `json:"text"`
-	Time int64       `json:"time"`
+	ID       string      `json:"id"`
+	From     string      `json:"fromAgent"`
+	To       []string    `json:"toAgents"`
+	FromName string      `json:"fromName"`
+	ToName   string      `json:"toName"`
+	Project  *string     `json:"projectId"`
+	Kind     MessageKind `json:"kind"`
+	Text     string      `json:"text"`
+	Time     int64       `json:"time"`
 }
 
 // InstructionMode says whether a message should act or only ask.
@@ -189,6 +248,9 @@ type Instruction struct {
 	Text   string            `json:"text"`
 	Mode   InstructionMode   `json:"mode"`
 	Status InstructionStatus `json:"status"`
+	Time   int64             `json:"time"`
+	// LogID is the activity log row this instruction updates.
+	LogID string `json:"logId"`
 }
 
 // ApprovalType is what an agent is asking permission for.
@@ -212,15 +274,56 @@ const (
 
 // Approval is a risky action waiting for a decision.
 type Approval struct {
-	ID        string       `json:"id"`
-	Agent     string       `json:"agentId"`
-	Type      ApprovalType `json:"type"`
-	Detail    string       `json:"detail"`
-	RiskLevel RiskLevel    `json:"riskLevel"`
+	ID     string         `json:"id"`
+	Agent  string         `json:"agentId"`
+	Type   ApprovalType   `json:"type"`
+	Title  string         `json:"title"`
+	Detail ApprovalDetail `json:"detail"`
+	// Risk explains the risk in plain words on the approval card.
+	Risk      string    `json:"risk"`
+	RiskLevel RiskLevel `json:"riskLevel"`
+	Time      int64     `json:"time"`
 	// Decision is null until someone decides: "allowed" or "denied".
 	Decision *string `json:"decision"`
 	// DecidedBy is "user" or "auto".
 	DecidedBy *string `json:"decidedBy"`
+}
+
+// DiffLine is one line of a file change. Kind is "ctx", "add" or "del".
+type DiffLine struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
+// ApprovalDetail is what the approval card shows, depending on its type.
+type ApprovalDetail struct {
+	Cmd     string     `json:"cmd,omitempty"`
+	Path    string     `json:"path,omitempty"`
+	Lines   []DiffLine `json:"lines,omitempty"`
+	Project string     `json:"project,omitempty"`
+	Steps   []string   `json:"steps,omitempty"`
+}
+
+// LogType is the kind of activity log row.
+type LogType string
+
+// Log types.
+const (
+	LogInstruction LogType = "Instruction"
+	LogQuery       LogType = "Query"
+	LogApproval    LogType = "Approval"
+	LogSession     LogType = "Session"
+)
+
+// LogEntry is one row of the activity log. Chip is "", "ok", "amber" or "red".
+type LogEntry struct {
+	ID      string  `json:"id"`
+	Time    int64   `json:"time"`
+	Agent   string  `json:"agent"`
+	Type    LogType `json:"type"`
+	Message string  `json:"message"`
+	Outcome string  `json:"outcome"`
+	Chip    string  `json:"chip"`
 }
 
 // AutoApprove says which approvals pass without a click.
@@ -239,4 +342,49 @@ type Settings struct {
 	LANAccess     bool              `json:"lanAccess"`
 	Defaults      map[string]string `json:"defaults"`
 	AutoApprove   AutoApprove       `json:"autoApprove"`
+}
+
+// Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.
+type Snapshot struct {
+	BootID   string      `json:"bootId"`
+	Seq      uint64      `json:"seq"`
+	FirstRun bool        `json:"firstRun"`
+	Projects []Project   `json:"projects"`
+	Accounts []Account   `json:"accounts"`
+	Agents   []LiveAgent `json:"agents"`
+	Messages []Message   `json:"messages"`
+	Log      []LogEntry  `json:"log"`
+	Settings Settings    `json:"settings"`
+}
+
+// Message types sent over the WebSocket.
+const (
+	MsgHello    = "hello"  // First message: BootID and the current Seq.
+	MsgResync   = "resync" // This client fell behind: reload the snapshot.
+	MsgAgent    = "agent"  // Agent changed; it has no Feed.
+	MsgRemove   = "agent.remove"
+	MsgEvent    = "event"
+	MsgMessage  = "message"
+	MsgLog      = "log"
+	MsgProject  = "project"
+	MsgAccount  = "account"
+	MsgSettings = "settings"
+	MsgToast    = "toast"
+	MsgReset    = "reset" // Too much changed to patch: reload the snapshot.
+)
+
+// ServerMessage is one WebSocket message. Type says which of the other fields is set.
+type ServerMessage struct {
+	Seq      uint64     `json:"seq"`
+	Type     string     `json:"type"`
+	BootID   string     `json:"bootId,omitempty"`
+	ID       string     `json:"id,omitempty"`
+	Agent    *LiveAgent `json:"agent,omitempty"`
+	Event    *Event     `json:"event,omitempty"`
+	Message  *Message   `json:"message,omitempty"`
+	Log      *LogEntry  `json:"log,omitempty"`
+	Project  *Project   `json:"project,omitempty"`
+	Account  *Account   `json:"account,omitempty"`
+	Settings *Settings  `json:"settings,omitempty"`
+	Text     string     `json:"text,omitempty"`
 }

@@ -18,6 +18,22 @@ export interface Estimate {
 }
 
 //////////
+// source: logic.go
+
+/**
+ * Limits from the prototype.
+ */
+export const DeskCount = 16;
+/**
+ * Limits from the prototype.
+ */
+export const MaxSubagents = 3;
+/**
+ * Limits from the prototype.
+ */
+export const FeedLimit = 40;
+
+//////////
 // source: models.go
 /*
 Package models holds the data model. These structs are the source of truth: tygo generates
@@ -156,9 +172,56 @@ export interface Project {
   repository: Repository | null;
   createdAt: number /* int64 */;
   /**
+   * Done is the completion summary, or null while the project is open.
+   */
+  done: ProjectDone | null;
+  /**
+   * Status, Progress and Estimate are computed by the server from the project's agents.
+   */
+  status: ProjectStatus;
+  progress: number /* float64 */;
+  /**
    * Estimate is when the project's working agents should finish, or null if none are working.
    */
   estimate: Estimate | null;
+}
+/**
+ * ProjectStatus says where a project stands.
+ */
+export type ProjectStatus = string;
+/**
+ * Project statuses.
+ */
+export const ProjectNew: ProjectStatus = "new";
+/**
+ * Project statuses.
+ */
+export const ProjectActive: ProjectStatus = "active";
+/**
+ * Project statuses.
+ */
+export const ProjectNeeds: ProjectStatus = "needs";
+/**
+ * Project statuses.
+ */
+export const ProjectIdle: ProjectStatus = "idle";
+/**
+ * Project statuses.
+ */
+export const ProjectReady: ProjectStatus = "ready";
+/**
+ * Project statuses.
+ */
+export const ProjectCompleted: ProjectStatus = "done";
+/**
+ * ProjectDone summarises a completed project.
+ */
+export interface ProjectDone {
+  at: number /* int64 */;
+  agents: number /* int */;
+  mins: number /* int */;
+  cost: number /* float64 */;
+  tasks: string[];
 }
 /**
  * Account is a connection that agents come from.
@@ -182,6 +245,10 @@ export interface Agent {
   model: string;
   account: AccountKind;
   /**
+   * Source is the connector that reports this agent, such as "sim".
+   */
+  source: string;
+  /**
    * Lead is the agent whose office this subagent works in, or null for a lead.
    */
   leadId: string | null;
@@ -194,12 +261,14 @@ export interface Agent {
   allowedTools: string[];
   dailyCostCap: number /* float64 */ | null;
   hue: string;
+  skin: string;
+  hair: string;
+  createdAt: number /* int64 */;
 }
 /**
  * SessionState is what an agent is doing and how far along it is.
  */
 export interface SessionState {
-  agentId: string;
   state: AgentState;
   task: string;
   /**
@@ -207,12 +276,44 @@ export interface SessionState {
    */
   progress: number /* float64 */;
   /**
+   * Rate is progress per office second, which drives the estimate.
+   */
+  rate: number /* float64 */;
+  /**
    * Estimate is null unless the agent is working. See EstimateFor.
    */
   estimate: Estimate | null;
+  elapsed: number /* int64 */;
   tokensIn: number /* int64 */;
   tokensOut: number /* int64 */;
   cost: number /* float64 */;
+  error: string;
+  /**
+   * Files are what the agent is working on, used by tool feeds and the dispatcher.
+   */
+  files: string[];
+  /**
+   * Bubble is what the speech bubble says now, and BubbleKind is "", "reply" or "talk".
+   */
+  bubble: string;
+  bubbleKind: string;
+  reply: string;
+  replyUntil: number /* int64 */;
+  talk: string;
+  talkUntil: number /* int64 */;
+  talkColor: string;
+  leaving: boolean;
+}
+/**
+ * LiveAgent is an agent as the UI sees it: identity, session, and what is waiting on it.
+ */
+export interface LiveAgent extends Agent, SessionState {
+  /**
+   * Feed is the newest events first. Live updates leave it out and send events separately.
+   */
+  feed: Event[];
+  queued: Instruction[];
+  approval: Approval | null;
 }
 /**
  * Event is one thing an agent did, such as a tool call.
@@ -260,6 +361,9 @@ export interface Message {
   id: string;
   fromAgent: string;
   toAgents: string[];
+  fromName: string;
+  toName: string;
+  projectId: string | null;
   kind: MessageKind;
   text: string;
   time: number /* int64 */;
@@ -304,6 +408,11 @@ export interface Instruction {
   text: string;
   mode: InstructionMode;
   status: InstructionStatus;
+  time: number /* int64 */;
+  /**
+   * LogID is the activity log row this instruction updates.
+   */
+  logId: string;
 }
 /**
  * ApprovalType is what an agent is asking permission for.
@@ -340,8 +449,14 @@ export interface Approval {
   id: string;
   agentId: string;
   type: ApprovalType;
-  detail: string;
+  title: string;
+  detail: ApprovalDetail;
+  /**
+   * Risk explains the risk in plain words on the approval card.
+   */
+  risk: string;
   riskLevel: RiskLevel;
+  time: number /* int64 */;
   /**
    * Decision is null until someone decides: "allowed" or "denied".
    */
@@ -350,6 +465,55 @@ export interface Approval {
    * DecidedBy is "user" or "auto".
    */
   decidedBy: string | null;
+}
+/**
+ * DiffLine is one line of a file change. Kind is "ctx", "add" or "del".
+ */
+export interface DiffLine {
+  kind: string;
+  text: string;
+}
+/**
+ * ApprovalDetail is what the approval card shows, depending on its type.
+ */
+export interface ApprovalDetail {
+  cmd: string | null;
+  path: string | null;
+  lines: DiffLine[] | null;
+  project: string | null;
+  steps: string[] | null;
+}
+/**
+ * LogType is the kind of activity log row.
+ */
+export type LogType = string;
+/**
+ * Log types.
+ */
+export const LogInstruction: LogType = "Instruction";
+/**
+ * Log types.
+ */
+export const LogQuery: LogType = "Query";
+/**
+ * Log types.
+ */
+export const LogApproval: LogType = "Approval";
+/**
+ * Log types.
+ */
+export const LogSession: LogType = "Session";
+/**
+ * LogEntry is one row of the activity log. Chip is "", "ok", "amber" or "red".
+ */
+export interface LogEntry {
+  id: string;
+  time: number /* int64 */;
+  agent: string;
+  type: LogType;
+  message: string;
+  outcome: string;
+  chip: string;
 }
 /**
  * AutoApprove says which approvals pass without a click.
@@ -372,4 +536,83 @@ export interface Settings {
   lanAccess: boolean;
   defaults: { [key: string]: string};
   autoApprove: AutoApprove;
+}
+/**
+ * Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.
+ */
+export interface Snapshot {
+  bootId: string;
+  seq: number /* uint64 */;
+  firstRun: boolean;
+  projects: Project[];
+  accounts: Account[];
+  agents: LiveAgent[];
+  messages: Message[];
+  log: LogEntry[];
+  settings: Settings;
+}
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgHello = "hello"; // First message: BootID and the current Seq.
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgResync = "resync"; // This client fell behind: reload the snapshot.
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgAgent = "agent"; // Agent changed; it has no Feed.
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgRemove = "agent.remove";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgEvent = "event";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgMessage = "message";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgLog = "log";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgProject = "project";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgAccount = "account";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgSettings = "settings";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgToast = "toast";
+/**
+ * Message types sent over the WebSocket.
+ */
+export const MsgReset = "reset"; // Too much changed to patch: reload the snapshot.
+/**
+ * ServerMessage is one WebSocket message. Type says which of the other fields is set.
+ */
+export interface ServerMessage {
+  seq: number /* uint64 */;
+  type: string;
+  bootId: string | null;
+  id: string | null;
+  agent: LiveAgent | null;
+  event: Event | null;
+  message: Message | null;
+  log: LogEntry | null;
+  project: Project | null;
+  account: Account | null;
+  settings: Settings | null;
+  text: string | null;
 }

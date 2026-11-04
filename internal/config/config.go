@@ -84,10 +84,24 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 	if cfg.Port < 1 || cfg.Port > 65535 {
 		return Config{}, fmt.Errorf("port must be between 1 and 65535, got %d", cfg.Port)
 	}
+	// The Host and Origin checks stop browsers, but other clients can fake those headers, so Mabari
+	// stays off the network until LAN access has its token in Stage 11. Docker needs 0.0.0.0, and
+	// its compose file publishes the port on 127.0.0.1 only.
+	if !isLoopback(cfg.Bind) && getenv("MABARI_IN_CONTAINER") != "1" {
+		return Config{}, fmt.Errorf("binding to %s is not supported yet: use 127.0.0.1", cfg.Bind)
+	}
 	if cfg.Secrets != "keychain" && cfg.Secrets != "encrypted-file" {
 		return Config{}, errors.New(`MABARI_SECRETS must be "keychain" or "encrypted-file"`)
 	}
 	return cfg, nil
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func orDefault(value, fallback string) string {

@@ -24,6 +24,6 @@ RUN CGO_ENABLED=0 go build -tags embedweb -trimpath \
 FROM gcr.io/distroless/static:nonroot
 COPY --from=server /mabari /mabari
 # Docker networking needs 0.0.0.0 here. Compose publishes the port on 127.0.0.1 only.
-ENV MABARI_BIND=0.0.0.0 MABARI_DATA_DIR=/data
+ENV MABARI_BIND=0.0.0.0 MABARI_IN_CONTAINER=1 MABARI_DATA_DIR=/data
 EXPOSE 4317
 ENTRYPOINT ["/mabari", "serve"]

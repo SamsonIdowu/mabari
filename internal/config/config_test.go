@@ -30,10 +30,10 @@ func TestDefaultsOnlyListenOnThisComputer(t *testing.T) {
 
 func TestEnvironmentOverridesDefaults(t *testing.T) {
 	cfg := load(t, nil, map[string]string{
-		"MABARI_BIND": "0.0.0.0", "MABARI_PORT": "9000", "MABARI_DATA_DIR": "/data",
+		"MABARI_BIND": "127.0.0.2", "MABARI_PORT": "9000", "MABARI_DATA_DIR": "/data",
 		"MABARI_SECRETS": "encrypted-file", "MABARI_LOG_LEVEL": "debug",
 	})
-	if cfg.Address() != "0.0.0.0:9000" || cfg.DataDir != "/data" ||
+	if cfg.Address() != "127.0.0.2:9000" || cfg.DataDir != "/data" ||
 		cfg.Secrets != "encrypted-file" || cfg.LogLevel != "debug" {
 		t.Errorf("environment not applied: %+v", cfg)
 	}
@@ -42,10 +42,17 @@ func TestEnvironmentOverridesDefaults(t *testing.T) {
 func TestFlagsOverrideEnvironment(t *testing.T) {
 	cfg := load(t,
 		[]string{"--port", "9001", "--bind", "::1", "--data-dir", "/flag"},
-		map[string]string{"MABARI_PORT": "9000", "MABARI_BIND": "0.0.0.0", "MABARI_DATA_DIR": "/env"},
+		map[string]string{"MABARI_PORT": "9000", "MABARI_BIND": "localhost", "MABARI_DATA_DIR": "/env"},
 	)
 	if cfg.Port != 9001 || cfg.Bind != "::1" || cfg.DataDir != "/flag" {
 		t.Errorf("flags did not win: %+v", cfg)
+	}
+}
+
+func TestContainersMayBindToAllInterfaces(t *testing.T) {
+	cfg := load(t, nil, map[string]string{"MABARI_BIND": "0.0.0.0", "MABARI_IN_CONTAINER": "1"})
+	if cfg.Bind != "0.0.0.0" {
+		t.Errorf("Bind = %q", cfg.Bind)
 	}
 }
 
@@ -59,6 +66,8 @@ func TestRejectsBadValues(t *testing.T) {
 		"port zero":        {args: []string{"--port", "0"}},
 		"unknown secrets":  {env: map[string]string{"MABARI_SECRETS": "plain"}},
 		"unknown flag":     {args: []string{"--nope"}},
+		"all interfaces":   {args: []string{"--bind", "0.0.0.0"}},
+		"a network host":   {env: map[string]string{"MABARI_BIND": "192.168.1.24"}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

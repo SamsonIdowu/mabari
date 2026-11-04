@@ -195,10 +195,20 @@ export interface Scope {
   teamId: string;
 }
 
+/** The local service that starts Mabari at login. Mirrors internal/service.Status. */
+export interface LoginStatus {
+  supported: boolean;
+  installed: boolean;
+  running: boolean;
+  detail: string;
+}
+
 export const api = {
   snapshot: () => request<Snapshot>('/api/snapshot'),
   loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),
+  loginService: () => request<LoginStatus>('/api/service'),
+  setLoginService: (on: boolean) => send<LoginStatus>('POST', '/api/service', { on }),
   whisperStatus: () => request<WhisperStatus>('/api/voice/whisper'),
   downloadWhisper: () => send<WhisperStatus>('POST', '/api/voice/whisper/model'),
   removeWhisper: () => send<WhisperStatus>('DELETE', '/api/voice/whisper/model'),

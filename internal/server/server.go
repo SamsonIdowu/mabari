@@ -43,18 +43,23 @@ type Options struct {
 	Answerer func(key string) QueryAnswerer
 	// Whisper turns recordings into text on this computer. With nil, those routes aren't served.
 	Whisper *whisper.Whisper
+	// Login runs Mabari at login. With nil, Settings shows LoginReason instead.
+	Login       LoginService
+	LoginReason string
 }
 
 type api struct {
-	engine    *events.Engine
-	simulator *simulator.Simulator
-	router    dispatch.Router
-	claude    *ClaudeOptions
-	secrets   secrets.Store
-	hub       *hub.Connector
-	codex     *codex.Connector
-	answerer  func(key string) QueryAnswerer
-	whisper   *whisper.Whisper
+	engine      *events.Engine
+	simulator   *simulator.Simulator
+	router      dispatch.Router
+	claude      *ClaudeOptions
+	secrets     secrets.Store
+	hub         *hub.Connector
+	codex       *codex.Connector
+	answerer    func(key string) QueryAnswerer
+	whisper     *whisper.Whisper
+	login       LoginService
+	loginReason string
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -68,6 +73,7 @@ func New(options Options) http.Handler {
 		engine: options.Engine, simulator: options.Simulator, router: dispatch.Rules{},
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
+		login: options.Login, loginReason: options.LoginReason,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -78,6 +84,7 @@ func New(options Options) http.Handler {
 	})
 	a.routes(mux)
 	a.projectStartRoutes(mux)
+	a.loginRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)
 	}

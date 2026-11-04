@@ -246,6 +246,42 @@ function VoiceCard({ settings }: { settings: SettingsModel }) {
   );
 }
 
+/** Starts Mabari when you log in, as a service for your user only. It takes effect at the next
+ * login: it never starts a second Mabari or stops this one. */
+function RunAtLogin() {
+  const queryClient = useQueryClient();
+  const status = useQuery({ queryKey: ['loginService'], queryFn: api.loginService });
+  const login = status.data;
+  if (!login) return <span />;
+  return (
+    <div className="field">
+      <label
+        className="switch"
+        title={login.supported ? undefined : `Not available here: ${login.detail}.`}
+      >
+        <input
+          type="checkbox"
+          id="pLogin"
+          disabled={!login.supported}
+          checked={login.installed}
+          onChange={(event) =>
+            void api
+              .setLoginService(event.target.checked)
+              .then((next) => queryClient.setQueryData(['loginService'], next))
+              .catch((error: Error) => useOfficeStore.getState().toast(error.message))
+          }
+        />
+        Start Mabari when I log in
+      </label>
+      <span className="help">
+        {login.supported
+          ? 'Runs as you, on this computer only. Same as mabari service install.'
+          : `Not available here: ${login.detail}.`}
+      </span>
+    </div>
+  );
+}
+
 function DataCard({ settings }: { settings: SettingsModel }) {
   return (
     <div className="card">
@@ -295,6 +331,8 @@ function DataCard({ settings }: { settings: SettingsModel }) {
             <span className="help">Off. Mabari only answers on localhost.</span>
           )}
         </div>
+        <span className="flabel">Run at login</span>
+        <RunAtLogin />
       </div>
     </div>
   );

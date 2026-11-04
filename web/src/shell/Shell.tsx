@@ -8,6 +8,7 @@ import { Activity } from '../screens/Activity.tsx';
 import { ComponentSheet } from '../screens/ComponentSheet.tsx';
 import { Conversations } from '../screens/Conversations.tsx';
 import { Home } from '../screens/Home.tsx';
+import { NewAgentDialog } from '../screens/NewAgentDialog.tsx';
 import { Office } from '../screens/Office.tsx';
 import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
@@ -62,6 +63,7 @@ export function Shell() {
       <main className="screen" id="screen" ref={screenRef}>
         <Screen route={route} />
       </main>
+      <NewAgentDialog />
       <Toasts />
     </div>
   );

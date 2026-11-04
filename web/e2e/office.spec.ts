@@ -36,7 +36,7 @@ test('draws the office in both themes', async ({ page }) => {
   await loadDemo(page);
   expect(await colours(page)).toBeGreaterThan(40);
   const dark = await page.locator('#floor').screenshot();
-  await page.locator('.topright .tbtn').click();
+  await page.locator('.topright button.tbtn').click();
   await page.waitForTimeout(200);
   const light = await page.locator('#floor').screenshot();
   expect(dark.equals(light)).toBe(false);
@@ -207,7 +207,7 @@ test('an approval card shows over full screen', async ({ page }) => {
 
 test('name tags grow and shrink with the zoom', async ({ page }) => {
   await loadDemo(page);
-  const layer = page.locator('.ovl .tag').first().locator('..').locator('..');
+  const layer = page.locator('.ovl');
   const scale = async () =>
     Number(await layer.evaluate((node) => node.style.getPropertyValue('--oz')));
   await expect.poll(scale).toBeGreaterThan(0);
@@ -215,4 +215,26 @@ test('name tags grow and shrink with the zoom', async ({ page }) => {
   await page.keyboard.press('=');
   await page.keyboard.press('=');
   await expect.poll(scale).toBeGreaterThan(start);
+});
+
+test('zooming far out hides ordinary bubbles but keeps approvals', async ({ page }) => {
+  await loadDemo(page);
+  for (let press = 0; press < 4; press++) await page.keyboard.press('-');
+  await expect(page.locator('#zoomPct')).toHaveText('50%');
+  await expect(page.locator('.ovl.far')).toBeAttached();
+  await expect(page.locator('.bub:not(.red):not(.reply):visible')).toHaveCount(0);
+  await expect(page.locator('.bub.red:visible').first()).toBeVisible();
+});
+
+test('zooming below 100% keeps the office centred and panning off', async ({ page }) => {
+  await loadDemo(page);
+  await page.keyboard.press('-');
+  await expect(page.locator('#zoomPct')).toHaveText('80%');
+  const box = (await page.locator('#floor').boundingBox())!;
+  await page.mouse.move(box.x + 300, box.y + 300);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 500, box.y + 400, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.press('0');
+  await expect(page.locator('#zoomPct')).toHaveText('100%');
 });

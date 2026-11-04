@@ -125,7 +125,6 @@ test('approving everything needs the box ticked', async ({ page }) => {
 
 test('flow f: auto dispatch sends to the best agent and says who', async ({ page }) => {
   await loadDemo(page);
-  await expect(page.locator('#dispatchHint')).toBeHidden();
   await message(page).fill('the invoice rounding is wrong');
   await page.getByRole('button', { name: 'Send instruction' }).click();
   await expect(page.getByText(/Dispatcher sent it to Ledger/)).toBeVisible();
@@ -133,31 +132,20 @@ test('flow f: auto dispatch sends to the best agent and says who', async ({ page
   await expect(page.getByLabel('Send to')).toHaveValue('selected');
 });
 
-// The prototype hides the hint with CSS but keeps it. These bring it back, so it can't rot.
-test('the dispatcher hint explains its choice when shown', async ({ page }) => {
+test('the command bar is the only composer and targets the selected agent', async ({ page }) => {
   await loadDemo(page);
-  await page.addStyleTag({ content: '#dispatchHint{display:flex!important}' });
-  const hint = page.locator('#dispatchHint');
-  await expect(hint).toContainText('Dispatcher on.');
-  await message(page).fill('the invoice rounding is wrong');
-  await expect(hint).toContainText('Dispatcher will send this to Ledger because');
-});
-
-test('choose someone else moves to the picker', async ({ page }) => {
-  await loadDemo(page);
-  await page.addStyleTag({ content: '#dispatchHint{display:flex!important}' });
-  await message(page).fill('fix the docs');
-  await page.getByRole('button', { name: 'Choose someone else' }).click();
-  await expect(page.getByLabel('Send to')).toBeFocused();
-});
-
-test('the panel sends instructions and questions too', async ({ page }) => {
-  await loadDemo(page);
-  const tag = (await page.locator('.tag', { hasText: 'Scout' }).boundingBox())!;
-  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
+  const box = (await page.locator('.tag', { hasText: 'Scout' }).boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y - 24);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
-  await panel.getByLabel('Message to Scout').fill('Look at the docs');
-  await panel.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
+  await expect(panel.getByRole('textbox')).toHaveCount(0);
+  await expect(panel.getByRole('group', { name: 'Message type' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Interrupt' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Stop' })).toBeVisible();
+  await expect(page.getByLabel('Send to')).toHaveValue('selected');
+  await expect(message(page)).toHaveAttribute('placeholder', 'Tell Scout what to do');
+  await message(page).fill('Look at the docs');
+  await page.getByRole('button', { name: 'Send instruction' }).click();
   await expect(page.getByText('Sent to Scout')).toBeVisible();
   await expect(panel.locator('.fe').first()).toContainText('Received: Look at the docs');
 });

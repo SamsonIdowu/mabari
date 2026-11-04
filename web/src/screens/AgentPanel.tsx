@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
-import { send } from '../office/send.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import {
   decisionColors,
@@ -436,7 +435,7 @@ function Banners({ agent }: { agent: LiveAgent }) {
   );
 }
 
-function Foot({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
+function Foot({ agent }: { agent: LiveAgent }) {
   const [confirming, setConfirming] = useState(false);
   const set = useOfficeUi((state) => state.set);
   const stop = () => {
@@ -485,62 +484,7 @@ function Foot({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
           </button>
         </div>
       )}
-      <PanelMessage agent={agent} office={office} />
     </div>
-  );
-}
-
-function PanelMessage({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
-  const mode = useOfficeUi((state) => state.mode);
-  const set = useOfficeUi((state) => state.set);
-  const [text, setText] = useState('');
-  const instruct = mode === 'instruct';
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const message = text.trim();
-    if (!message) return;
-    setText('');
-    void send(message, mode, agent.id, office);
-  };
-  return (
-    <form
-      style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-      autoComplete="off"
-      onSubmit={submit}
-    >
-      <div className="seg modeseg" role="group" aria-label="Message type">
-        <button
-          type="button"
-          className={instruct ? 'ins on' : 'ins'}
-          onClick={() => set({ mode: 'instruct' })}
-        >
-          Instruct
-        </button>
-        <button
-          type="button"
-          className={instruct ? 'qry' : 'qry on'}
-          onClick={() => set({ mode: 'query' })}
-        >
-          Query
-        </button>
-      </div>
-      <div className={instruct ? 'cmdin' : 'cmdin qry'}>
-        <label className="sr" htmlFor="panelText">
-          Message to {agent.name}
-        </label>
-        <input
-          id="panelText"
-          value={text}
-          placeholder={
-            instruct ? `Tell ${agent.name} what to do` : `Ask about ${agent.name}'s work`
-          }
-          onChange={(event) => setText(event.target.value)}
-        />
-        <button className={`btn sm sendbtn ${instruct ? 'ins' : 'qry'}`} type="submit">
-          {instruct ? 'Send' : 'Ask'}
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -672,7 +616,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         {tab === 'trail' ? <Trail agent={agent} subagents={subagents} /> : null}
         {tab === 'chats' ? <Chats agent={agent} office={office} /> : null}
       </div>
-      <Foot agent={agent} office={office} key={agent.id} />
+      <Foot agent={agent} key={agent.id} />
       {dialog === 'settings' ? (
         <AgentSettingsDialog
           agent={agent}

@@ -10,14 +10,16 @@ import (
 	"strings"
 
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 const (
-	maxAgentName   = 24
-	maxProjectName = 28
-	eventPageLimit = 200
+	maxAgentName    = 24
+	maxNewAgentName = 20
+	maxProjectName  = 28
+	eventPageLimit  = 200
 )
 
 var retentionChoices = []int{7, 30, 90, 365}
@@ -39,6 +41,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/reopen", a.reopenProject)
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)
+	mux.HandleFunc("POST /api/agents", a.createAgent)
 	mux.HandleFunc("GET /api/agents/{id}", a.getAgent)
 	mux.HandleFunc("PATCH /api/agents/{id}", a.updateAgent)
 	mux.HandleFunc("GET /api/agents/{id}/events", a.agentEvents)
@@ -363,6 +366,104 @@ type subagentBody struct {
 	Name  string `json:"name"`
 	Task  string `json:"task"`
 	Model string `json:"model"`
+}
+
+type newAgentBody struct {
+	Name         string             `json:"name"`
+	Account      models.AccountKind `json:"account"`
+	Model        string             `json:"model"`
+	Task         string             `json:"task"`
+	ProjectID    string             `json:"projectId"`
+	Folder       string             `json:"folder"`
+	DailyCostCap float64            `json:"dailyCostCap"`
+	AllowedTools []string           `json:"allowedTools"`
+	Desk         *int               `json:"desk"`
+	LeadID       string             `json:"leadId"`
+}
+
+const defaultNewTask = "Get to know the project and wait for instructions"
+
+// check returns the problem with a new agent in the prototype's words, or nothing.
+func (body *newAgentBody) check() string {
+	body.Name = strings.TrimSpace(body.Name)
+	body.Folder = strings.TrimSpace(body.Folder)
+	body.Task = strings.TrimSpace(body.Task)
+	if body.Task == "" {
+		body.Task = defaultNewTask
+	}
+	switch {
+	case body.Name == "" || len([]rune(body.Name)) > maxNewAgentName:
+		return "Give the agent a name."
+	case body.Folder == "":
+		return "Choose a working folder."
+	case !validFolder(body.Folder):
+		return "That working folder path doesn't look right."
+	case body.DailyCostCap < 0:
+		return "The daily cost cap must be zero or more."
+	case body.Desk != nil && (*body.Desk < 0 || *body.Desk >= models.DeskCount):
+		return "That desk doesn't exist."
+	}
+	return ""
+}
+
+func (a *api) connected(kind models.AccountKind) bool {
+	for _, account := range a.engine.Accounts() {
+		if account.Kind == kind && account.Status == models.AccountConnected {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
+	var body newAgentBody
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if problem := body.check(); problem != "" {
+		writeError(w, http.StatusBadRequest, problem)
+		return
+	}
+	var agent *models.LiveAgent
+	var problem string
+	err := a.engine.Do(func() {
+		switch {
+		case !a.connected(body.Account):
+			problem = "Connect an account first."
+			return
+		case a.engine.AgentByName(body.Name) != nil:
+			problem = "There is already an agent called " + body.Name + ". Pick another name."
+			return
+		}
+		spec := simulator.NewAgent{
+			Name: body.Name, Account: body.Account, Model: body.Model, Task: body.Task,
+			Project: body.ProjectID, Folder: body.Folder, DailyCostCap: body.DailyCostCap,
+			AllowedTools: body.AllowedTools, Desk: body.Desk,
+		}
+		if body.LeadID != "" {
+			if spec.Lead = a.engine.Agent(body.LeadID); spec.Lead == nil {
+				problem = "That lead has left the office."
+				return
+			}
+		}
+		created, failure := a.simulator.CreateAgent(spec)
+		switch {
+		case failure != nil:
+			problem = "That desk has just been taken. Pick another."
+		case created == nil:
+			problem = "There's no room for another agent there."
+		default:
+			agent = created
+		}
+	})
+	switch {
+	case err != nil:
+		internalError(w, err)
+	case problem != "":
+		writeError(w, http.StatusConflict, problem)
+	default:
+		writeJSON(w, http.StatusCreated, agent)
+	}
 }
 
 func (a *api) addSubagent(w http.ResponseWriter, r *http.Request) {

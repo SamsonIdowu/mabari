@@ -31,18 +31,9 @@ interface ThemeState {
   toggle: () => void;
 }
 
-const lightQuery = window.matchMedia('(prefers-color-scheme: light)');
-
 export const useThemeStore = create<ThemeState>((set, get) => {
-  const theme = resolveInitialTheme(readSavedTheme(), lightQuery.matches);
+  const theme = resolveInitialTheme(readSavedTheme());
   applyTheme(theme);
-  // Until someone picks a theme, Mabari keeps following the computer.
-  lightQuery.addEventListener('change', (event) => {
-    if (readSavedTheme()) return;
-    const next = event.matches ? 'light' : 'dark';
-    applyTheme(next);
-    set({ theme: next });
-  });
   return {
     theme,
     toggle: () => {

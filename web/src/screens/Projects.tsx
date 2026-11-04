@@ -265,8 +265,12 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
             Reopen
           </button>
         ) : (
-          <button type="button" className="btn sm" disabled title={LATER}>
-            Start agent here
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => useOfficeUi.getState().set({ newAgent: { project: project.id } })}
+          >
+            New agent here
           </button>
         )}
       </div>

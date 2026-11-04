@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import { api, type VeeReply } from '../data/api.ts';
+import { useOfficeStore } from '../data/officeStore.ts';
 import { showResult } from './send.ts';
+import { useOfficeUi } from './uiStore.ts';
 import { VEE_GESTURES, type PlayingGesture, type VeeState } from './vee.ts';
 
 const THINK_MS = 700;
@@ -35,6 +37,16 @@ interface VeeStore {
   settle: (now: number) => void;
 }
 
+/** Reads a reply aloud with the browser's own voices, which run on this computer. */
+function speak(text: string) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.04;
+  utterance.pitch = 1.15;
+  window.speechSynthesis.speak(utterance);
+}
+
 function fail(error: Error): VeeReply {
   return { ...VEE_HELLO, text: error.message, gesture: 'shrug' };
 }
@@ -58,6 +70,7 @@ export const useVee = create<VeeStore>((set, get) => ({
         Math.min(TALK_MS, TALK_BASE_MS + reply.text.length * TALK_PER_LETTER_MS),
     });
     if (reply.gesture) get().play(reply.gesture);
+    if (useOfficeStore.getState().office?.settings.spokenReplies) speak(reply.text);
   },
   hear: async (text) => {
     set({ heard: text, state: 'think' });
@@ -66,6 +79,7 @@ export const useVee = create<VeeStore>((set, get) => ({
       const [result] = await Promise.all([api.vee(text, false), pause]);
       get().say(result.reply);
       if (result.message) showResult(result.message, text);
+      if (result.reply.kind === 'newAgent') useOfficeUi.getState().set({ newAgent: {} });
     } catch (error) {
       get().say(fail(error as Error));
     }

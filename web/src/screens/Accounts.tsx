@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Account, AccountKind, AccountStatus } from '../gen/models.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
+import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { LATER, PageHead } from './parts.tsx';
 
@@ -287,8 +288,12 @@ export function Accounts() {
           title="Accounts"
           description="Connect the places your agents come from. Each connection shows its status and the models it gives you."
         >
-          <button type="button" className="btn" disabled title={LATER}>
-            Start an agent
+          <button
+            type="button"
+            className="btn"
+            onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
+          >
+            New agent
           </button>
         </PageHead>
         <div id="accBanner">

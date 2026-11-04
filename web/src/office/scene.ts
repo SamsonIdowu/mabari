@@ -89,6 +89,7 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 
 /** Draws the floor every frame. It lives outside React, which would be far too slow for this. */
 export class OfficeScene {
+  hoverDesk: number | null = null;
   readonly walkers = new Map<string, Walker>();
   view: View = { cx: W / 2, cy: H / 2, s: 1 };
   size = { width: W, height: H };
@@ -133,6 +134,40 @@ export class OfficeScene {
   }
 
   /** The agent under a point on the canvas, in screen pixels. */
+  /** The empty desk at a point, or null. An agent's desk never counts, even if it's filtered out. */
+  deskAt(point: Point): number | null {
+    const office = useOfficeStore.getState().office;
+    if (!office || office.firstRun || useOfficeUi.getState().team || this.hit(point)) return null;
+    const world = this.worldOf(point);
+    const desk = DESKS.findIndex(
+      (position) =>
+        world.x >= position.x * 32 - 4 &&
+        world.x < position.x * 32 + 72 &&
+        world.y >= position.y * 32 - 16 &&
+        world.y < position.y * 32 + 56,
+    );
+    if (desk < 0 || office.agents.some((agent) => agent.desk === desk)) return null;
+    return desk;
+  }
+
+  private drawDeskHint(theme: 'dark' | 'light'): void {
+    const position = this.hoverDesk === null ? undefined : DESKS[this.hoverDesk];
+    if (!position) return;
+    const c = this.context;
+    const x = position.x * 32 - 4;
+    const y = position.y * 32 - 16;
+    c.save();
+    c.strokeStyle = PAL[theme].ink;
+    c.lineWidth = 1.5;
+    c.setLineDash([5, 4]);
+    c.strokeRect(x, y, 76, 72);
+    c.setLineDash([]);
+    c.fillStyle = PAL[theme].ink;
+    c.fillRect(x + 37, y + 28, 2, 14);
+    c.fillRect(x + 31, y + 34, 14, 2);
+    c.restore();
+  }
+
   hit(point: Point): Walker | null {
     const world = this.worldOf(point);
     const ui = useOfficeUi.getState();
@@ -439,6 +474,7 @@ export class OfficeScene {
     this.drawServerRoom(walkers, t);
     const scoped = walkers.filter(inView);
     for (const walker of scoped) this.drawDesk(walker, t);
+    this.drawDeskHint(theme);
     for (const walker of [...scoped].sort((a, b) => a.y - b.y)) {
       drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id);
     }

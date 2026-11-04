@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import type { VeeLine, VeeReply } from '../data/api.ts';
+import { api, type VeeLine, type VeeReply } from '../data/api.ts';
 import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText, shortMinutes } from '../format.ts';
@@ -300,7 +300,7 @@ function GestureMenu({ close }: { close: () => void }) {
   );
 }
 
-function ChatBox() {
+function ChatBox({ spoken }: { spoken: boolean }) {
   const hear = useVee((state) => state.hear);
   const [text, setText] = useState('');
   const [gestures, setGestures] = useState(false);
@@ -309,6 +309,10 @@ function ChatBox() {
     if (!message) return;
     setText('');
     void hear(message);
+  };
+  const toggleVoice = () => {
+    if (spoken) window.speechSynthesis?.cancel();
+    void api.updateSettings({ spokenReplies: !spoken });
   };
   const onKey = (event: KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -368,9 +372,9 @@ function ChatBox() {
           className="h2ic"
           id="hcVoiceOut"
           aria-label="Spoken replies"
-          aria-pressed="false"
-          disabled
-          title={LATER}
+          aria-pressed={spoken}
+          title={spoken ? 'Vee speaks replies: on' : 'Vee speaks replies: off'}
+          onClick={toggleVoice}
         >
           <Icon>
             <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
@@ -429,10 +433,10 @@ function HomeScreen({ office }: { office: Snapshot }) {
               {heard}
             </div>
           ) : null}
-          <ChatBox />
+          <ChatBox spoken={office.settings.spokenReplies} />
           <div className="h2under">
             <span>Enter to send</span>
-            <span id="voiceLbl">Voice off</span>
+            <span id="voiceLbl">{office.settings.spokenReplies ? 'Voice on' : 'Voice off'}</span>
           </div>
         </div>
       </div>

@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { api, type Decision } from '../data/api.ts';
-import { useOfficeStore } from '../data/officeStore.ts';
+import { useRef, useState, type FormEvent } from 'react';
 import type { Snapshot } from '../gen/models.ts';
 import { send } from '../office/send.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { LATER } from './parts.tsx';
-
-const PREVIEW_DELAY_MS = 150;
 
 function TeamAnswer() {
   const answer = useOfficeUi((state) => state.teamAnswer);
@@ -36,62 +32,12 @@ function TeamAnswer() {
   );
 }
 
-function DispatchHint(props: { text: string; onChoose: () => void }) {
-  const project = useOfficeUi((state) => state.project);
-  const team = useOfficeUi((state) => state.team);
-  const [decision, setDecision] = useState<Decision | null>(null);
-  const text = props.text.trim();
-
-  useEffect(() => {
-    if (!text) return undefined;
-    const timer = setTimeout(() => {
-      api
-        .previewDispatch(text, { projectId: project, teamId: team ?? '' })
-        .then((result) => setDecision(result.decision))
-        .catch(() => setDecision(null));
-    }, PREVIEW_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [text, project, team]);
-
-  const pulse = (
-    <Icon>
-      <path d="M4 12h4l3-8 4 16 3-8h2" />
-    </Icon>
-  );
-  if (!text) {
-    return (
-      <div className="dispatch" id="dispatchHint" aria-live="polite">
-        {pulse}
-        <span>
-          <b>Dispatcher on.</b> No agent is selected, so the dispatcher picks the best one for your
-          message when you send it.
-        </span>
-      </div>
-    );
-  }
-  if (!decision) return null;
-  return (
-    <div className="dispatch" id="dispatchHint" aria-live="polite">
-      {pulse}
-      <span>
-        Dispatcher will send this to{' '}
-        <span className="idot" style={{ ['--ac' as string]: decision.hue, verticalAlign: -1 }} />{' '}
-        <b>{decision.name}</b> because {decision.reason}.
-      </span>
-      <button type="button" className="btn ghost sm" onClick={props.onChoose}>
-        Choose someone else
-      </button>
-    </div>
-  );
-}
-
 export function CommandBar({ office }: { office: Snapshot }) {
   const mode = useOfficeUi((state) => state.mode);
   const target = useOfficeUi((state) => state.target);
   const selectedId = useOfficeUi((state) => state.selected);
   const set = useOfficeUi((state) => state.set);
   const [text, setText] = useState('');
-  const picker = useRef<HTMLSelectElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const instruct = mode === 'instruct';
@@ -110,11 +56,6 @@ export function CommandBar({ office }: { office: Snapshot }) {
     setText('');
     const destination = auto ? 'auto' : target === 'selected' ? (selected?.id ?? 'auto') : target;
     void send(message, mode, destination, office);
-  };
-
-  const choose = () => {
-    picker.current?.focus();
-    useOfficeStore.getState().toast('Pick an agent in Send to, or click one on the floor');
   };
 
   return (
@@ -165,7 +106,6 @@ export function CommandBar({ office }: { office: Snapshot }) {
           </label>
           <select
             id="cmdTarget"
-            ref={picker}
             className="in"
             style={{
               width: 'auto',
@@ -204,7 +144,11 @@ export function CommandBar({ office }: { office: Snapshot }) {
           {instruct ? 'Send instruction' : 'Ask'}
         </button>
       </form>
-      {auto && office.agents.length ? <DispatchHint text={text} onChoose={choose} /> : null}
+      <div className="note">
+        Instruct puts your message into the agent&apos;s session and it acts on it. Query reads
+        Mabari&apos;s own log and never interrupts the agent. Hold the mic (or Space) to talk; you get
+        2 seconds to cancel.
+      </div>
     </div>
   );
 }

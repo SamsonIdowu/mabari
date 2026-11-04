@@ -28,20 +28,26 @@ function rgb(hex: string) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-test('follows the computer until someone picks a theme', async ({ page }) => {
+test('opens in light mode whatever the computer prefers', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
-  await expect(page.locator('h1')).toHaveText('See your AI agents at work, in a little office.');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  expect(await background(page)).toBe(rgb(themes.dark.bg));
-
-  await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-
+  expect(await background(page)).toBe(rgb(themes.light.bg));
   await page.getByRole('button', { name: 'Dark' }).click();
-  await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await background(page)).toBe(rgb(themes.dark.bg));
+});
+
+test('the Notes switch shows and hides the design notes', async ({ page, request }) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  const note = page.locator('.cmdbar .note');
+  await expect(note).toBeHidden();
+  await page.locator('.topright').getByText('Notes').click();
+  await expect(note).toContainText('Query reads Mabari');
+  await page.locator('.topright').getByText('Notes').click();
+  await expect(note).toBeHidden();
 });
 
 test('every nav link routes and marks itself current', async ({ page }) => {
@@ -61,8 +67,9 @@ test('the top bar brand goes home', async ({ page }) => {
 });
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {
-  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
+  await page.getByRole('button', { name: 'Dark' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Light' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(await background(page)).toBe(rgb(themes.light.bg));

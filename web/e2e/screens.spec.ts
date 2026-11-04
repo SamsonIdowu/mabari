@@ -40,7 +40,7 @@ test('every screen renders in both themes without errors', async ({ page }) => {
   page.on('pageerror', (error) => errors.push(error.message));
   await loadDemo(page);
   for (let click = 0; click < 2; click++) {
-    await page.locator('.topright .tbtn').click();
+    await page.locator('.topright button.tbtn').click();
     for (const [route, heading] of SCREENS) {
       await go(page, route);
       await expect(page.locator('main h1')).toHaveText(heading);

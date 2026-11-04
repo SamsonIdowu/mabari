@@ -47,6 +47,7 @@ func TestRules(t *testing.T) {
 		{"when", "When will everything be done?", "nod", KindWhen, "around"},
 		{"eta as a word", "what's the eta", "nod", KindWhen, "will be last."},
 		{"project", "Start a new project", "shrug", KindPlain, "later stage"},
+		{"new agent", "Create a new agent", "point", KindNewAgent, "opening the form"},
 		{"office", "show me the floor", "point", KindOffice, "office floor"},
 		{"status", "What's happening?", "point", KindStatus, "2 agents are working and 2 need you."},
 		{"who is", "who is around", "point", KindStatus, "2 agents"},

@@ -30,6 +30,11 @@ const useFilters = () => {
   return { project, provider, model, status, team };
 };
 
+function pointIn(event: React.MouseEvent<HTMLElement>) {
+  const box = event.currentTarget.getBoundingClientRect();
+  return { x: event.clientX - box.left, y: event.clientY - box.top };
+}
+
 const WHEEL_STEP = 40;
 const WHEEL_GAP_MS = 120;
 
@@ -373,8 +378,12 @@ function FloorMessage({ office }: { office: Snapshot }) {
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
           {connected ? (
-            <button type="button" className="btn primary" disabled title={LATER}>
-              Start an agent
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
+            >
+              New agent
             </button>
           ) : (
             <a className="btn primary" href="#accounts">
@@ -586,8 +595,7 @@ function Stage({ office }: { office: Snapshot }) {
 
   const select = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (skipClick.current || !scene.current) return;
-    const box = event.currentTarget.getBoundingClientRect();
-    const hit = scene.current.hit({ x: event.clientX - box.left, y: event.clientY - box.top });
+    const hit = scene.current.hit(pointIn(event));
     if (hit) {
       set({
         selected: hit.id,
@@ -596,7 +604,16 @@ function Stage({ office }: { office: Snapshot }) {
       });
     } else {
       set({ selected: null, follow: false });
+      const desk = scene.current.deskAt(pointIn(event));
+      if (desk !== null) set({ newAgent: { desk } });
     }
+  };
+
+  const hover = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!scene.current) return;
+    const desk = scene.current.deskAt(pointIn(event));
+    scene.current.hoverDesk = desk;
+    event.currentTarget.style.cursor = desk === null ? '' : 'pointer';
   };
 
   return (
@@ -609,6 +626,10 @@ function Stage({ office }: { office: Snapshot }) {
           height="704"
           aria-label="Office floor. Click an agent to inspect it."
           onClick={select}
+          onMouseMove={hover}
+          onMouseLeave={() => {
+            if (scene.current) scene.current.hoverDesk = null;
+          }}
           onMouseDown={(event) => {
             if (event.button === 0) {
               drag.current = { x: event.clientX, y: event.clientY, moved: false };
@@ -681,11 +702,15 @@ export function Office() {
                 </Icon>
                 New project
               </button>
-              <button type="button" className="btn primary" disabled title={LATER}>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
+              >
                 <Icon>
                   <path d="M12 5v14M5 12h14" />
                 </Icon>
-                Start agent
+                New agent
               </button>
             </div>
           </div>

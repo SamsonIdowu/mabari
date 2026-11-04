@@ -845,3 +845,70 @@ func TestVeeNeverApproves(t *testing.T) {
 		t.Errorf("the approval changed: %v %+v", after.State, after.Approval)
 	}
 }
+
+func createAgent(t *testing.T, office *office, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return office.do(t, http.MethodPost, "/api/agents", body)
+}
+
+const newAgentJSON = `{"name":"Juniper","account":"codex","model":"gpt-5","task":"Keep the docs tidy",` +
+	`"projectId":"docs","folder":"~/code/docs","dailyCostCap":5,"allowedTools":["read"]`
+
+func TestCreateAgent(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	response := createAgent(t, office, newAgentJSON+`,"desk":15}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	juniper := agentNamed(t, office, "Juniper")
+	if juniper.Desk != 15 || juniper.Task != "Keep the docs tidy" || juniper.Folder != "~/code/docs" ||
+		juniper.Project == nil || *juniper.Project != "docs" || len(juniper.AllowedTools) != 1 {
+		t.Errorf("got %+v", juniper)
+	}
+	if juniper.Provider != models.ProviderOpenAI {
+		t.Errorf("provider = %q", juniper.Provider)
+	}
+}
+
+func TestCreateAgentRefusals(t *testing.T) {
+	office := newOffice(t)
+	if response := createAgent(t, office, newAgentJSON+`}`); response.Code != http.StatusConflict ||
+		!strings.Contains(response.Body.String(), "Connect an account first.") {
+		t.Fatalf("no account: %d %s", response.Code, response.Body)
+	}
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	tests := []struct {
+		body string
+		code int
+		says string
+	}{
+		{strings.Replace(newAgentJSON, "Juniper", " ", 1) + `}`, http.StatusBadRequest, "Give the agent a name."},
+		{strings.Replace(newAgentJSON, "Juniper", "Ledger", 1) + `}`, http.StatusConflict, "There is already an agent called Ledger."},
+		{strings.Replace(newAgentJSON, "~/code/docs", "", 1) + `}`, http.StatusBadRequest, "Choose a working folder."},
+		{strings.Replace(newAgentJSON, "~/code/docs", "not a path", 1) + `}`, http.StatusBadRequest, "doesn't look right"},
+		{strings.Replace(newAgentJSON, `"dailyCostCap":5`, `"dailyCostCap":-1`, 1) + `}`, http.StatusBadRequest, "zero or more"},
+		{newAgentJSON + `,"desk":99}`, http.StatusBadRequest, "doesn't exist"},
+		{newAgentJSON + `,"desk":0}`, http.StatusConflict, "just been taken"},
+		{newAgentJSON + `,"leadId":"nobody"}`, http.StatusConflict, "left the office"},
+	}
+	for _, test := range tests {
+		response := createAgent(t, office, test.body)
+		if response.Code != test.code || !strings.Contains(response.Body.String(), test.says) {
+			t.Errorf("%s: %d %s", test.body, response.Code, response.Body)
+		}
+	}
+}
+
+func TestCreateSubagentFromTheDialog(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	scout := agentNamed(t, office, "Scout")
+	response := createAgent(t, office, newAgentJSON+`,"leadId":"`+scout.ID+`"}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	if juniper := agentNamed(t, office, "Juniper"); juniper.Lead == nil || *juniper.Lead != scout.ID {
+		t.Errorf("lead = %v", juniper.Lead)
+	}
+}

@@ -159,9 +159,43 @@ test('shift enter starts a new line and an empty box sends nothing', async ({ pa
   await expect(box).toHaveValue('one\ntwo');
 });
 
-test('voice waits for its own stage', async ({ page, request }) => {
+test('hold to talk waits for its own stage', async ({ page, request }) => {
   await home(page, request);
   await expect(page.getByRole('button', { name: 'Hold to talk' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Spoken replies' })).toBeDisabled();
+});
+
+test('the reply is one bubble with no chat history', async ({ page, request }) => {
+  await home(page, request);
+  await ask(page, 'hello');
+  await ask(page, 'thanks');
+  await expect(page.locator('#veeSay')).toContainText('Any time.');
+  await expect(page.locator('#veeSay')).not.toContainText('Good to see you');
+  await expect(page.locator('#youSaid')).toHaveText('thanks');
+});
+
+test('spoken replies can be switched on and read the reply aloud', async ({ page, request }) => {
+  await home(page, request);
+  await page.evaluate(() => {
+    const said: string[] = [];
+    Object.assign(window, { said });
+    window.speechSynthesis.speak = (utterance) => void said.push(utterance.text);
+  });
+  const voice = page.getByRole('button', { name: 'Spoken replies' });
+  await expect(voice).toHaveAttribute('aria-pressed', 'false');
+  await voice.click();
+  await expect(voice).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#voiceLbl')).toHaveText('Voice on');
+  await ask(page, 'thanks');
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { said: string[] }).said))
+    .toEqual(['Any time. Keeping an eye on things is my favourite job.']);
+  await voice.click();
   await expect(page.locator('#voiceLbl')).toHaveText('Voice off');
+});
+
+test('Vee opens the new agent form when asked', async ({ page, request }) => {
+  await home(page, request);
+  await page.getByLabel('Message Vee').fill('Create a new agent');
+  await page.getByLabel('Message Vee').press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeVisible();
 });

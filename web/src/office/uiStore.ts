@@ -21,6 +21,8 @@ interface OfficeUi extends OfficeFilters {
   follow: boolean;
   spotlight: boolean;
   fullscreen: boolean;
+  /** The Create a new agent dialog, with the desk or project it was opened for. */
+  newAgent: { desk?: number; project?: string } | null;
   mode: MessageMode;
   /** "auto", "selected", "everyone" or an agent id. */
   target: string;
@@ -55,6 +57,7 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   follow: false,
   spotlight: true,
   fullscreen: false,
+  newAgent: null,
   mode: 'instruct',
   target: 'auto',
   panelTab: 'live',

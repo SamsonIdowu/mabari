@@ -30,7 +30,7 @@ const CARDS: { title: string; when: string; mock: ReactNode }[] = [
         <h3>No agents running yet</h3>
         <p className="muted">Start one here or in your terminal.</p>
         <button type="button" className="btn primary sm" disabled title={LATER}>
-          Start an agent
+          New agent
         </button>
       </>
     ),

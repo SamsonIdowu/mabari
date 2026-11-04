@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Agent, Estimate, Project, Settings, Snapshot } from '../gen/models.ts';
+import type { AccountKind, Agent, Estimate, Project, Settings, Snapshot } from '../gen/models.ts';
+
+export interface NewAgentBody {
+  name: string;
+  account: AccountKind;
+  model: string;
+  task: string;
+  projectId: string;
+  folder: string;
+  dailyCostCap: number;
+  allowedTools: string[];
+  desk?: number;
+  leadId?: string;
+}
 
 export interface AgentPatch {
   model?: string;
@@ -81,7 +94,7 @@ export interface VeeLine {
 export interface VeeReply {
   text: string;
   gesture: string;
-  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'dispatch';
+  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'dispatch' | 'newAgent';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
@@ -118,6 +131,7 @@ export const api = {
   vee: (text: string, dispatch: boolean) => send<VeeResult>('POST', '/api/vee', { text, dispatch }),
   agentAction: (id: string, action: 'interrupt' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
+  createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),

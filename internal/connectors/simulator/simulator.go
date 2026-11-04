@@ -6,6 +6,7 @@
 package simulator
 
 import (
+	"errors"
 	"log/slog"
 	"math"
 	"math/rand/v2"
@@ -185,6 +186,59 @@ type agentSpec struct {
 }
 
 func deskPosition(index int) (x, y int) { return 8 + index%4*3, 4 + index/4*3 }
+
+// NewAgent is what the Create a new agent dialog asks for.
+type NewAgent struct {
+	Name         string
+	Account      models.AccountKind
+	Model        string
+	Task         string
+	Project      string
+	Folder       string
+	DailyCostCap float64
+	AllowedTools []string
+	// Desk is the desk that was clicked, or nil for the next free one.
+	Desk *int
+	// Lead makes the new agent a subagent.
+	Lead *models.LiveAgent
+}
+
+// ErrDeskTaken means someone took the desk while the dialog was open.
+var ErrDeskTaken = errors.New("that desk has just been taken")
+
+// CreateAgent walks a new agent into the office. It returns nil, after a toast, when no desk is
+// free or a lead's office is full. Call inside engine.Do.
+func (s *Simulator) CreateAgent(spec NewAgent) (*models.LiveAgent, error) {
+	if spec.Desk != nil {
+		for _, agent := range s.engine.Agents() {
+			if agent.Desk == *spec.Desk {
+				return nil, ErrDeskTaken
+			}
+		}
+	}
+	var agent *models.LiveAgent
+	if spec.Lead != nil {
+		agent = s.AddSubagent(spec.Lead, spec.Name, spec.Task, spec.Model)
+	} else {
+		provider := models.ProviderOpenAI
+		if spec.Account == models.AccountClaudeCode {
+			provider = models.ProviderClaude
+		}
+		agent = s.makeAgent(agentSpec{
+			name: spec.Name, provider: provider, model: spec.Model, account: spec.Account,
+			task: spec.Task, state: models.StateThinking, desk: spec.Desk, project: spec.Project,
+			progress: 0.02, elapsed: 1, tokensIn: 200, tokensOut: 40, folder: spec.Folder,
+		})
+	}
+	if agent == nil {
+		return nil, nil
+	}
+	agent.DailyCostCap = &spec.DailyCostCap
+	agent.AllowedTools = spec.AllowedTools
+	s.engine.Log(agent.Name, models.LogSession, "Started on "+agent.Model, "Started", "ok")
+	s.engine.Toast(agent.Name + " is walking in")
+	return agent, nil
+}
 
 func (s *Simulator) freeDesk(near *int) int {
 	used := map[int]bool{}
@@ -564,6 +618,9 @@ func (s *Simulator) tick() {
 }
 
 func (s *Simulator) tickAgent(agent *models.LiveAgent) {
+	if agent.Source != Source {
+		return
+	}
 	state := s.runtimeOf(agent)
 	switch {
 	case agent.State.Active(), agent.State == models.StateApproval,

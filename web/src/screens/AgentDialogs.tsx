@@ -4,15 +4,8 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { TOOLS } from './tools.ts';
 import { useEscape } from '../shell/useEscape.ts';
-
-const TOOLS: [id: string, label: string][] = [
-  ['read', 'Read files'],
-  ['edit', 'Edit files'],
-  ['shell', 'Run shell commands'],
-  ['web', 'Browse the web'],
-  ['spawn', 'Start subagents'],
-];
 
 const FOLDER = /^(~\/|~$|\/|[A-Za-z]:\\)/;
 
@@ -22,7 +15,7 @@ function modelsFor(agent: LiveAgent, office: Snapshot): string[] {
   return models.length ? models : [agent.model];
 }
 
-function DialogFrame(props: {
+export function DialogFrame(props: {
   id: string;
   hue: string;
   wide?: boolean;

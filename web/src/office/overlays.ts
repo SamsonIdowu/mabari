@@ -55,11 +55,13 @@ const fmtK = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k`
 /** Name tags and speech bubbles, positioned over the canvas every frame. */
 /** Tags and bubbles grow and shrink with the office, and quiet bubbles hide when it's small. */
 function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
+  const overlay = layer.closest<HTMLElement>('.ovl');
+  if (!overlay) return;
   const scale = Math.max(0.72, Math.min(1.6, scene.matrix().a / 1.05)).toFixed(2);
-  if (layer.dataset.oz === scale) return;
-  layer.dataset.oz = scale;
-  layer.style.setProperty('--oz', scale);
-  layer.classList.toggle('far', Number(scale) < 0.86);
+  if (overlay.dataset.oz === scale) return;
+  overlay.dataset.oz = scale;
+  overlay.style.setProperty('--oz', scale);
+  overlay.classList.toggle('far', Number(scale) < 0.86);
 }
 
 function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {

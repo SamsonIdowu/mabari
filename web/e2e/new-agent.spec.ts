@@ -143,7 +143,26 @@ test('Mark as complete moves a finished project to Completed, and Reopen undoes 
   request,
 }) => {
   await request.post('/api/demo/load');
-  // The demo's agents keep working, so show one project as finished. The clicks below are real.
+  // Rune has finished, so the Docs project is ready once its other agents have stopped.
+  const snapshot = (await (await request.get('/api/snapshot')).json()) as {
+    agents: { id: string; name: string }[];
+  };
+  for (const name of ['Scout', 'Mori']) {
+    const agent = snapshot.agents.find((item) => item.name === name)!;
+    await request.post(`/api/agents/${agent.id}/stop`);
+  }
+  await page.goto('/#projects');
+  const card = page.locator('article', { hasText: 'Docs site' });
+  await card.getByRole('button', { name: 'Mark as complete' }).click();
+  await page.getByRole('button', { name: /^Completed/ }).click();
+  await expect(card).toContainText('What got done');
+  await expect(card.getByRole('button', { name: 'New agent here' })).toHaveCount(0);
+  await card.getByRole('button', { name: 'Reopen' }).click();
+  await expect(page.getByText('Docs site is open again')).toBeVisible();
+});
+
+test('a project that cannot be completed says why', async ({ page, request }) => {
+  await request.post('/api/demo/load');
   await page.route('**/api/snapshot', async (route) => {
     const response = await route.fetch();
     const snapshot = (await response.json()) as { projects: { id: string; status: string }[] };
@@ -153,11 +172,9 @@ test('Mark as complete moves a finished project to Completed, and Reopen undoes 
     await route.fulfill({ response, json: snapshot });
   });
   await page.goto('/#projects');
-  const card = page.locator('article', { hasText: 'Docs site' });
-  await card.getByRole('button', { name: 'Mark as complete' }).click();
-  await page.getByRole('button', { name: /^Completed/ }).click();
-  await expect(card).toContainText(/Completed/);
-  await expect(card).toContainText('What got done');
-  await card.getByRole('button', { name: 'Reopen' }).click();
-  await expect(page.getByText('Docs site is open again')).toBeVisible();
+  await page
+    .locator('article', { hasText: 'Docs site' })
+    .getByRole('button', { name: 'Mark as complete' })
+    .click();
+  await expect(page.getByText('this project still has work in progress')).toBeVisible();
 });

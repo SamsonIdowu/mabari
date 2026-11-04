@@ -243,7 +243,11 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
           <button
             type="button"
             className="btn sm ok"
-            onClick={() => void api.completeProject(project.id)}
+            onClick={() => {
+              api
+                .completeProject(project.id)
+                .catch((error: Error) => useOfficeStore.getState().toast(error.message));
+            }}
           >
             <Check />
             Mark as complete

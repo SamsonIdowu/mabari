@@ -4,6 +4,7 @@ import type { LiveAgent } from '../gen/models.ts';
 import { decisionColors, decisionLabels, providers, type ProviderName } from '../shared/tokens.ts';
 import { R } from './background.ts';
 import { drawChar } from './character.ts';
+import { H, W } from './layout.ts';
 import type { OfficeScene, Walker } from './scene.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 
@@ -312,6 +313,16 @@ export interface OverlayElements {
   spotlight: HTMLElement;
   hint: HTMLElement | null;
   zoom: HTMLElement | null;
+  /** The design note about amber tags, kept beside the first agent with a waiting instruction. */
+  queueNote: HTMLElement | null;
+}
+
+function placeQueueNote(note: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {
+  const waiting = agents.find((agent) => (agent.queued?.length ?? 0) > 0);
+  const walker = waiting ? scene.walkers.get(waiting.id) : undefined;
+  if (!walker) return;
+  note.style.left = `${Math.max(1, Math.min(70, (walker.x / W) * 100 - 14))}%`;
+  note.style.top = `${Math.min(80, (walker.y / H) * 100 + 9)}%`;
 }
 
 /** Everything drawn in HTML over the canvas, updated once a frame. */
@@ -329,6 +340,9 @@ export function renderOverlays(
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());
   if (elements.hint) elements.hint.hidden = walker !== null;
+  if (elements.queueNote && document.body.classList.contains('notes')) {
+    placeQueueNote(elements.queueNote, scene, agents);
+  }
   if (elements.zoom) {
     const text = `${Math.round(scene.view.s * 100)}%`;
     if (elements.zoom.textContent !== text) elements.zoom.textContent = text;

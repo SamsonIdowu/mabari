@@ -180,6 +180,9 @@ section[data-screen='preferences'] p.muted {
 body.notes .note {
   display: block;
 }
+body.notes .note.inline {
+  display: inline-block;
+}
 
 /* compact chrome so the office gets most of the screen */
 .app {

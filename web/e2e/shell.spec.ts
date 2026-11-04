@@ -46,8 +46,12 @@ test('the Notes switch shows and hides the design notes', async ({ page, request
   await expect(note).toBeHidden();
   await page.locator('.topright').getByText('Notes').click();
   await expect(note).toContainText('Query reads Mabari');
+  await expect(page.locator('.note.inline')).toContainText('Hidden agents keep working.');
+  await expect(page.locator('.fnote:visible')).toHaveCount(3);
+  await expect(page.locator('#noteQueue')).toContainText('Amber tag');
   await page.locator('.topright').getByText('Notes').click();
   await expect(note).toBeHidden();
+  await expect(page.locator('.fnote:visible')).toHaveCount(0);
 });
 
 test('every nav link routes and marks itself current', async ({ page }) => {

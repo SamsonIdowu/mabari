@@ -266,6 +266,9 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
           Clear filters
         </button>
       ) : null}
+      <span className="note inline">
+        Project and Models narrow the floor. Hidden agents keep working.
+      </span>
       <div className="ddwrap" style={{ marginLeft: 'auto' }}>
         <button
           type="button"
@@ -514,6 +517,7 @@ function Stage({ office }: { office: Snapshot }) {
   const readout = useRef<HTMLDivElement>(null);
   const spotlight = useRef<HTMLDivElement>(null);
   const hint = useRef<HTMLSpanElement>(null);
+  const queueNote = useRef<HTMLDivElement>(null);
   const scene = useRef<OfficeScene | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const skipClick = useRef(false);
@@ -532,6 +536,7 @@ function Stage({ office }: { office: Snapshot }) {
           spotlight: spotlight.current,
           hint: hint.current,
           zoom: document.getElementById('zoomPct'),
+          queueNote: queueNote.current,
         },
         current,
         useOfficeStore.getState().office?.agents ?? [],
@@ -696,6 +701,15 @@ function Stage({ office }: { office: Snapshot }) {
             if (item) set({ reviewing: item.dataset.review ?? null });
           }}
         />
+        <div className="fnote note" style={{ left: '49%', top: '3%' }}>
+          Approvals pin here. Click one to review it.
+        </div>
+        <div className="fnote note" id="noteQueue" ref={queueNote} style={{ left: '2%', top: '40%' }}>
+          Amber tag: an instruction is waiting for this Claude Code agent&apos;s next checkpoint.
+        </div>
+        <div className="fnote note" style={{ left: '2%', top: '58%' }}>
+          &quot;~4m&quot; on a tag is the agent&apos;s own estimate of time left.
+        </div>
         <CanvasTools />
         <div className="readout" ref={readout} aria-live="off" />
         <span className="stagehint" ref={hint}>

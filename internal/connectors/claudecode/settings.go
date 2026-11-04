@@ -160,7 +160,7 @@ func PlanDetach(configDir string) (Plan, error) {
 	// the backup, the backup's own bytes go back, formatting and all.
 	if bytes.Equal(pretty(before), after) {
 		after = before
-	} else if backup, err := os.ReadFile(path + BackupSuffix); err == nil && sameJSON(backup, after) {
+	} else if backup, err := os.ReadFile(path + BackupSuffix); err == nil && sameJSON(backup, after) { // #nosec G304 -- our own backup
 		after = backup
 	}
 	return Plan{Path: path, Before: before, After: after, Diff: Diff(pretty(before), after),

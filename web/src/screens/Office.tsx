@@ -322,7 +322,9 @@ function TeamBanner({ lead, agents }: { lead: LiveAgent; agents: LiveAgent[] }) 
 
 function AutoBanner({ office }: { office: Snapshot }) {
   const { on, scope } = office.settings.autoApprove;
-  if (!on) return null;
+  const showing = useOfficeUi((state) => state.autoBanner);
+  const set = useOfficeUi((state) => state.set);
+  if (!on || !showing) return null;
   return (
     <div style={{ padding: '0 20px' }}>
       <div className="banner amber" style={{ marginTop: 12 }}>
@@ -346,6 +348,17 @@ function AutoBanner({ office }: { office: Snapshot }) {
           onClick={() => void api.autoApprove(false, scope, false)}
         >
           Turn off
+        </button>
+        <button
+          type="button"
+          className="btn ghost sm bannerx"
+          aria-label="Hide this message"
+          title="Hide"
+          onClick={() => set({ autoBanner: false })}
+        >
+          <Icon>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </Icon>
         </button>
       </div>
     </div>
@@ -603,9 +616,8 @@ function Stage({ office }: { office: Snapshot }) {
         reviewing: hit.state === 'approval' ? (hit.approval?.id ?? null) : null,
       });
     } else {
-      set({ selected: null, follow: false });
-      const desk = scene.current.deskAt(pointIn(event));
-      if (desk !== null) set({ newAgent: { desk } });
+      const desk = useOfficeUi.getState().selected ? null : scene.current.deskAt(pointIn(event));
+      set({ selected: null, follow: false, ...(desk === null ? {} : { newAgent: { desk } }) });
     }
   };
 
@@ -614,6 +626,7 @@ function Stage({ office }: { office: Snapshot }) {
     const desk = scene.current.deskAt(pointIn(event));
     scene.current.hoverDesk = desk;
     event.currentTarget.style.cursor = desk === null ? '' : 'pointer';
+    event.currentTarget.title = desk === null ? '' : 'Create a new agent at this desk';
   };
 
   return (

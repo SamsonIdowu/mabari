@@ -568,3 +568,47 @@ section[data-screen]:not([data-screen='office']) details,
 section[data-screen]:not([data-screen='office']) .acc {
   border-color: transparent;
 }
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.rolebtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rolebtn b {
+  font-size: 14px;
+}
+.rolebtn span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.rolebtn:hover {
+  border-color: var(--fg2);
+}
+.rolebtn.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--surface2);
+}
+.bannerx {
+  padding: 0 6px;
+  min-height: 28px;
+}
+.bannerx .ico {
+  width: 16px;
+  height: 16px;
+}

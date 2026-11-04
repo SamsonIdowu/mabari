@@ -168,8 +168,9 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 		return office.needs()
 	case has(q, "how long", "when", "finish", "done by", "time left") || eta.MatchString(q):
 		return office.when()
-	case has(q, "agent") && has(q, "new", "start", "create", "add", "another"):
-		return office.reply("Let's set up a new agent. I'm opening the form.", "point", KindNewAgent)
+	case has(q, "agent") && has(q, "new", "create", "add", "make", "hire") && !has(q, "project"):
+		return office.reply("Let's add someone to the team. Pick a role and I'll fill in the rest.",
+			"point", KindNewAgent)
 	case has(q, "project") && has(q, "new", "start", "create", "begin"):
 		return office.reply("The project chat arrives in a later stage, so I can't open it yet.", "shrug", KindPlain)
 	case has(q, "office", "floor", "show me"):

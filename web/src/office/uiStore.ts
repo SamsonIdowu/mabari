@@ -21,6 +21,8 @@ interface OfficeUi extends OfficeFilters {
   follow: boolean;
   spotlight: boolean;
   fullscreen: boolean;
+  /** The auto approve banner, shown briefly after it is turned on. */
+  autoBanner: boolean;
   /** The Create a new agent dialog, with the desk or project it was opened for. */
   newAgent: { desk?: number; project?: string } | null;
   mode: MessageMode;
@@ -57,6 +59,7 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   follow: false,
   spotlight: true,
   fullscreen: false,
+  autoBanner: false,
   newAgent: null,
   mode: 'instruct',
   target: 'auto',

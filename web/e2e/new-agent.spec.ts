@@ -51,11 +51,11 @@ test('creates an agent that walks into the office', async ({ page }) => {
   await expect(page.locator('.tag .nt', { hasText: 'Juniper' })).toBeVisible();
 });
 
-test('a role template fills the form without overwriting edits', async ({ page }) => {
+test('a role fills the form without overwriting what you typed', async ({ page }) => {
   await loadDemo(page);
   await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
   const form = dialog(page);
-  await expect(form.getByRole('group', { name: 'Role' }).getByRole('button')).toHaveText([
+  await expect(form.locator('.rolebtn b')).toHaveText([
     'Coder',
     'Tester',
     'Reviewer',
@@ -63,27 +63,40 @@ test('a role template fills the form without overwriting edits', async ({ page }
     'Researcher',
     'Blank',
   ]);
-  await form.getByRole('button', { name: 'Coder' }).click();
-  await expect(form.getByLabel('Name')).toHaveValue('Coder');
-  await expect(form.getByLabel('Instructions')).toHaveValue(/keep the tests passing/);
+  await form.getByRole('button', { name: /^Coder/ }).click();
+  await expect(form.getByRole('button', { name: /^Coder/ })).toHaveClass(/on/);
+  await expect(form.getByLabel('Name')).toHaveValue('Juniper');
+  await expect(form.getByLabel('Instructions')).toHaveValue(/Keep changes small and add tests/);
   await expect(form.getByLabel('Run shell commands')).toBeChecked();
 
-  await form.getByLabel('Name').fill('Juniper');
-  await form.getByRole('button', { name: 'Reviewer' }).click();
-  await expect(form.getByLabel('Name')).toHaveValue('Juniper');
-  await expect(form.getByLabel('Instructions')).toHaveValue(/Review recent changes/);
+  await form.getByRole('button', { name: /^Reviewer/ }).click();
+  await expect(form.getByLabel('Name')).toHaveValue('Hazel');
   await expect(form.getByLabel('Edit files')).not.toBeChecked();
 
+  await form.getByLabel('Name').fill('Bramble');
   await form.getByLabel('Instructions').fill('My own words');
-  await form.getByRole('button', { name: 'Tester' }).click();
+  await form.getByRole('button', { name: /^Tester/ }).click();
+  await expect(form.getByLabel('Name')).toHaveValue('Bramble');
   await expect(form.getByLabel('Instructions')).toHaveValue('My own words');
+
+  await form.getByLabel('Name').fill('');
+  await form.getByRole('button', { name: /^Docs writer/ }).click();
+  await expect(form.getByLabel('Name')).toHaveValue('Wren');
 });
 
-test('a template picks a free name', async ({ page }) => {
+test('a role picks a free name', async ({ page }) => {
   await loadDemo(page);
   await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
-  await dialog(page).getByRole('button', { name: 'Researcher' }).click();
-  await expect(dialog(page).getByLabel('Name')).toHaveValue('Scout 2');
+  await dialog(page)
+    .getByRole('button', { name: /^Coder/ })
+    .click();
+  await dialog(page).getByRole('button', { name: 'Create agent' }).click();
+  await expect(page.locator('.tag .nt', { hasText: 'Juniper' })).toBeVisible();
+  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await dialog(page)
+    .getByRole('button', { name: /^Coder/ })
+    .click();
+  await expect(dialog(page).getByLabel('Name')).toHaveValue('Juniper 2');
 });
 
 test('the server turns down a name already in use', async ({ page }) => {
@@ -100,9 +113,10 @@ test('clicking an empty desk opens the dialog for that desk', async ({ page }) =
   const desk = await onScreen(page, EMPTY_DESK);
   await page.mouse.move(desk.x, desk.y);
   await expect(page.locator('#floor')).toHaveCSS('cursor', 'pointer');
+  await expect(page.locator('#floor')).toHaveAttribute('title', 'Create a new agent at this desk');
   await page.mouse.click(desk.x, desk.y);
   const form = dialog(page);
-  await expect(form).toContainText('It walks in and takes the desk you picked.');
+  await expect(form).toContainText('It walks in and takes desk 16.');
   await expect(form.getByLabel('Desk')).toHaveCount(0);
   await form.getByLabel('Name').fill('Juniper');
   await form.getByRole('button', { name: 'Create agent' }).click();

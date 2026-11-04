@@ -17,8 +17,9 @@ function modelsFor(agent: LiveAgent, office: Snapshot): string[] {
 
 export function DialogFrame(props: {
   id: string;
-  hue: string;
+  hue?: string;
   wide?: boolean;
+  titleSize?: number;
   title: ReactNode;
   help: string;
   close: () => void;
@@ -34,14 +35,19 @@ export function DialogFrame(props: {
         aria-modal="true"
         aria-labelledby={props.id}
         autoComplete="off"
-        style={{ boxShadow: `var(--shadow),inset 0 4px 0 ${props.hue}` }}
+        style={props.hue ? { boxShadow: `var(--shadow),inset 0 4px 0 ${props.hue}` } : undefined}
         onSubmit={props.onSubmit}
       >
         <div className="dhd">
           <div>
             <h2
               id={props.id}
-              style={{ fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}
+              style={{
+                fontSize: props.titleSize ?? 20,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
             >
               {props.title}
             </h2>

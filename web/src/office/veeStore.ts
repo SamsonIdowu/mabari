@@ -7,6 +7,7 @@ import { useOfficeUi } from './uiStore.ts';
 import { VEE_GESTURES, type PlayingGesture, type VeeState } from './vee.ts';
 
 const THINK_MS = 700;
+const DIALOG_DELAY_MS = 500;
 const TALK_MS = 6000;
 const TALK_BASE_MS = 900;
 const TALK_PER_LETTER_MS = 38;
@@ -79,7 +80,9 @@ export const useVee = create<VeeStore>((set, get) => ({
       const [result] = await Promise.all([api.vee(text, false), pause]);
       get().say(result.reply);
       if (result.message) showResult(result.message, text);
-      if (result.reply.kind === 'newAgent') useOfficeUi.getState().set({ newAgent: {} });
+      if (result.reply.kind === 'newAgent') {
+        setTimeout(() => useOfficeUi.getState().set({ newAgent: {} }), DIALOG_DELAY_MS);
+      }
     } catch (error) {
       get().say(fail(error as Error));
     }

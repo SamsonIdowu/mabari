@@ -141,10 +141,10 @@ export class OfficeScene {
     const world = this.worldOf(point);
     const desk = DESKS.findIndex(
       (position) =>
-        world.x >= position.x * 32 - 4 &&
-        world.x < position.x * 32 + 72 &&
-        world.y >= position.y * 32 - 16 &&
-        world.y < position.y * 32 + 56,
+        world.x > position.x * 32 &&
+        world.x < position.x * 32 + 68 &&
+        world.y > position.y * 32 - 14 &&
+        world.y < position.y * 32 + 52,
     );
     if (desk < 0 || office.agents.some((agent) => agent.desk === desk)) return null;
     return desk;
@@ -154,17 +154,21 @@ export class OfficeScene {
     const position = this.hoverDesk === null ? undefined : DESKS[this.hoverDesk];
     if (!position) return;
     const c = this.context;
-    const x = position.x * 32 - 4;
-    const y = position.y * 32 - 16;
+    const hx = position.x * 32;
+    const hy = position.y * 32;
+    const dark = theme === 'dark';
     c.save();
-    c.strokeStyle = PAL[theme].ink;
+    c.strokeStyle = dark ? '#EDEDEE' : '#0C0C0C';
     c.lineWidth = 1.5;
-    c.setLineDash([5, 4]);
-    c.strokeRect(x, y, 76, 72);
+    c.setLineDash([4, 3]);
+    rrect(c, hx - 2, hy - 16, 72, 70, 8);
+    c.stroke();
     c.setLineDash([]);
-    c.fillStyle = PAL[theme].ink;
-    c.fillRect(x + 37, y + 28, 2, 14);
-    c.fillRect(x + 31, y + 34, 14, 2);
+    c.fillStyle = dark ? '#EDEDEE' : '#0C0C0C';
+    ell(c, hx + 34, hy + 44, 9, 9);
+    c.fillStyle = dark ? '#0C0C0C' : '#FFFFFF';
+    c.fillRect(hx + 30, hy + 43, 8, 2);
+    c.fillRect(hx + 33, hy + 40, 2, 8);
     c.restore();
   }
 

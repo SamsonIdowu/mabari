@@ -161,6 +161,9 @@ export function AutoApproveButton(props: { settings: Settings; extraStyle?: CSSP
   );
 }
 
+const BANNER_MS = 8000;
+let bannerTimer: ReturnType<typeof setTimeout>;
+
 export function AutoApproveDialog({ office }: { office: Snapshot }) {
   const open = useOfficeUi((state) => state.autoDialog);
   return open ? <AutoApproveForm office={office} /> : null;
@@ -178,7 +181,12 @@ function AutoApproveForm({ office }: { office: Snapshot }) {
     if (scope === 'all' && !acknowledged) return;
     api
       .autoApprove(true, scope, acknowledged)
-      .then(close)
+      .then(() => {
+        close();
+        set({ autoBanner: true });
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => set({ autoBanner: false }), BANNER_MS);
+      })
       .catch((error: Error) => useOfficeStore.getState().toast(error.message));
   };
   return (

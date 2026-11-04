@@ -110,6 +110,27 @@ test('flow e: low risk auto approve leaves risky actions waiting', async ({ page
   await expect(page.getByRole('button', { name: 'Auto approve', exact: true })).toBeVisible();
 });
 
+test('the auto approve banner can be hidden and the header keeps showing it is on', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  await page.getByRole('button', { name: 'Auto approve' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Turn on auto approve' }).click();
+  await page.getByRole('button', { name: 'Hide this message' }).click();
+  await expect(page.locator('.banner.amber')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Auto approve: low risk' })).toBeVisible();
+});
+
+test('the auto approve banner goes away by itself', async ({ page }) => {
+  await loadDemo(page);
+  await page.clock.install();
+  await page.getByRole('button', { name: 'Auto approve' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Turn on auto approve' }).click();
+  await expect(page.locator('.banner.amber')).toBeVisible();
+  await page.clock.fastForward(8100);
+  await expect(page.locator('.banner.amber')).toBeHidden();
+});
+
 test('approving everything needs the box ticked', async ({ page }) => {
   await loadDemo(page);
   await page.getByRole('button', { name: 'Auto approve' }).click();

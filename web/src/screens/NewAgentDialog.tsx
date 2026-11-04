@@ -12,45 +12,51 @@ const DEFAULT_TOOLS = ['read', 'edit'];
 const DEFAULT_CAP = 5;
 const DEFAULT_FOLDER = '~/code/shop';
 
-interface Template {
+interface Role {
   label: string;
+  sub: string;
   name: string;
   task: string;
   tools: string[];
 }
 
-const TEMPLATES: Template[] = [
+const ROLES: Role[] = [
   {
     label: 'Coder',
-    name: 'Coder',
-    task: 'Build what the project needs and keep the tests passing.',
+    sub: 'Builds features',
+    name: 'Juniper',
+    task: 'Build the feature described in the project brief. Keep changes small and add tests.',
     tools: ['read', 'edit', 'shell'],
   },
   {
     label: 'Tester',
-    name: 'Tester',
-    task: 'Write and run tests for recent changes, and report anything that fails.',
+    sub: 'Writes and runs tests',
+    name: 'Pepper',
+    task: 'Write tests for untested code and run the full suite. Report failures with the likely cause.',
     tools: ['read', 'edit', 'shell'],
   },
   {
     label: 'Reviewer',
-    name: 'Reviewer',
-    task: 'Review recent changes for bugs and suggest fixes. Do not change any files.',
+    sub: 'Checks changes',
+    name: 'Hazel',
+    task: 'Review recent changes for bugs, security issues and missing tests. Leave clear suggestions.',
     tools: ['read'],
   },
   {
     label: 'Docs writer',
-    name: 'Scribe',
-    task: 'Keep the docs in step with the code.',
+    sub: 'Keeps docs current',
+    name: 'Wren',
+    task: 'Keep the docs folder and README in sync with the code. Write in plain language.',
     tools: ['read', 'edit'],
   },
   {
     label: 'Researcher',
-    name: 'Scout',
-    task: 'Look into the options, then write up what you find with a recommendation.',
+    sub: 'Looks things up',
+    name: 'Marlow',
+    task: 'Research the question in the brief, compare options and write a short recommendation.',
     tools: ['read', 'web'],
   },
-  { label: 'Blank', name: '', task: '', tools: DEFAULT_TOOLS },
+  { label: 'Blank', sub: 'Start from scratch', name: '', task: '', tools: DEFAULT_TOOLS },
 ];
 
 const ACCOUNT_LABELS: Partial<Record<AccountKind, string>> = {
@@ -58,7 +64,7 @@ const ACCOUNT_LABELS: Partial<Record<AccountKind, string>> = {
   claude_code: 'Claude Code on this computer',
 };
 
-/** Adds a number when the name is taken, so a template can be used twice. */
+/** Adds a number when the name is taken, so a role can be used twice. */
 function freeName(name: string, office: Snapshot): string {
   const taken = (candidate: string) => office.agents.some((agent) => agent.name === candidate);
   if (!name || !taken(name)) return name;
@@ -77,9 +83,9 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const [name, setName] = useState('');
   const [task, setTask] = useState('');
   const [tools, setTools] = useState(DEFAULT_TOOLS);
-  // A template fills only what the person hasn't typed themselves.
-  const [edited, setEdited] = useState({ name: false, task: false, tools: false });
-  const [template, setTemplate] = useState('');
+  // A role fills a box only if it is empty or still holds what a role put there.
+  const [filled, setFilled] = useState({ name: false, task: false });
+  const [role, setRole] = useState('');
   const [account, setAccount] = useState<AccountKind | ''>(accounts[0]?.kind ?? '');
   const [model, setModel] = useState('');
   const [cap, setCap] = useState(String(DEFAULT_CAP));
@@ -92,11 +98,19 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const close = () => set({ newAgent: null });
   const models = accounts.find((item) => item.kind === account)?.models ?? [];
 
-  const applyTemplate = (choice: Template) => {
-    setTemplate(choice.label);
-    if (!edited.name) setName(freeName(choice.name, office));
-    if (!edited.task) setTask(choice.task);
-    if (!edited.tools) setTools(choice.tools);
+  const applyRole = (choice: Role) => {
+    setRole(choice.label);
+    const next = { ...filled };
+    if (!name || filled.name) {
+      setName(freeName(choice.name, office));
+      next.name = true;
+    }
+    if (!task || filled.task) {
+      setTask(choice.task);
+      next.task = true;
+    }
+    setFilled(next);
+    setTools(choice.tools);
   };
 
   const submit = (event: FormEvent) => {
@@ -128,14 +142,12 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   return (
     <DialogFrame
       id="naTitle"
-      hue="var(--fg)"
       wide
+      titleSize={22}
       title={<>Create a new agent</>}
-      help={
-        desk === undefined
-          ? 'It walks in and takes the next free desk.'
-          : 'It walks in and takes the desk you picked.'
-      }
+      help={`Pick a role to fill in the details, or start from scratch. It walks in and takes ${
+        desk === undefined ? 'the next free desk' : `desk ${desk + 1}`
+      }.`}
       close={close}
       onSubmit={submit}
     >
@@ -152,16 +164,17 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
       )}
       <div className="field">
         <span className="flabel">Role</span>
-        <div className="chips" role="group" aria-label="Role">
-          {TEMPLATES.map((choice) => (
+        <div className="roles" role="group" aria-label="Role">
+          {ROLES.map((choice) => (
             <button
               type="button"
-              className="chipbtn"
+              className={role === choice.label ? 'rolebtn on' : 'rolebtn'}
               key={choice.label}
-              aria-pressed={template === choice.label}
-              onClick={() => applyTemplate(choice)}
+              aria-pressed={role === choice.label}
+              onClick={() => applyRole(choice)}
             >
-              {choice.label}
+              <b>{choice.label}</b>
+              <span>{choice.sub}</span>
             </button>
           ))}
         </div>
@@ -178,7 +191,7 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
             value={name}
             onChange={(event) => {
               setName(event.target.value);
-              setEdited({ ...edited, name: true });
+              setFilled({ ...filled, name: false });
             }}
           />
         </div>
@@ -271,7 +284,7 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
           value={task}
           onChange={(event) => {
             setTask(event.target.value);
-            setEdited({ ...edited, task: true });
+            setFilled({ ...filled, task: false });
           }}
         />
       </div>
@@ -287,12 +300,11 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
                 type="checkbox"
                 checked={tools.includes(id)}
                 style={{ accentColor: 'var(--accent)', width: 16, height: 16 }}
-                onChange={(event) => {
+                onChange={(event) =>
                   setTools(
                     event.target.checked ? [...tools, id] : tools.filter((tool) => tool !== id),
-                  );
-                  setEdited({ ...edited, tools: true });
-                }}
+                  )
+                }
               />
               {label}
             </label>

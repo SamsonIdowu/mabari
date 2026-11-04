@@ -326,6 +326,12 @@ func TestApprovalsAreJudgedAgainstTheAgentsFolder(t *testing.T) {
 	if command("ls", "/etc") != models.RiskHigh {
 		t.Error("a command outside the folder passed")
 	}
+	if command("ls", folder+"/sub/..") != models.RiskLow {
+		t.Error("the same folder written another way is risky")
+	}
+	if command("ls", folder+"/sub") != models.RiskHigh {
+		t.Error("a command in another folder passed")
+	}
 	if command([]any{"ls", "-la"}, folder) != models.RiskLow {
 		t.Error("a plain word list is risky")
 	}

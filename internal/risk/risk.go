@@ -462,3 +462,22 @@ func split(command string) ([][]string, bool) {
 	}
 	return append(commands, words), true
 }
+
+// SameFolder reports whether a request's working folder is exactly the agent's folder, after
+// resolving links. Anything else, even a folder inside it, is judged risky by the connectors, so a
+// lexical check can never disagree with where the command really runs.
+func SameFolder(cwd, folder string) bool {
+	if cwd == "" {
+		return true
+	}
+	if folder == "" {
+		return false
+	}
+	real := func(path string) string {
+		if resolvedPath, err := filepath.EvalSymlinks(path); err == nil {
+			return filepath.Clean(resolvedPath)
+		}
+		return filepath.Clean(path)
+	}
+	return real(cwd) == real(folder)
+}

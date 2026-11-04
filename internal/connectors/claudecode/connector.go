@@ -410,14 +410,20 @@ func (c *Connector) takePause(session string) bool {
 // The folder is the agent's own, from its first event, so a session that moved elsewhere is
 // judged against where it started.
 func approvalFor(in input, folder string) models.Approval {
+	approval := classify(in, folder)
+	if approval.RiskLevel == models.RiskLow && !risk.SameFolder(in.Cwd, folder) {
+		approval.RiskLevel = models.RiskHigh
+		approval.Risk = "The session moved to " + in.Cwd + ", away from the agent's folder."
+	}
+	return approval
+}
+
+func classify(in input, folder string) models.Approval {
 	var args toolInput
 	_ = json.Unmarshal(in.ToolInput, &args)
 	switch in.ToolName {
 	case "Bash":
 		verdict := risk.Classify(risk.Action{Kind: risk.KindCommand, Command: args.Command, Folder: folder})
-		if in.Cwd != "" && in.Cwd != folder && !within(in.Cwd, folder) {
-			verdict = risk.Verdict{Level: models.RiskHigh, Reason: "It runs outside the agent's folder, in " + in.Cwd + "."}
-		}
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Run a command",
 			Detail: models.ApprovalDetail{Cmd: redact.Text(args.Command)},

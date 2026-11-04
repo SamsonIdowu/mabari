@@ -463,15 +463,6 @@ func commandWords(command any) (string, bool) {
 // risky is the verdict for anything Mabari can't judge.
 func risky(reason string) risk.Verdict { return risk.Verdict{Level: models.RiskHigh, Reason: reason} }
 
-// inFolder reports whether a path is inside the agent's own folder.
-func inFolder(path, folder string) bool {
-	if folder == "" || path == "" {
-		return false
-	}
-	relative, err := filepath.Rel(folder, path)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
 // approvalFor describes an approval request against the agent's own folder, never the folder
 // Codex names, so a request can't move the goalposts. It returns false when the request can't be
 // shown truthfully, and is then declined.
@@ -483,8 +474,8 @@ func (c *Connector) approvalFor(method string, e event, folder string) (models.A
 		switch {
 		case !plain:
 			verdict = risky("The command has quoted or special words, so Mabari can't judge it.")
-		case e.Cwd != "" && e.Cwd != folder && !inFolder(e.Cwd, folder):
-			verdict = risky("It runs outside the agent's folder, in " + e.Cwd + ".")
+		case !risk.SameFolder(e.Cwd, folder):
+			verdict = risky("It runs in " + e.Cwd + ", not the agent's folder.")
 		}
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Run a command",
@@ -503,6 +494,12 @@ func (c *Connector) approvalFor(method string, e event, folder string) (models.A
 		for _, changed := range changes {
 			paths = append(paths, changed.Path)
 			one := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: changed.Path, Folder: folder})
+			switch {
+			case !filepath.IsAbs(changed.Path):
+				one = risky("A changed path isn't a full path, so Mabari can't tell where it is.")
+			case !risk.SameFolder(e.Cwd, folder):
+				one = risky("Codex is working in " + e.Cwd + ", not the agent's folder.")
+			}
 			if one.Level != models.RiskLow || verdict.Reason == "" {
 				verdict = one
 			}

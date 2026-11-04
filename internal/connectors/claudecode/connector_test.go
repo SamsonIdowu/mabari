@@ -387,6 +387,10 @@ func TestRiskFollowsTheToolNotItsArguments(t *testing.T) {
 	if got := approvalFor(input{ToolName: "Bash", ToolInput: moved, Cwd: "/etc"}, "/home/me/shop"); got.RiskLevel != models.RiskHigh {
 		t.Error("a command run outside the agent's folder passed")
 	}
+	read, _ := json.Marshal(map[string]any{"file_path": "/home/me/shop/a.ts"})
+	if got := approvalFor(input{ToolName: "Read", ToolInput: read, Cwd: "/tmp"}, "/home/me/shop"); got.RiskLevel != models.RiskHigh {
+		t.Error("a read from a session that moved away passed")
+	}
 	for _, tc := range cases {
 		raw, _ := json.Marshal(tc.args)
 		got := approvalFor(input{ToolName: tc.tool, ToolInput: raw, Cwd: "/home/me/shop"}, "/home/me/shop")

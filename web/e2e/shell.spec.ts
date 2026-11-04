@@ -101,7 +101,7 @@ test('the rail starts collapsed below 1180 px and the top bar slims down', async
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/');
   const box = await page.getByRole('complementary', { name: 'Main' }).boundingBox();
-  expect(box?.width).toBe(68);
+  expect(box?.width).toBe(58);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
   await expect(page.getByRole('button', { name: 'Expand menu' })).toBeVisible();
 });
@@ -110,12 +110,12 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   await page.goto('/');
   const rail = page.getByRole('complementary', { name: 'Main' });
   const width = async () => (await rail.boundingBox())?.width;
-  expect(await width()).toBe(104);
+  expect(await width()).toBe(84);
 
   const collapse = page.getByRole('button', { name: 'Collapse menu' });
   await expect(collapse).toHaveAttribute('aria-expanded', 'true');
   await collapse.click();
-  await expect.poll(width).toBe(68);
+  await expect.poll(width).toBe(58);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
   await expect(rail.getByRole('link', { name: 'Status screens' })).toHaveAttribute(
     'title',
@@ -129,7 +129,7 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   const expand = page.getByRole('button', { name: 'Expand menu' });
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
   await expand.click();
-  await expect.poll(width).toBe(104);
+  await expect.poll(width).toBe(84);
 });
 
 test('the app fills the window with no margins', async ({ page }) => {

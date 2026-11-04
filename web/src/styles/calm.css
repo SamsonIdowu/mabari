@@ -164,3 +164,45 @@ section[data-screen='preferences'] p.muted {
 [hidden] {
   display: none !important;
 }
+
+/* compact chrome so the office gets most of the screen */
+.app {
+  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+.app.collapsed {
+  grid-template-columns: 58px minmax(0, 1fr);
+}
+.topbar,
+.rail,
+.ohead,
+.obar2,
+.cmdbar,
+.panel,
+.ctools,
+.readout {
+  zoom: 0.8;
+}
+.rail {
+  padding: 16px 8px;
+}
+.ohead {
+  padding: 12px 20px 8px;
+}
+.ohead h1,
+#oTitle {
+  font-size: 22px;
+}
+.obar2 {
+  padding-top: 4px !important;
+  padding-bottom: 10px !important;
+}
+.panel {
+  width: 440px;
+}
+.cmdbar {
+  padding: 10px 18px;
+}
+section[data-screen]:not([data-screen='office']) {
+  zoom: 0.88;
+}

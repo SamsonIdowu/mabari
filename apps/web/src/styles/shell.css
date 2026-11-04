@@ -1,0 +1,123 @@
+/* Ported from design/mabari-prototype.html: app shell. */
+.app {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  height: 100%;
+}
+.rail {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 12px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  min-height: 0;
+  overflow-y: auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 17px;
+  padding: 4px 10px 18px;
+}
+.brand svg {
+  flex: none;
+}
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--fg2);
+  text-decoration: none;
+  font-weight: 700;
+}
+.nav:hover {
+  background: var(--surface2);
+  color: var(--fg);
+}
+.nav.on {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+.nav .badge {
+  margin-left: auto;
+}
+.railfoot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.local {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.local i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+@media (max-width: 1180px) {
+  .app {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+  .rail .lbl,
+  .brand span,
+  .local span,
+  .nav .badge {
+    display: none;
+  }
+  .nav {
+    justify-content: center;
+    padding: 12px;
+  }
+  .brand {
+    justify-content: center;
+    padding: 4px 0 18px;
+  }
+}
+.screen {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.phead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.phead h1 {
+  font-size: 26px;
+}
+.phead p {
+  color: var(--muted);
+  margin-top: 4px;
+  max-width: 64ch;
+}
+.local.off i {
+  background: var(--red);
+}

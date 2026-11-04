@@ -6,18 +6,29 @@ Mabari is in early development. The screens and connections are being built in s
 
 ## Run it
 
-You need Node 22 or later and pnpm.
+You need Go 1.27 or later, Node 22 or later and pnpm.
 
 ```sh
-pnpm install
-pnpm dev
+pnpm --dir web install
+make dev
 ```
 
 Then open <http://localhost:4317>.
 
+## Build one binary
+
+```sh
+make build
+./bin/mabari
+```
+
 ## Test it
 
 ```sh
-pnpm exec playwright install chromium
-pnpm test
+pnpm --dir web exec playwright install chromium
+make test
 ```
+
+## Licence
+
+Apache 2.0. See [LICENSE](LICENSE).

@@ -90,3 +90,21 @@ func TestPrintableNamesTheKeyFileButNeverItsContents(t *testing.T) {
 		t.Error("an unset key file should read as (not set)")
 	}
 }
+
+// A container has no keychain, so it defaults to the encrypted file (decision 10).
+func TestContainerDefaultsToTheEncryptedFile(t *testing.T) {
+	cfg, err := Load(nil, env(map[string]string{"MABARI_IN_CONTAINER": "1", "MABARI_BIND": "0.0.0.0"}), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Secrets != "encrypted-file" {
+		t.Errorf("secrets = %q", cfg.Secrets)
+	}
+	desktop, err := Load(nil, env(nil), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desktop.Secrets != "keychain" {
+		t.Errorf("desktop secrets = %q", desktop.Secrets)
+	}
+}

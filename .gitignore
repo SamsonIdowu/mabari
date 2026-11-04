@@ -13,6 +13,7 @@ playwright-report/
 .DS_Store
 .env
 .env.*
+deploy/docker/mabari_master_key
 
 # Local tool state
 .claude/

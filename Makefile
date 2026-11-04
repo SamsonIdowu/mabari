@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker release-snapshot
+.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-key release-snapshot
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PNPM = pnpm --dir web
@@ -45,6 +45,11 @@ build:
 	$(PNPM) build
 	CGO_ENABLED=0 go build -tags embedweb -trimpath \
 		-ldflags "-s -w -X main.version=$(VERSION)" -o bin/mabari ./cmd/mabari
+
+docker-key:
+	@test -f deploy/docker/mabari_master_key || \
+		(umask 077 && openssl rand -base64 32 > deploy/docker/mabari_master_key && \
+		echo "Wrote deploy/docker/mabari_master_key. Keep it: without it the stored keys can't be read.")
 
 docker:
 	docker build -f deploy/docker/Dockerfile -t mabari:dev --build-arg VERSION=$(VERSION) .

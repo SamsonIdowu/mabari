@@ -14,7 +14,13 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
+    # Keys and tokens are kept in an encrypted file sealed with this key. `make docker-key` makes one.
+    secrets: [mabari_master_key]
     restart: unless-stopped
+
+secrets:
+  mabari_master_key:
+    file: ./mabari_master_key
 
 volumes:
   mabari-data:

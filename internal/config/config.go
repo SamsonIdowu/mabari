@@ -59,7 +59,7 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 		Bind:          orDefault(getenv("MABARI_BIND"), DefaultBind),
 		Port:          DefaultPort,
 		DataDir:       orDefault(getenv("MABARI_DATA_DIR"), defaultDataDir(getenv)),
-		Secrets:       orDefault(getenv("MABARI_SECRETS"), DefaultSecrets),
+		Secrets:       orDefault(getenv("MABARI_SECRETS"), defaultSecrets(getenv)),
 		MasterKeyFile: getenv("MABARI_MASTER_KEY_FILE"),
 		LogLevel:      orDefault(getenv("MABARI_LOG_LEVEL"), DefaultLog),
 	}
@@ -98,6 +98,15 @@ func Load(args []string, getenv func(string) string, output io.Writer) (Config, 
 		return Config{}, errors.New(`MABARI_SECRETS must be "keychain" or "encrypted-file"`)
 	}
 	return cfg, nil
+}
+
+// defaultSecrets is the keychain on a desktop and the encrypted file in a container, which has no
+// keychain (decision 10).
+func defaultSecrets(getenv func(string) string) string {
+	if getenv("MABARI_IN_CONTAINER") == "1" {
+		return "encrypted-file"
+	}
+	return DefaultSecrets
 }
 
 // Level is the log level: debug, info, warn or error.

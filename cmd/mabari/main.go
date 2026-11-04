@@ -22,6 +22,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/config"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/server"
 	"github.com/SamsonIdowu/mabari/internal/store"
 	"github.com/SamsonIdowu/mabari/web"
@@ -124,6 +125,7 @@ type office struct {
 	store     *store.Store
 	engine    *events.Engine
 	simulator *simulator.Simulator
+	secrets   secrets.Store
 }
 
 func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
@@ -133,6 +135,17 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	// A folder needs its execute bit, so gosec's 0600 advice doesn't apply here.
 	if err := os.Chmod(cfg.DataDir, 0o700); err != nil { // #nosec G302
 		return nil, fmt.Errorf("protect data folder: %w", err)
+	}
+	masterKey, err := secrets.MasterKey(cfg.MasterKeyFile, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	// Without a usable secret store Mabari refuses to start, rather than keep keys in plain text.
+	vault, err := secrets.Open(secrets.Options{
+		Backend: cfg.Secrets, DataDir: cfg.DataDir, MasterKey: masterKey,
+	})
+	if err != nil {
+		return nil, err
 	}
 	database, err := store.Open(ctx, filepath.Join(cfg.DataDir, "mabari.db"))
 	if err != nil {
@@ -153,7 +166,7 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 		_ = database.Close()
 		return nil, err
 	}
-	return &office{store: database, engine: engine, simulator: sim}, nil
+	return &office{store: database, engine: engine, simulator: sim, secrets: vault}, nil
 }
 
 func (o *office) close(stderr io.Writer) {

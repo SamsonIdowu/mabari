@@ -10,6 +10,8 @@ tool (
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/gzuidhof/tygo v0.2.21
+	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/crypto v0.58.0
 	gopkg.in/yaml.v2 v2.4.0
 	modernc.org/sqlite v1.61.1
 )
@@ -22,11 +24,13 @@ require (
 	github.com/bep/golibsass v1.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.5 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gohugoio/hashstructure v0.6.0 // indirect
 	github.com/gohugoio/hugo v0.164.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -46,7 +50,7 @@ require (
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.79.0 // indirect

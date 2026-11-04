@@ -3,8 +3,8 @@ import { useRef, useState, type FormEvent } from 'react';
 import type { Snapshot } from '../gen/models.ts';
 import { send } from '../office/send.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
+import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
-import { LATER } from './parts.tsx';
 
 function TeamAnswer() {
   const answer = useOfficeUi((state) => state.teamAnswer);
@@ -33,6 +33,7 @@ function TeamAnswer() {
 }
 
 export function CommandBar({ office }: { office: Snapshot }) {
+  const listening = useVoice((state) => state.phase === 'listen');
   const mode = useOfficeUi((state) => state.mode);
   const target = useOfficeUi((state) => state.target);
   const selectedId = useOfficeUi((state) => state.selected);
@@ -134,7 +135,15 @@ export function CommandBar({ office }: { office: Snapshot }) {
             <option value="everyone">Everyone</option>
           </select>
         </div>
-        <button type="button" className="mic" aria-label="Hold to talk" disabled title={LATER}>
+        <button
+          type="button"
+          className={listening ? 'mic live' : 'mic'}
+          aria-label="Hold to talk"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            useVoice.getState().start(office);
+          }}
+        >
           <Icon>
             <rect x="9" y="3" width="6" height="11" rx="3" />
             <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
@@ -146,8 +155,8 @@ export function CommandBar({ office }: { office: Snapshot }) {
       </form>
       <div className="note">
         Instruct puts your message into the agent&apos;s session and it acts on it. Query reads
-        Mabari&apos;s own log and never interrupts the agent. Hold the mic (or Space) to talk; you get
-        2 seconds to cancel.
+        Mabari&apos;s own log and never interrupts the agent. Hold the mic (or Space) to talk, then
+        press Send when you are happy with it.
       </div>
     </div>
   );

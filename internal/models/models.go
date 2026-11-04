@@ -345,13 +345,15 @@ type AutoApprove struct {
 
 // Settings are the user's preferences.
 type Settings struct {
-	QueryModel    string            `json:"queryModel"`
-	VoiceEngine   string            `json:"voiceEngine"`
-	SpokenReplies bool              `json:"spokenReplies"`
-	RetentionDays int               `json:"retentionDays"`
-	LANAccess     bool              `json:"lanAccess"`
-	Defaults      map[string]string `json:"defaults"`
-	AutoApprove   AutoApprove       `json:"autoApprove"`
+	QueryModel    string `json:"queryModel"`
+	VoiceEngine   string `json:"voiceEngine"`
+	SpokenReplies bool   `json:"spokenReplies"`
+	// CompletionSound plays a short ding when an agent finishes a task.
+	CompletionSound bool              `json:"completionSound"`
+	RetentionDays   int               `json:"retentionDays"`
+	LANAccess       bool              `json:"lanAccess"`
+	Defaults        map[string]string `json:"defaults"`
+	AutoApprove     AutoApprove       `json:"autoApprove"`
 }
 
 // Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.

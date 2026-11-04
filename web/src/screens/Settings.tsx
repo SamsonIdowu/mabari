@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Settings as SettingsModel, Snapshot } from '../gen/models.ts';
+import { playDing } from '../office/ding.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { PageHead } from './parts.tsx';
@@ -169,6 +170,20 @@ function VoiceCard({ settings }: { settings: SettingsModel }) {
           />
           Read agent replies aloud
         </label>
+        <span className="flabel">Sounds</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.completionSound}
+              onChange={(event) => save({ completionSound: event.target.checked })}
+            />
+            Ding when a task is completed
+          </label>
+          <button type="button" className="btn sm" onClick={playDing}>
+            Play it
+          </button>
+        </div>
       </div>
     </div>
   );

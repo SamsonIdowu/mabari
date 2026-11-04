@@ -145,3 +145,44 @@ test('live updates reach the page', async ({ page }) => {
   await page.request.patch('/api/settings', { data: { retentionDays: 7 } });
   await expect(page.getByText('Kept for 7 days.')).toBeVisible();
 });
+
+test('the completion sound has a switch and can be played', async ({ page }) => {
+  await page.addInitScript(() => {
+    const started: number[] = [];
+    Object.assign(window, { notesPlayed: started });
+    class FakeAudio {
+      state = 'running';
+      currentTime = 0;
+      destination = {};
+      createOscillator() {
+        return {
+          frequency: { value: 0 },
+          connect: () => undefined,
+          start: (at: number) => started.push(at),
+          stop: () => undefined,
+        };
+      }
+      createGain() {
+        return {
+          gain: { setValueAtTime: () => undefined, exponentialRampToValueAtTime: () => undefined },
+          connect: () => undefined,
+        };
+      }
+    }
+    Object.assign(window, { AudioContext: FakeAudio });
+  });
+  await loadDemo(page);
+  await go(page, '#preferences');
+  const box = page.getByLabel('Ding when a task is completed');
+  await expect(box).toBeChecked();
+  await page.getByRole('button', { name: 'Play it' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { notesPlayed: number[] }).notesPlayed.length),
+    )
+    .toBe(2);
+  await box.click();
+  await expect(box).not.toBeChecked();
+  await page.reload();
+  await expect(page.getByLabel('Ding when a task is completed')).not.toBeChecked();
+});

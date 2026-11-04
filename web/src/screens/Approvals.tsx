@@ -52,7 +52,7 @@ export function ApprovalCard({ office }: { office: Snapshot }) {
       agent={agent}
       approval={approval}
       autoOn={office.settings.autoApprove.on}
-      close={() => set({ reviewing: null })}
+      close={() => set({ reviewing: null, spokenApproval: false })}
     />
   );
 }
@@ -64,6 +64,7 @@ function ApprovalDialog(props: {
   close: () => void;
 }) {
   const { agent, approval, autoOn, close } = props;
+  const spoken = useOfficeUi((state) => state.spokenApproval);
   useEscape(close);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => dialog.current?.focus(), []);
@@ -115,6 +116,16 @@ function ApprovalDialog(props: {
             </Icon>
           </button>
         </div>
+        {spoken ? (
+          <div className="banner amber" style={{ padding: '10px 12px' }}>
+            <Icon>
+              <path d="M12 8v5M12 16h.01" />
+            </Icon>
+            <span className="grow">
+              You said “allow”. Risky actions always need a click, so check it below.
+            </span>
+          </div>
+        ) : null}
         <Body approval={approval} />
         <p className="help">
           {approval.risk} {agent.name} is paused until you choose.
@@ -268,8 +279,8 @@ function AutoApproveForm({ office }: { office: Snapshot }) {
           </p>
         ) : null}
         <p className="help">
-          Every auto-approval is recorded in the Activity log, and the floor shows a banner while
-          this is on.
+          Every auto-approval is recorded in the Activity log, and the Auto approve button stays
+          amber while this is on.
         </p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button type="button" className="btn" onClick={close}>

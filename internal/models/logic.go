@@ -70,9 +70,10 @@ var MessageColors = map[MessageKind]string{
 // DefaultSettings are the settings before the user changes anything.
 func DefaultSettings() Settings {
 	return Settings{
-		QueryModel:    "gpt-5-mini",
-		VoiceEngine:   "browser",
-		RetentionDays: 30,
+		QueryModel:      "gpt-5-mini",
+		VoiceEngine:     "browser",
+		CompletionSound: true,
+		RetentionDays:   30,
 		Defaults: map[string]string{
 			"claude":    "claude-sonnet-4-5",
 			"codex":     "gpt-5-codex",

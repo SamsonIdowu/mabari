@@ -552,6 +552,10 @@ export interface Settings {
   queryModel: string;
   voiceEngine: string;
   spokenReplies: boolean;
+  /**
+   * CompletionSound plays a short ding when an agent finishes a task.
+   */
+  completionSound: boolean;
   retentionDays: number /* int */;
   lanAccess: boolean;
   defaults: { [key: string]: string};

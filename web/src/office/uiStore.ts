@@ -32,6 +32,8 @@ interface OfficeUi extends OfficeFilters {
   highlight: string | null;
   /** The approval whose card is open. It closes if that approval is settled or replaced. */
   reviewing: string | null;
+  /** The card was opened by voice, so it says a click is still needed. */
+  spokenApproval: boolean;
   autoDialog: boolean;
   answers: Record<string, Answer>;
   teamAnswer: { question: string; lines: TeamLine[] } | null;
@@ -66,6 +68,7 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   panelTab: 'live',
   highlight: null,
   reviewing: null,
+  spokenApproval: false,
   autoDialog: false,
   answers: {},
   teamAnswer: null,

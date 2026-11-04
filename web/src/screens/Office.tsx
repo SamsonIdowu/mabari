@@ -10,11 +10,13 @@ import { renderOverlays } from '../office/overlays.ts';
 import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
+import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { CommandBar } from './CommandBar.tsx';
+import { VoiceCard } from './VoiceCard.tsx';
 import { LATER } from './parts.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
@@ -182,7 +184,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const close = () => setMenu(null);
   // Escape closes one thing at a time. An open dialog handles the key itself.
   useEscape(() => {
-    if (document.querySelector('.scrim')) return;
+    if (document.querySelector('.scrim') || useVoice.getState().phase) return;
     const ui = useOfficeUi.getState();
     if (menu) close();
     else if (ui.team) ui.set({ team: null });
@@ -553,10 +555,25 @@ function Stage({ office }: { office: Snapshot }) {
     const onFullscreen = () => {
       if (!document.fullscreenElement) useOfficeUi.getState().set({ fullscreen: false });
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') useVoice.getState().stop();
+    };
     const onKey = (event: KeyboardEvent) => {
       const { tagName } = event.target as HTMLElement;
       if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return;
       if (document.querySelector('.scrim')) return;
+      const voice = useVoice.getState();
+      if (event.key === 'Enter' && voice.phase === 'confirm' && tagName !== 'BUTTON') {
+        event.preventDefault();
+        voice.send();
+        return;
+      }
+      if (event.code === 'Space' && tagName !== 'BUTTON' && tagName !== 'A') {
+        event.preventDefault();
+        const current = useOfficeStore.getState().office;
+        if (!event.repeat && current) voice.start(current);
+        return;
+      }
       const ui = useOfficeUi.getState();
       if (event.key === '+' || event.key === '=') ui.zoomBy(1);
       else if (event.key === '-' || event.key === '_') ui.zoomBy(-1);
@@ -594,6 +611,7 @@ function Stage({ office }: { office: Snapshot }) {
     element.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('fullscreenchange', onFullscreen);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('keyup', onKeyUp);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
@@ -601,6 +619,7 @@ function Stage({ office }: { office: Snapshot }) {
       element.removeEventListener('wheel', onWheel);
       document.removeEventListener('fullscreenchange', onFullscreen);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
@@ -737,6 +756,7 @@ export function Office() {
       </div>
       <ApprovalCard office={office} />
       <AutoApproveDialog office={office} />
+      <VoiceCard />
     </section>
   );
 }

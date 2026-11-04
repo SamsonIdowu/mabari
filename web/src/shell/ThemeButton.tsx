@@ -8,13 +8,7 @@ export function ThemeButton() {
   const isDark = theme === 'dark';
 
   return (
-    <button
-      type="button"
-      className="btn ghost"
-      style={{ justifyContent: 'flex-start' }}
-      title="Switch theme"
-      onClick={toggle}
-    >
+    <button type="button" className="tbtn" title="Switch theme" onClick={toggle}>
       <Icon>
         <path
           d={
@@ -24,7 +18,7 @@ export function ThemeButton() {
           }
         />
       </Icon>
-      <span className="lbl">{isDark ? 'Light theme' : 'Dark theme'}</span>
+      <span className="lbl">{isDark ? 'Light' : 'Dark'}</span>
     </button>
   );
 }

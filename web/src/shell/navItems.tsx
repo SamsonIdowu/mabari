@@ -4,14 +4,22 @@ import type { Route } from '../routes.ts';
 
 export interface NavItem {
   route: Route;
+  /** The short label shown under the icon. */
   label: string;
+  /** The full page name, for screen readers, when the label is shortened. */
+  name?: string;
+  /** The tooltip, when it should say more than the label. */
+  title?: string;
+  /** Shown when work needs attention. Hidden until the agents exist. */
+  badge?: 'needs' | 'live';
   icon: ReactNode;
 }
 
-export const mainNav: NavItem[] = [
+const workNav: NavItem[] = [
   {
     route: 'office',
     label: 'Office',
+    badge: 'needs',
     icon: (
       <>
         <path d="M3 21V9l9-6 9 6v12" />
@@ -26,7 +34,10 @@ export const mainNav: NavItem[] = [
   },
   {
     route: 'conversations',
-    label: 'Conversations',
+    label: 'Chats',
+    name: 'Conversations',
+    title: 'Conversations between agents',
+    badge: 'live',
     icon: (
       <>
         <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
@@ -34,6 +45,9 @@ export const mainNav: NavItem[] = [
       </>
     ),
   },
+];
+
+const manageNav: NavItem[] = [
   {
     route: 'accounts',
     label: 'Accounts',
@@ -47,7 +61,9 @@ export const mainNav: NavItem[] = [
   },
   {
     route: 'activity',
-    label: 'Activity log',
+    label: 'Activity',
+    name: 'Activity log',
+    title: 'Activity log',
     icon: <path d="M4 6h16M4 12h16M4 18h10" />,
   },
   {
@@ -62,10 +78,10 @@ export const mainNav: NavItem[] = [
   },
 ];
 
-export const secondaryNav: NavItem[] = [
+const referenceNav: NavItem[] = [
   {
     route: 'components',
-    label: 'Component sheet',
+    label: 'Components',
     icon: (
       <>
         <rect x="3" y="3" width="7" height="7" rx="2" />
@@ -77,7 +93,9 @@ export const secondaryNav: NavItem[] = [
   },
   {
     route: 'states',
-    label: 'Status screens',
+    label: 'Status',
+    name: 'Status screens',
+    title: 'Status screens: empty, loading and error states',
     icon: (
       <>
         <path d="M12 9v4M12 17h.01" />
@@ -90,4 +108,10 @@ export const secondaryNav: NavItem[] = [
     label: 'First run',
     icon: <path d="M5 12h14M13 6l6 6-6 6" />,
   },
+];
+
+export const navGroups = [
+  { name: 'Work', items: workNav },
+  { name: 'Manage', items: manageNav },
+  { name: 'Design reference', items: referenceNav },
 ];

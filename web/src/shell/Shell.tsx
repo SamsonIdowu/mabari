@@ -4,6 +4,7 @@ import { useHashRoute } from '../useHashRoute.ts';
 import { PlaceholderPage } from './PlaceholderPage.tsx';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
+import { Topbar } from './Topbar.tsx';
 
 /** Stage 1 replaces this with whether any account or agent exists. */
 const FIRST_RUN = true;
@@ -19,6 +20,7 @@ export function Shell() {
 
   return (
     <div className={collapsed ? 'app collapsed' : 'app'}>
+      <Topbar />
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef}>
         <PlaceholderPage route={route} />

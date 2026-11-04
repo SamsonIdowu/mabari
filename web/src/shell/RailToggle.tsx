@@ -10,8 +10,7 @@ export function RailToggle() {
   return (
     <button
       type="button"
-      className="btn ghost"
-      style={{ justifyContent: 'flex-start' }}
+      className="tbtn icon"
       aria-label={name}
       aria-expanded={!collapsed}
       title={name}
@@ -20,7 +19,7 @@ export function RailToggle() {
       <Icon>
         <path d={collapsed ? 'M9 6l6 6-6 6' : 'M15 6l-6 6 6 6'} />
       </Icon>
-      <span className="lbl">Collapse menu</span>
+      <span className="lbl">{collapsed ? 'Expand' : 'Collapse'}</span>
     </button>
   );
 }

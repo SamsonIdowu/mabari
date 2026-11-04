@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 export function BrandMark() {
   return (
-    <svg width="30" height="30" viewBox="0 0 16 16" aria-hidden="true" shapeRendering="crispEdges">
+    <svg width="32" height="32" viewBox="0 0 16 16" aria-hidden="true" shapeRendering="crispEdges">
       <rect width="16" height="16" rx="4" fill="#A99CFF" />
       <rect x="3" y="8" width="10" height="2" fill="#14112A" />
       <rect x="5" y="4" width="6" height="4" fill="#14112A" />

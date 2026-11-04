@@ -14,13 +14,20 @@ export function LocalStatus() {
     refetchInterval: 5000,
     retry: false,
   });
+  const address = window.location.host;
 
+  if (isError) {
+    return (
+      <div className="localpill off" title={`Mabari can't reach its server at ${address}`}>
+        <i />
+        Mabari server not reachable
+      </div>
+    );
+  }
   return (
-    <div className={isError ? 'local off' : 'local'}>
+    <div className="localpill" title={`Running at ${address}, only on this computer`}>
       <i />
-      <span>
-        {isError ? 'Mabari server not reachable' : 'localhost:4317 · only on this computer'}
-      </span>
+      Local <span className="muted">{address}</span>
     </div>
   );
 }

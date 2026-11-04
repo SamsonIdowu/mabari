@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: audit dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-agents docker-smoke docker-key release-snapshot
+.PHONY: audit install-check dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-agents docker-smoke docker-key release-snapshot
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PNPM = pnpm --dir web
@@ -71,3 +71,7 @@ docker-smoke:
 # Builds every archive and package into dist/, without signing or publishing anything.
 release-snapshot:
 	goreleaser release --snapshot --clean --skip=sign,publish
+
+# Installs the snapshot in clean containers (and on macOS from a scratch folder) and checks each.
+install-check:
+	scripts/install-check.sh

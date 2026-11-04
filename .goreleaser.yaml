@@ -98,6 +98,7 @@ scoops:
 
 release:
   draft: true
+  # The release notes for each version live in docs/releases/<tag>.md.
 
 changelog:
   use: git

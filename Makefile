@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-agents docker-smoke docker-key release-snapshot
+.PHONY: audit dev dev-api dev-web test test-go test-web test-e2e lint typecheck gen golden build docker docker-agents docker-smoke docker-key release-snapshot
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PNPM = pnpm --dir web
@@ -24,6 +24,12 @@ test-web:
 
 test-e2e:
 	$(PNPM) test:e2e
+
+# Known vulnerabilities in Go and web dependencies, and licences that suit Apache 2.0.
+audit:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+	$(PNPM) audit
+	scripts/check-licenses.sh
 
 lint:
 	golangci-lint run

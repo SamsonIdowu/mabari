@@ -1,3 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 allowBuilds:
   esbuild: true
+overrides:
+  # eslint pulls an older minimatch with GHSA-g3hv-75wg-m249 (a dev-only denial of service).
+  minimatch: ">=11.0.1"

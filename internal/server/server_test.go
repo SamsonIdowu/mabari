@@ -3,40 +3,83 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
+
+	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
+	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
+	"github.com/coder/websocket"
 )
 
-func get(t *testing.T, handler http.Handler, path string) *httptest.ResponseRecorder {
+type office struct {
+	handler   http.Handler
+	engine    *events.Engine
+	simulator *simulator.Simulator
+}
+
+func newOffice(t *testing.T) *office {
 	t.Helper()
+	ctx := context.Background()
+	s, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	engine, err := events.New(ctx, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sim := simulator.New(engine, simulator.Mulberry32(7), 0)
+	return &office{
+		handler:   New(Options{Version: "1.2.3", Engine: engine, Simulator: sim}),
+		engine:    engine,
+		simulator: sim,
+	}
+}
+
+func (o *office) do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, "http://localhost:4317"+path, strings.NewReader(body))
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+	o.handler.ServeHTTP(recorder, request)
 	return recorder
 }
 
+func decode[T any](t *testing.T, response *httptest.ResponseRecorder) T {
+	t.Helper()
+	var value T
+	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+		t.Fatalf("decode %q: %v", response.Body.String(), err)
+	}
+	return value
+}
+
+func (o *office) demo(t *testing.T) models.Snapshot {
+	t.Helper()
+	if response := o.do(t, http.MethodPost, "/api/demo/load", ""); response.Code != http.StatusOK {
+		t.Fatalf("demo load = %d", response.Code)
+	}
+	return decode[models.Snapshot](t, o.do(t, http.MethodGet, "/api/snapshot", ""))
+}
+
 func TestHealth(t *testing.T) {
-	response := get(t, New("1.2.3", nil), "/api/health")
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d", response.Code)
-	}
-	var body struct {
-		OK      bool   `json:"ok"`
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if !body.OK || body.Version != "1.2.3" {
-		t.Errorf("body = %+v", body)
+	response := newOffice(t).do(t, http.MethodGet, "/api/health", "")
+	body := decode[map[string]any](t, response)
+	if response.Code != http.StatusOK || body["ok"] != true || body["version"] != "1.2.3" {
+		t.Errorf("status = %d, body = %v", response.Code, body)
 	}
 }
 
 func TestUnknownAPIRouteIsJSON404(t *testing.T) {
-	response := get(t, New("x", nil), "/api/nope")
+	response := newOffice(t).do(t, http.MethodGet, "/api/nope", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -45,25 +88,360 @@ func TestUnknownAPIRouteIsJSON404(t *testing.T) {
 	}
 }
 
-func TestHealthRejectsOtherMethods(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/health", nil)
-	New("x", nil).ServeHTTP(recorder, request)
-	if recorder.Code == http.StatusOK {
-		t.Errorf("POST /api/health = %d", recorder.Code)
-	}
-}
-
 func TestServesTheWebAppWhenEmbedded(t *testing.T) {
-	files := fstest.MapFS{"index.html": {Data: []byte("<title>Mabari</title>")}}
-	response := get(t, New("x", files), "/")
+	office := newOffice(t)
+	office.handler = New(Options{
+		Engine:   office.engine,
+		WebFiles: fstest.MapFS{"index.html": {Data: []byte("<title>Mabari</title>")}},
+	})
+	response := office.do(t, http.MethodGet, "/", "")
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Mabari") {
 		t.Errorf("status = %d, body = %q", response.Code, response.Body.String())
 	}
 }
 
-func TestNoWebAppInDevelopment(t *testing.T) {
-	if response := get(t, New("x", nil), "/"); response.Code != http.StatusNotFound {
+func TestLocalOnlyChecks(t *testing.T) {
+	cases := []struct {
+		name   string
+		host   string
+		origin string
+		want   int
+	}{
+		{"localhost", "localhost:4317", "", http.StatusOK},
+		{"loopback address", "127.0.0.1:4317", "http://127.0.0.1:4317", http.StatusOK},
+		{"loopback IPv6", "[::1]:4317", "http://[::1]:4317", http.StatusOK},
+		{"our dev page", "localhost:4317", "http://localhost:4317", http.StatusOK},
+		{"DNS rebinding", "evil.example:4317", "", http.StatusForbidden},
+		{"lookalike host", "localhost.evil.example", "", http.StatusForbidden},
+		{"another website", "localhost:4317", "https://evil.example", http.StatusForbidden},
+		{"lookalike origin", "localhost:4317", "http://localhost.evil.example", http.StatusForbidden},
+		{"sandboxed frame", "localhost:4317", "null", http.StatusForbidden},
+		{"file page", "localhost:4317", "file://", http.StatusForbidden},
+	}
+	handler := newOffice(t).handler
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+			request.Host = tc.host
+			if tc.origin != "" {
+				request.Header.Set("Origin", tc.origin)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != tc.want {
+				t.Errorf("status = %d, want %d", recorder.Code, tc.want)
+			}
+		})
+	}
+}
+
+func TestFirstRunUntilTheDemoLoads(t *testing.T) {
+	office := newOffice(t)
+	empty := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	if !empty.FirstRun || len(empty.Agents) != 0 || len(empty.Accounts) != 5 {
+		t.Errorf("empty snapshot = %+v", empty)
+	}
+	demo := office.demo(t)
+	if demo.FirstRun || len(demo.Agents) != 10 || len(demo.Projects) != 4 {
+		t.Errorf("demo: firstRun %v, %d agents, %d projects",
+			demo.FirstRun, len(demo.Agents), len(demo.Projects))
+	}
+}
+
+func TestSnapshotCarriesEstimatesFromTheServer(t *testing.T) {
+	demo := newOffice(t).demo(t)
+	for _, agent := range demo.Agents {
+		if agent.State.Active() != (agent.Estimate != nil) {
+			t.Errorf("%s (%s): estimate = %+v", agent.Name, agent.State, agent.Estimate)
+		}
+		if agent.Bubble == "" {
+			t.Errorf("%s has no speech bubble", agent.Name)
+		}
+	}
+	for _, project := range demo.Projects {
+		if project.ID == "checkout" && (project.Estimate == nil || project.Status != models.ProjectNeeds) {
+			t.Errorf("checkout = %+v", project)
+		}
+		if project.ID == "landing" && (project.Status != models.ProjectCompleted || project.Estimate != nil) {
+			t.Errorf("landing = %+v", project)
+		}
+	}
+}
+
+func TestProjectRoutes(t *testing.T) {
+	office := newOffice(t)
+	created := office.do(t, http.MethodPost, "/api/projects", `{"name":" Docs ","color":"#48DBFB"}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", created.Code, created.Body.String())
+	}
+	project := decode[models.Project](t, created)
+	if project.Name != "Docs" || project.Status != models.ProjectNew {
+		t.Errorf("project = %+v", project)
+	}
+
+	path := "/api/projects/" + project.ID
+	updated := decode[models.Project](t, office.do(t, http.MethodPatch, path, `{"instructions":"Be kind"}`))
+	if updated.Instructions != "Be kind" || updated.Name != "Docs" {
+		t.Errorf("updated = %+v", updated)
+	}
+	if listed := decode[[]models.Project](t, office.do(t, http.MethodGet, "/api/projects", "")); len(listed) != 1 {
+		t.Errorf("listed = %+v", listed)
+	}
+	if response := office.do(t, http.MethodDelete, path, ""); response.Code != http.StatusNoContent {
+		t.Errorf("delete = %d", response.Code)
+	}
+	if response := office.do(t, http.MethodDelete, path, ""); response.Code != http.StatusNotFound {
+		t.Errorf("second delete = %d", response.Code)
+	}
+}
+
+func TestProjectValidation(t *testing.T) {
+	office := newOffice(t)
+	for _, body := range []string{
+		`{"name":"","color":"#fff"}`,
+		`{"name":"   ","color":"#fff"}`,
+		`{"name":"` + strings.Repeat("x", 29) + `","color":"#fff"}`,
+		`{"name":"No colour"}`,
+		`{"name":"Extra","color":"#fff","admin":true}`,
+		`not json`,
+		``,
+	} {
+		if response := office.do(t, http.MethodPost, "/api/projects", body); response.Code != http.StatusBadRequest {
+			t.Errorf("%q = %d", body, response.Code)
+		}
+	}
+}
+
+func TestRequestBodiesAreLimited(t *testing.T) {
+	big := `{"name":"` + strings.Repeat("x", maxBodyBytes) + `","color":"#fff"}`
+	response := newOffice(t).do(t, http.MethodPost, "/api/projects", big)
+	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("status = %d", response.Code)
+	}
+}
+
+func TestAgentRoutes(t *testing.T) {
+	office := newOffice(t)
+	demo := office.demo(t)
+	id := demo.Agents[0].ID
+	path := "/api/agents/" + id
+
+	if agents := decode[[]models.LiveAgent](t, office.do(t, http.MethodGet, "/api/agents", "")); len(agents) != 10 {
+		t.Errorf("listed %d", len(agents))
+	}
+	if agent := decode[models.LiveAgent](t, office.do(t, http.MethodGet, path, "")); agent.ID != id {
+		t.Errorf("agent = %+v", agent)
+	}
+	if response := office.do(t, http.MethodGet, "/api/agents/nope", ""); response.Code != http.StatusNotFound {
+		t.Errorf("missing agent = %d", response.Code)
+	}
+
+	updated := decode[models.Agent](t, office.do(t, http.MethodPatch, path,
+		`{"model":"gpt-5","dailyCostCap":5,"allowedTools":["read"],"projectId":"docs"}`))
+	if updated.Model != "gpt-5" || *updated.DailyCostCap != 5 || *updated.Project != "docs" ||
+		updated.AllowedTools[0] != "read" {
+		t.Errorf("updated = %+v", updated)
+	}
+	if response := office.do(t, http.MethodPatch, path, `{"projectId":"nope"}`); response.Code != http.StatusBadRequest {
+		t.Errorf("bad project = %d", response.Code)
+	}
+	if response := office.do(t, http.MethodPatch, path, `{"dailyCostCap":-1}`); response.Code != http.StatusBadRequest {
+		t.Errorf("negative cap = %d", response.Code)
+	}
+
+	events := decode[[]models.Event](t, office.do(t, http.MethodGet, path+"/events?limit=2", ""))
+	if len(events) != 2 {
+		t.Errorf("events = %+v", events)
+	}
+}
+
+func TestAccountsListEveryKind(t *testing.T) {
+	accounts := decode[[]models.Account](t, newOffice(t).do(t, http.MethodGet, "/api/accounts", ""))
+	if len(accounts) != 5 || accounts[0].Kind != models.AccountCodex || accounts[0].Status != models.AccountOff {
+		t.Errorf("accounts = %+v", accounts)
+	}
+}
+
+func TestSettingsPartialUpdateAndValidation(t *testing.T) {
+	office := newOffice(t)
+	updated := decode[models.Settings](t, office.do(t, http.MethodPatch, "/api/settings", `{"retentionDays":7}`))
+	if updated.RetentionDays != 7 || updated.QueryModel != "gpt-5-mini" {
+		t.Errorf("updated = %+v", updated)
+	}
+	if got := decode[models.Settings](t, office.do(t, http.MethodGet, "/api/settings", "")); got.RetentionDays != 7 {
+		t.Errorf("stored = %+v", got)
+	}
+	for _, body := range []string{
+		`{"retentionDays":8}`, `{"voiceEngine":"cloud"}`, `{"autoApprove":{"on":true,"scope":"most"}}`,
+		`{"nope":1}`,
+	} {
+		if response := office.do(t, http.MethodPatch, "/api/settings", body); response.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d", body, response.Code)
+		}
+	}
+}
+
+func TestApprovalDecision(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	pending := decode[[]models.Approval](t, office.do(t, http.MethodGet, "/api/approvals?pending=1", ""))
+	if len(pending) != 1 || pending[0].Detail.Cmd != "npm run db:migrate -- --env=staging" {
+		t.Fatalf("pending = %+v", pending)
+	}
+	path := "/api/approvals/" + pending[0].ID + "/decision"
+	if response := office.do(t, http.MethodPost, path, `{"decision":"maybe"}`); response.Code != http.StatusBadRequest {
+		t.Errorf("bad decision = %d", response.Code)
+	}
+
+	first := decode[map[string]bool](t, office.do(t, http.MethodPost, path, `{"decision":"allowed"}`))
+	if !first["applied"] {
+		t.Error("first decision was not applied")
+	}
+	second := decode[map[string]bool](t, office.do(t, http.MethodPost, path, `{"decision":"denied"}`))
+	if second["applied"] {
+		t.Error("second decision changed something")
+	}
+
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	for _, agent := range snapshot.Agents {
+		if agent.Name == "Atlas" && (agent.State != models.StateRunning || agent.Approval != nil) {
+			t.Errorf("Atlas = %s, approval %+v", agent.State, agent.Approval)
+		}
+	}
+	if pending := decode[[]models.Approval](t, office.do(t, http.MethodGet, "/api/approvals?pending=1", "")); len(pending) != 0 {
+		t.Errorf("still pending: %+v", pending)
+	}
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?type=Approval&q=migrate", ""))
+	if len(rows) != 1 || rows[0].Outcome != "Allowed" {
+		t.Errorf("log = %+v", rows)
+	}
+}
+
+func TestActivitySearch(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	rows := decode[[]models.LogEntry](t, office.do(t, http.MethodGet, "/api/activity?q=changelog", ""))
+	if len(rows) != 1 || rows[0].Agent != "Sage" || rows[0].Outcome != "Waiting for checkpoint" {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestWipeNeedsConfirmationAndReturnsToFirstRun(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	if response := office.do(t, http.MethodPost, "/api/wipe", `{}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("unconfirmed wipe = %d", response.Code)
+	}
+	if response := office.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d", response.Code)
+	}
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	if !snapshot.FirstRun || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 0 ||
+		len(snapshot.Log) != 0 || len(snapshot.Messages) != 0 {
+		t.Errorf("after wipe: %+v", snapshot)
+	}
+	for _, account := range snapshot.Accounts {
+		if account.Status != models.AccountOff {
+			t.Errorf("account %s = %s", account.Kind, account.Status)
+		}
+	}
+}
+
+func dial(t *testing.T, url string) *websocket.Conn {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, url, nil) //nolint:bodyclose // The library closes it.
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+	return conn
+}
+
+func receive(t *testing.T, conn *websocket.Conn) models.ServerMessage {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var message models.ServerMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		t.Fatal(err)
+	}
+	return message
+}
+
+func listen(t *testing.T, office *office) string {
+	t.Helper()
+	server := httptest.NewUnstartedServer(office.handler)
+	server.Start()
+	t.Cleanup(server.Close)
+	return "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+}
+
+func TestWebSocketStreamsInOrderAndResumes(t *testing.T) {
+	office := newOffice(t)
+	url := listen(t, office)
+	conn := dial(t, url)
+
+	hello := receive(t, conn)
+	if hello.Type != models.MsgHello || hello.BootID == "" {
+		t.Fatalf("hello = %+v", hello)
+	}
+	if err := office.simulator.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	last := hello.Seq
+	for range 40 {
+		message := receive(t, conn)
+		if message.Seq != last+1 {
+			t.Fatalf("seq %d after %d", message.Seq, last)
+		}
+		last = message.Seq
+	}
+	_ = conn.CloseNow()
+
+	if err := office.simulator.Tick(); err != nil {
+		t.Fatal(err)
+	}
+	resumed := dial(t, url+"?boot="+hello.BootID+"&since="+uintText(last))
+	if first := receive(t, resumed); first.Type != models.MsgHello {
+		t.Fatalf("first = %+v", first)
+	}
+	if next := receive(t, resumed); next.Seq != last+1 {
+		t.Errorf("resumed at %d, want %d", next.Seq, last+1)
+	}
+}
+
+func uintText(value uint64) string {
+	data, _ := json.Marshal(value)
+	return string(data)
+}
+
+func TestWebSocketFromAnotherBootResyncs(t *testing.T) {
+	conn := dial(t, listen(t, newOffice(t))+"?boot=old&since=5")
+	if hello := receive(t, conn); hello.Type != models.MsgHello {
+		t.Fatalf("hello = %+v", hello)
+	}
+	if message := receive(t, conn); message.Type != models.MsgResync {
+		t.Errorf("message = %+v", message)
+	}
+}
+
+func TestWebSocketRefusesOtherWebsites(t *testing.T) {
+	url := listen(t, newOffice(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	options := &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://evil.example"}}}
+	conn, response, err := websocket.Dial(ctx, url, options) //nolint:bodyclose // The library closes it.
+	if err == nil {
+		_ = conn.CloseNow()
+		t.Fatal("expected the upgrade to be refused")
+	}
+	if response == nil || response.StatusCode != http.StatusForbidden {
+		t.Errorf("response = %+v", response)
 	}
 }

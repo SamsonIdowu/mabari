@@ -8,6 +8,7 @@ tool (
 )
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/gzuidhof/tygo v0.2.21
 	gopkg.in/yaml.v2 v2.4.0
 	modernc.org/sqlite v1.61.1

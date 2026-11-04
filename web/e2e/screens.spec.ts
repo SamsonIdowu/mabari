@@ -58,7 +58,7 @@ test('projects show progress, estimates and completion from the server', async (
   await go(page, '#projects');
   const card = page.locator('article', { hasText: 'Test coverage' });
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', /\d+/);
-  await expect(card.getByText('Estimated completion:')).toBeVisible();
+  await expect(card.getByText(/^Done around \d\d:\d\d/)).toBeVisible();
   const landing = page.locator('article', { hasText: 'Landing page' });
   await expect(landing.getByText('Completed 2 days ago')).toBeVisible();
   await expect(landing.getByText('Fixed 14 accessibility issues')).toBeVisible();

@@ -182,8 +182,7 @@ function OpenBody({ project, agents }: { project: Project; agents: LiveAgent[] }
         <p className="help">
           {estimate ? (
             <>
-              <b style={{ color: 'var(--fg)' }}>Estimated completion:</b> about{' '}
-              {minsText(estimate.secondsLeft)}, around {clockText(estimate.finishAt)}
+              Done around <b style={{ color: 'var(--fg)' }}>{clockText(estimate.finishAt)}</b>
             </>
           ) : waiting ? (
             'Waiting on you before it can finish'
@@ -305,8 +304,7 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
       <p className="help">
         {longest ? (
           <>
-            <b style={{ color: 'var(--fg)' }}>Estimated completion:</b> about {minsText(longest)},
-            around {clockText(finish)}
+            Done around <b style={{ color: 'var(--fg)' }}>{clockText(finish)}</b>
           </>
         ) : (
           'Nothing in progress'
@@ -372,9 +370,6 @@ export function Projects() {
               </button>
             ))}
           </div>
-          <span className="help">
-            {done} of {projects.length} project{projects.length === 1 ? '' : 's'} completed
-          </span>
         </div>
         {filter !== 'all' && shown.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: 48 }}>

@@ -56,7 +56,6 @@ test('every nav link routes and marks itself current', async ({ page }) => {
 
 test('the top bar brand goes to the office', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.bm-tag')).toHaveText('Your AI agents at work');
   await page.getByRole('link', { name: 'Mabari, go to the office' }).click();
   await expect(page.locator('h1')).toHaveText('All projects');
 });
@@ -80,7 +79,7 @@ test('the theme button switches themes and remembers the choice', async ({ page 
 test('shows the local only status', async ({ page }) => {
   await page.goto('/');
   const status = page.locator('.localpill');
-  await expect(status).toHaveText('Local localhost:4317');
+  await expect(status).toHaveText('Local');
   await expect(status).toHaveAttribute('title', /only on this computer/);
 });
 
@@ -97,7 +96,6 @@ test('the rail starts collapsed below 1180 px and the top bar slims down', async
   expect(box?.width).toBe(68);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
   await expect(page.getByRole('button', { name: 'Expand menu' })).toBeVisible();
-  await expect(page.locator('.bm-tag')).toBeHidden();
 });
 
 test('the menu collapses, keeps tooltips and remembers the choice', async ({ page }) => {

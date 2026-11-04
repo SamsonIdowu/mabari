@@ -150,12 +150,6 @@ function plant(c: Ctx, x: number, y: number, P: Palette) {
   ell(c, x + 15, y + 9, 4, 4);
   ell(c, x + 11, y + 13, 3, 3);
 }
-function floorLabel(c: Ctx, txt: string, x: number, y: number, P: Palette) {
-  c.font = '800 9px Nunito, sans-serif';
-  c.fillStyle = P.label;
-  const s = txt.split('').join(String.fromCharCode(8202));
-  c.fillText(s, x, y);
-}
 export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = W;
@@ -281,7 +275,6 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     for (let s2 = 0; s2 < 6; s2++)
       R(c, x2 + 6, 64 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
   }
-  floorLabel(c, 'SERVER ROOM', 22 * 32 + 10, 132 + 14, P);
   /* meeting room */
   for (let mx = 0; mx < 4; mx++)
     blk(c, 24 * 32 + mx * 32 - 6, 8 * 32 + 10, 20, 8, 8, P.chairTop, P.chair, P);
@@ -292,7 +285,6 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   R(c, 26 * 32 + 20, 9 * 32 + 14, 10, 6, P.ink);
   for (let mx2 = 0; mx2 < 4; mx2++)
     blk(c, 24 * 32 + mx2 * 32 - 6, 10 * 32 + 20, 20, 8, 8, P.chairTop, P.chair, P);
-  floorLabel(c, 'MEETING', 22 * 32 + 10, 8 * 32 + 6, P);
   /* pantry */
   blk(c, 22 * 32, 13 * 32 + 4, 8 * 32, 14, 20, P.desk, P.deskFront, P, P.deskEdge);
   blk(
@@ -310,7 +302,6 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   blk(c, 28 * 32 + 4, 12 * 32 + 10, 26, 10, 46, P.paper, P.deskFront, P);
   R(c, 28 * 32 + 26, 12 * 32 + 30, 2, 10, P.metal);
   blk(c, 25 * 32, 15 * 32, 40, 18, 10, P.wood, P.woodD, P);
-  floorLabel(c, 'PANTRY', 22 * 32 + 10, 13 * 32 - 24, P);
   /* library corner: soft rug, shelves with muted spines, sofa */
   R(c, 1 * 32, 12 * 32 + 14, 6 * 32, 4 * 32, P.rug);
   R(c, 1 * 32 + 6, 12 * 32 + 20, 6 * 32 - 12, 4 * 32 - 12, P.rugB);
@@ -339,7 +330,6 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     P,
   );
   plant(c, 24, 15 * 32 + 6, P);
-  floorLabel(c, 'LIBRARY', 1 * 32 + 10, 16 * 32 + 10, P);
   /* desks: white tops, black chairs, dark monitors */
   DESKS.forEach(function (dk) {
     const x = dk.x * 32,

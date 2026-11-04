@@ -27,7 +27,7 @@ export function LocalStatus() {
   return (
     <div className="localpill" title={`Running at ${address}, only on this computer`}>
       <i />
-      Local <span className="muted">{address}</span>
+      Local
     </div>
   );
 }

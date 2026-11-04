@@ -11,7 +11,6 @@ export function Topbar() {
       <a className="brandmark" href="#office" aria-label="Mabari, go to the office">
         <BrandMark />
         <span className="bm-name">Mabari</span>
-        <span className="bm-tag">Your AI agents at work</span>
       </a>
       <div className="topright">
         <LocalStatus />

@@ -67,6 +67,9 @@ code,
   stroke-linejoin: round;
   flex: none;
 }
+body {
+  margin: 0;
+}
 #root {
   height: 100%;
 }

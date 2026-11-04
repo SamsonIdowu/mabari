@@ -9,7 +9,7 @@ const NAV: [string, string][] = [
   ['Activity log', 'Activity log'],
   ['Settings', 'Settings'],
   ['Component sheet', 'Component sheet'],
-  ['Empty and error states', 'Empty and error states'],
+  ['Status screens', 'Status screens'],
   ['First run', 'See your AI agents at work, in a little office.'],
 ];
 
@@ -63,10 +63,42 @@ test('turns the status red when the server cannot be reached', async ({ page }) 
   await expect(page.getByText('Mabari server not reachable')).toBeVisible();
 });
 
-test('collapses the rail to icons at 1024 px', async ({ page }) => {
+test('the rail starts collapsed below 1180 px', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/');
   const box = await page.getByRole('complementary', { name: 'Main' }).boundingBox();
   expect(box?.width).toBe(68);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Expand menu' })).toBeVisible();
+});
+
+test('the menu collapses, keeps tooltips and remembers the choice', async ({ page }) => {
+  await page.goto('/');
+  const rail = page.getByRole('complementary', { name: 'Main' });
+  const width = async () => (await rail.boundingBox())?.width;
+  expect(await width()).toBe(220);
+
+  const collapse = page.getByRole('button', { name: 'Collapse menu' });
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await collapse.click();
+  await expect.poll(width).toBe(68);
+  await expect(page.locator('.rail .lbl').first()).toBeHidden();
+  await expect(rail.getByRole('link', { name: 'Status screens' })).toHaveAttribute(
+    'title',
+    'Status screens',
+  );
+
+  await page.reload();
+  await expect(page.locator('.app')).toHaveClass(/collapsed/);
+
+  const expand = page.getByRole('button', { name: 'Expand menu' });
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expand.click();
+  await expect.poll(width).toBe(220);
+});
+
+test('the app fills the window with no margins', async ({ page }) => {
+  await page.goto('/');
+  const box = await page.locator('.app').boundingBox();
+  expect(box).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
 });

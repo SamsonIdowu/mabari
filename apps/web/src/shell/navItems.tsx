@@ -76,7 +76,7 @@ export const secondaryNav: NavItem[] = [
   },
   {
     route: 'states',
-    label: 'Empty and error states',
+    label: 'Status screens',
     icon: (
       <>
         <path d="M12 9v4M12 17h.01" />

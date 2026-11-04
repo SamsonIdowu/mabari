@@ -35,7 +35,7 @@ const pages: Record<Route, { title: string; description?: string }> = {
       'The building blocks of Mabari. Switch the theme in the side rail to see both versions.',
   },
   states: {
-    title: 'Empty and error states',
+    title: 'Status screens',
     description:
       'What people see when something is missing or wrong. Each one names the problem and the one action that fixes it.',
   },

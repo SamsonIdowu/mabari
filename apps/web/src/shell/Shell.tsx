@@ -2,12 +2,14 @@ import { useEffect, useRef } from 'react';
 import { useHashRoute } from '../useHashRoute.ts';
 import { PlaceholderPage } from './PlaceholderPage.tsx';
 import { Rail } from './Rail.tsx';
+import { useRailStore } from './railStore.ts';
 
 /** Stage 1 replaces this with whether any account or agent exists. */
 const FIRST_RUN = true;
 
 export function Shell() {
   const route = useHashRoute(FIRST_RUN);
+  const collapsed = useRailStore((state) => state.collapsed);
   const screenRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -15,7 +17,7 @@ export function Shell() {
   }, [route]);
 
   return (
-    <div className="app">
+    <div className={collapsed ? 'app collapsed' : 'app'}>
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef}>
         <PlaceholderPage route={route} />

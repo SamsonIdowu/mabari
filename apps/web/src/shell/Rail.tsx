@@ -3,6 +3,7 @@ import { BrandMark } from './BrandMark.tsx';
 import { Icon } from './Icon.tsx';
 import { LocalStatus } from './LocalStatus.tsx';
 import { mainNav, secondaryNav, type NavItem } from './navItems.tsx';
+import { RailToggle } from './RailToggle.tsx';
 import { ThemeButton } from './ThemeButton.tsx';
 
 function NavLink({ item, current }: { item: NavItem; current: Route }) {
@@ -11,6 +12,7 @@ function NavLink({ item, current }: { item: NavItem; current: Route }) {
     <a
       className={isCurrent ? 'nav on' : 'nav'}
       href={`#${item.route}`}
+      title={item.label}
       aria-current={isCurrent ? 'page' : undefined}
     >
       <Icon>{item.icon}</Icon>
@@ -34,6 +36,7 @@ export function Rail({ current }: { current: Route }) {
         <NavLink key={item.route} item={item} current={current} />
       ))}
       <div className="railfoot">
+        <RailToggle />
         <ThemeButton />
         <LocalStatus />
       </div>

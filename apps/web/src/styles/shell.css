@@ -70,24 +70,29 @@
   background: var(--ok);
   flex: none;
 }
-@media (max-width: 1180px) {
-  .app {
-    grid-template-columns: 68px minmax(0, 1fr);
-  }
-  .rail .lbl,
-  .brand span,
-  .local span,
-  .nav .badge {
-    display: none;
-  }
-  .nav {
-    justify-content: center;
-    padding: 12px;
-  }
-  .brand {
-    justify-content: center;
-    padding: 4px 0 18px;
-  }
+.app.collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+.app.collapsed .rail .lbl,
+.app.collapsed .brand span,
+.app.collapsed .local span,
+.app.collapsed .nav .badge {
+  display: none;
+}
+.app.collapsed .nav {
+  justify-content: center;
+  padding: 12px;
+}
+.app.collapsed .brand {
+  justify-content: center;
+  padding: 4px 0 18px;
+}
+.app.collapsed .railfoot .switch {
+  justify-content: center;
+  padding: 4px 0 !important;
+}
+.app {
+  transition: grid-template-columns 0.2s ease;
 }
 .screen {
   min-width: 0;

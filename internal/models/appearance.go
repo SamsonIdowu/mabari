@@ -15,3 +15,7 @@ var Hues = []string{
 	"#FF6B9A", "#5CE1E6", "#FFB547", "#FFB8A0", "#4FB3FF", "#B5E35B", "#FF8A5B", "#FF8FCF",
 	"#3FD07F", "#FFD84D", "#7FA8FF", "#FF6F61", "#2DE1C2", "#F8A5C2",
 }
+
+// ProjectColors are given to new projects in turn. They must stay in step with projectColors in
+// web/src/shared/tokens.ts.
+var ProjectColors = []string{"#FF6B9A", "#48DBFB", "#FECA57", "#1DD1A1", "#4FB3FF", "#FF9F43"}

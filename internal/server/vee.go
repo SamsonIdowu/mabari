@@ -52,6 +52,9 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	if result.Message != nil && result.Message.Routed != nil {
+		a.dispatched()
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 

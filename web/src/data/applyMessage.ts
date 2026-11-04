@@ -59,6 +59,8 @@ export function applyMessage(state: Snapshot, message: ServerMessage): Snapshot 
       return { ...next, accounts: upsert(state.accounts, message.account) };
     case 'settings':
       return message.settings ? { ...next, settings: message.settings } : next;
+    case 'defs':
+      return { ...next, defs: message.defs ?? [] };
     default:
       return next;
   }

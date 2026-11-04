@@ -37,6 +37,12 @@ const message = (fields: Partial<ServerMessage>): ServerMessage =>
   ({ seq: 2, type: 'toast', ...fields }) as ServerMessage;
 
 describe('applyMessage', () => {
+  it('replaces the agent definitions when the agent files change', () => {
+    const def = { id: 'account:mabari', name: 'mabari' } as Snapshot['defs'][number];
+    const next = applyMessage(snapshot(), message({ type: 'defs', defs: [def] }));
+    expect(next.defs).toEqual([def]);
+  });
+
   it('advances the sequence number on any message', () => {
     expect(applyMessage(snapshot(), message({ type: 'toast', text: 'Hi' })).seq).toBe(2);
   });

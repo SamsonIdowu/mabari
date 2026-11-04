@@ -1,0 +1,275 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package agentdefs
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/SamsonIdowu/mabari/internal/models"
+)
+
+func folders(t *testing.T) Folders {
+	t.Helper()
+	home := t.TempDir()
+	return Folders{
+		Account: filepath.Join(home, ".claude", "agents"),
+		State:   filepath.Join(home, ".mabari", "agents-state.json"),
+		Home:    home,
+	}
+}
+
+func reviewer() models.AgentDef {
+	return models.AgentDef{
+		Name: "code-reviewer", Description: "Use after any change: review it for bugs.", Scope: models.DefAccount,
+		Model: "sonnet", Tools: []string{"Read", "Grep", "Glob"}, Color: "#4FB3FF",
+		Instructions: "You are a careful senior reviewer.\n\nNever edit files.",
+	}
+}
+
+func scan(t *testing.T, library *Library) []models.AgentDef {
+	t.Helper()
+	defs, _, err := library.Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return defs
+}
+
+func TestRenderAndParseRoundTrip(t *testing.T) {
+	def := reviewer()
+	def.Skills = []string{"agent-improver"}
+	text := string(Render(def))
+	want := "---\nname: code-reviewer\ndescription: \"Use after any change: review it for bugs.\"\ntools: Read, Grep, Glob\n" +
+		"model: sonnet\nskills: agent-improver\ncolor: blue\n---\n\nYou are a careful senior reviewer.\n\nNever edit files.\n"
+	if text != want {
+		t.Fatalf("rendered\n%s\nwant\n%s", text, want)
+	}
+	back, err := Parse([]byte(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Name != def.Name || back.Description != def.Description || strings.Join(back.Tools, ",") != "Read,Grep,Glob" ||
+		back.Model != "sonnet" || back.Color != "#4FB3FF" || back.Instructions != def.Instructions ||
+		strings.Join(back.Skills, ",") != "agent-improver" {
+		t.Errorf("parsed %+v", back)
+	}
+}
+
+// Files written by hand or by Claude Code itself read too: YAML lists, no model, CRLF lines.
+func TestParseHandWrittenFiles(t *testing.T) {
+	def, err := Parse([]byte("---\r\nname: helper\r\ndescription: Helps\r\ntools:\r\n  - Read\r\n  - Bash\r\n---\r\nDo it.\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Model != "inherit" || strings.Join(def.Tools, ",") != "Read,Bash" || def.Instructions != "Do it." {
+		t.Errorf("got %+v", def)
+	}
+	for _, bad := range []string{"no front matter", "---\nname: x\n", "---\nname: [\n---\n"} {
+		if _, err := Parse([]byte(bad)); err == nil {
+			t.Errorf("%q parsed", bad)
+		}
+	}
+}
+
+func TestFirstScanWritesMabariAndNeverOverwritesIt(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	defs := scan(t, library)
+	if len(defs) != 1 || !defs[0].System || defs[0].Name != MabariName || defs[0].Path != "~/.claude/agents/mabari.md" {
+		t.Fatalf("defs = %+v", defs)
+	}
+	text, err := os.ReadFile(filepath.Join(f.Account, "mabari.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []string{"skills: agent-creator, agent-improver", "tools: Task, Read, Grep, Glob, Edit, Write",
+		"You manage every other agent and help each one get better at its job."} {
+		if !strings.Contains(string(text), part) {
+			t.Errorf("mabari.md lacks %q", part)
+		}
+	}
+	edited := strings.Replace(string(text), "model: haiku", "model: sonnet", 1)
+	if err := os.WriteFile(filepath.Join(f.Account, "mabari.md"), []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if defs := scan(t, New(f)); defs[0].Model != "sonnet" {
+		t.Errorf("Mabari's own edit was replaced: %q", defs[0].Model)
+	}
+}
+
+// Agents live in their files: a new Library, as after a restart or reinstall, finds them, with
+// the run counts and on or off state from the state file.
+func TestAgentsSurviveARestart(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	saved, err := library.Save(reviewer(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ID != "account:code-reviewer" || saved.Path != "~/.claude/agents/code-reviewer.md" {
+		t.Fatalf("saved = %+v", saved)
+	}
+	if err := library.CountRun(saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := library.SetEnabled(saved.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	restarted := scan(t, New(f))
+	if len(restarted) != 2 {
+		t.Fatalf("after a restart: %+v", restarted)
+	}
+	got := restarted[1]
+	if got.ID != saved.ID || got.Runs != 1 || got.Enabled || got.Description != reviewer().Description {
+		t.Errorf("after a restart: %+v", got)
+	}
+}
+
+func TestFilesAddedOutsideMabariAreFound(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	if library.Changed() {
+		t.Fatal("changed with nothing new")
+	}
+	if err := os.WriteFile(filepath.Join(f.Account, "notes.md"), []byte("---\nname: notes\ndescription: Notes\ntools: Read\n---\nTake notes.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !library.Changed() {
+		t.Fatal("a new file wasn't noticed")
+	}
+	defs := scan(t, library)
+	if len(defs) != 2 || defs[1].Name != "notes" {
+		t.Errorf("defs = %+v", defs)
+	}
+}
+
+func TestProjectAgentsLiveInTheProjectFolder(t *testing.T) {
+	f := folders(t)
+	folder := t.TempDir()
+	library := New(f)
+	library.SetProjects([]Project{{ID: "shop", Folder: folder}})
+	def := reviewer()
+	def.Scope, def.ProjectID = models.DefProject, "shop"
+	saved, err := library.Save(def, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, ".claude", "agents", "code-reviewer.md")); err != nil {
+		t.Fatal(err)
+	}
+	if saved.ID != "project:shop:code-reviewer" {
+		t.Errorf("id = %q", saved.ID)
+	}
+	defs, report, err := library.Scan()
+	if err != nil || report.Account != 1 || report.Projects["shop"] != 1 || len(defs) != 2 {
+		t.Errorf("defs = %+v, report = %+v, err = %v", defs, report, err)
+	}
+	def.ProjectID = "nowhere"
+	if _, err := library.Save(def, ""); err == nil || !strings.Contains(err.Error(), "no folder") {
+		t.Errorf("a project without a folder: %v", err)
+	}
+}
+
+func TestRenamingMovesTheFileAndKeepsItsRuns(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	saved, _ := library.Save(reviewer(), "")
+	_ = library.CountRun(saved.ID)
+	renamed := reviewer()
+	renamed.Name = "reviewer"
+	if _, err := library.Save(renamed, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.Account, "code-reviewer.md")); !os.IsNotExist(err) {
+		t.Error("the old file is still there")
+	}
+	defs := scan(t, library)
+	if len(defs) != 2 || defs[1].Name != "reviewer" || defs[1].Runs != 1 {
+		t.Errorf("defs = %+v", defs)
+	}
+}
+
+func TestSaveChecksTheDefinition(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	cases := map[string]func(*models.AgentDef){
+		"short name":     func(d *models.AgentDef) { d.Name = "Bad Name" },
+		"Say when":       func(d *models.AgentDef) { d.Description = " " },
+		"at least one":   func(d *models.AgentDef) { d.Tools = nil },
+		"instructions":   func(d *models.AgentDef) { d.Instructions = "" },
+		"doesn't know":   func(d *models.AgentDef) { d.Tools = []string{"Teleport"} },
+		"office manager": func(d *models.AgentDef) { d.Name = MabariName },
+	}
+	for want, change := range cases {
+		def := reviewer()
+		change(&def)
+		if _, err := library.Save(def, ""); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", want, err)
+		}
+	}
+	if _, err := library.Save(reviewer(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := library.Save(reviewer(), ""); err == nil || !strings.Contains(err.Error(), "already an agent") {
+		t.Errorf("duplicate: %v", err)
+	}
+}
+
+func TestMabariCanBeEditedButNotRemoved(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	defs := scan(t, library)
+	mabari := defs[0]
+	mabari.Name, mabari.Model, mabari.Skills = "renamed", "opus", nil
+	saved, err := library.Save(mabari, mabari.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Name != MabariName || saved.Model != "opus" || len(saved.Skills) != 2 {
+		t.Errorf("saved = %+v", saved)
+	}
+	if err := library.Delete(mabari.ID); err == nil {
+		t.Error("Mabari was deleted")
+	}
+	if err := library.SetEnabled(mabari.ID, false); err == nil {
+		t.Error("Mabari was turned off")
+	}
+}
+
+func TestDeleteRemovesTheFile(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	saved, _ := library.Save(reviewer(), "")
+	if err := library.Delete(saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if defs := scan(t, library); len(defs) != 1 {
+		t.Errorf("defs = %+v", defs)
+	}
+}
+
+// A file that can't be read is reported and skipped, never deleted or rewritten.
+func TestABrokenFileIsLeftAlone(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	broken := filepath.Join(f.Account, "broken.md")
+	if err := os.WriteFile(broken, []byte("no front matter"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, report, err := library.Scan()
+	if err != nil || len(report.Problems) != 1 || !strings.Contains(report.Problems[0], "broken.md") {
+		t.Errorf("report = %+v, err = %v", report, err)
+	}
+	if data, _ := os.ReadFile(broken); string(data) != "no front matter" {
+		t.Error("the broken file changed")
+	}
+}

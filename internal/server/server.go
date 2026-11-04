@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SamsonIdowu/mabari/internal/agentdefs"
 	"github.com/SamsonIdowu/mabari/internal/answer"
 	"github.com/SamsonIdowu/mabari/internal/connectors/codex"
 	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
@@ -48,6 +49,8 @@ type Options struct {
 	Access *Access
 	// AnyHost is true when Mabari listens beyond loopback, as in Docker or with --bind.
 	AnyHost bool
+	// Defs keeps reusable agents as files. With nil, the builder's routes aren't served.
+	Defs *agentdefs.Library
 	// Login runs Mabari at login. With nil, Settings shows LoginReason instead.
 	Login       LoginService
 	LoginReason string
@@ -67,6 +70,7 @@ type api struct {
 	loginReason string
 	access      *Access
 	anyHost     func() bool
+	defs        *agentdefs.Library
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -81,6 +85,7 @@ func New(options Options) http.Handler {
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
 		login: options.Login, loginReason: options.LoginReason, access: options.Access,
+		defs: options.Defs,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -100,6 +105,9 @@ func New(options Options) http.Handler {
 	}
 	if a.whisper != nil {
 		a.voiceRoutes(mux)
+	}
+	if a.defs != nil {
+		a.defsRoutes(mux)
 	}
 	if a.secrets != nil {
 		a.keyRoutes(mux)

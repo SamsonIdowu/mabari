@@ -145,6 +145,8 @@ type Agent struct {
 	Skin         string   `json:"skin"`
 	Hair         string   `json:"hair"`
 	CreatedAt    int64    `json:"createdAt"`
+	// DefID is the agent definition it was started from, or empty.
+	DefID string `json:"defId"`
 }
 
 // SessionState is what an agent is doing and how far along it is.
@@ -388,6 +390,45 @@ type Snapshot struct {
 	Messages []Message   `json:"messages"`
 	Log      []LogEntry  `json:"log"`
 	Settings Settings    `json:"settings"`
+	// Defs are the agent definitions found in the agent folders on this computer.
+	Defs []AgentDef `json:"defs"`
+}
+
+// DefScope says where an agent definition's file lives.
+type DefScope string
+
+// Definition scopes.
+const (
+	// DefAccount is ~/.claude/agents, for every project.
+	DefAccount DefScope = "account"
+	// DefProject is <project folder>/.claude/agents.
+	DefProject DefScope = "project"
+)
+
+// AgentDef is a reusable agent, read from a Markdown file with front matter. The file is the
+// source of truth; it belongs to this computer, never to a connected account. Runs and Enabled
+// come from Mabari's own state file beside it.
+type AgentDef struct {
+	// ID is stable across restarts: the scope, the project for a project agent, and the name.
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Scope       DefScope `json:"scope"`
+	// ProjectID is set for a project agent.
+	ProjectID    string   `json:"projectId"`
+	Model        string   `json:"model"`
+	Tools        []string `json:"tools"`
+	Skills       []string `json:"skills"`
+	Instructions string   `json:"instructions"`
+	Color        string   `json:"color"`
+	Enabled      bool     `json:"enabled"`
+	Runs         int      `json:"runs"`
+	// Updated is when the file last changed, in milliseconds.
+	Updated int64 `json:"updated"`
+	// Path is the file, with the home folder written as ~.
+	Path string `json:"path"`
+	// System is true for Mabari, which can't be deleted or turned off.
+	System bool `json:"system"`
 }
 
 // Message types sent over the WebSocket.
@@ -403,6 +444,7 @@ const (
 	MsgAccount  = "account"
 	MsgSettings = "settings"
 	MsgToast    = "toast"
+	MsgDefs     = "defs"  // The agent definitions changed; Defs is the whole list.
 	MsgReset    = "reset" // The office was replaced by a wipe or the demo: reload and clear the view.
 )
 
@@ -419,6 +461,7 @@ type ServerMessage struct {
 	Project  *Project   `json:"project,omitempty"`
 	Account  *Account   `json:"account,omitempty"`
 	Settings *Settings  `json:"settings,omitempty"`
+	Defs     []AgentDef `json:"defs,omitempty"`
 	Text     string     `json:"text,omitempty"`
 }
 

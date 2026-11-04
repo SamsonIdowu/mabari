@@ -179,6 +179,9 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	case !delivered:
 		writeError(w, http.StatusBadRequest, "Pick an agent first. Click one on the floor or choose it in Send to.")
 	default:
+		if result.Routed != nil {
+			a.dispatched()
+		}
 		a.modelAnswer(r.Context(), &result)
 		writeJSON(w, http.StatusOK, result)
 	}

@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SamsonIdowu/mabari/internal/agentdefs"
 	"github.com/SamsonIdowu/mabari/internal/config"
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/connectors/codex"
@@ -156,6 +157,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	defer func() { _, _ = network.set(false) }()
+	defs := agentLibrary(ctx, cfg, office)
 	built := server.New(server.Options{
 		Version:   version,
 		Engine:    office.engine,
@@ -166,7 +168,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		Hub:       office.hub,
 		Codex:     office.codex,
 		Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
-		Login:     login, LoginReason: loginReason,
+		Login:     login, LoginReason: loginReason, Defs: defs,
 		Access: access, AnyHost: !config.IsLoopback(cfg.Bind),
 	})
 	handler.Store(&built)
@@ -281,3 +283,31 @@ func listen(ctx context.Context, cfg config.Config) (net.Listener, error) {
 	}
 	return listener, err
 }
+
+// agentLibrary reads the agent folders now and keeps watching them. Agent files are the source of
+// truth, so a problem reading them is reported and Mabari carries on without the builder.
+func agentLibrary(ctx context.Context, cfg config.Config, o *office) *agentdefs.Library {
+	dir, err := claudecode.ConfigDir(os.Getenv)
+	if err != nil {
+		slog.Warn("the agent builder is off: no home folder", "error", err)
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	library := agentdefs.New(agentdefs.Folders{
+		Account: filepath.Join(dir, "agents"),
+		State:   filepath.Join(cfg.DataDir, "agents-state.json"),
+		Home:    home,
+	})
+	report, err := library.Refresh(o.engine)
+	if err != nil {
+		slog.Warn("could not read the agent folders", "error", err)
+	}
+	for _, problem := range report.Problems {
+		slog.Warn("skipped an agent file", "problem", problem)
+	}
+	go library.Keep(ctx, o.engine, agentWatchEvery)
+	return library
+}
+
+// agentWatchEvery is how often the agent folders are checked for changes.
+const agentWatchEvery = 1500 * time.Millisecond

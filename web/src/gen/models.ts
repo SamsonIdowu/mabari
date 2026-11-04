@@ -264,6 +264,10 @@ export interface Agent {
   skin: string;
   hair: string;
   createdAt: number /* int64 */;
+  /**
+   * DefID is the agent definition it was started from, or empty.
+   */
+  defId: string;
 }
 /**
  * SessionState is what an agent is doing and how far along it is.
@@ -607,6 +611,59 @@ export interface Snapshot {
   messages: Message[];
   log: LogEntry[];
   settings: Settings;
+  /**
+   * Defs are the agent definitions found in the agent folders on this computer.
+   */
+  defs: AgentDef[];
+}
+/**
+ * DefScope says where an agent definition's file lives.
+ */
+export type DefScope = string;
+/**
+ * DefAccount is ~/.claude/agents, for every project.
+ */
+export const DefAccount: DefScope = "account";
+/**
+ * DefProject is <project folder>/.claude/agents.
+ */
+export const DefProject: DefScope = "project";
+/**
+ * AgentDef is a reusable agent, read from a Markdown file with front matter. The file is the
+ * source of truth; it belongs to this computer, never to a connected account. Runs and Enabled
+ * come from Mabari's own state file beside it.
+ */
+export interface AgentDef {
+  /**
+   * ID is stable across restarts: the scope, the project for a project agent, and the name.
+   */
+  id: string;
+  name: string;
+  description: string;
+  scope: DefScope;
+  /**
+   * ProjectID is set for a project agent.
+   */
+  projectId: string;
+  model: string;
+  tools: string[];
+  skills: string[];
+  instructions: string;
+  color: string;
+  enabled: boolean;
+  runs: number /* int */;
+  /**
+   * Updated is when the file last changed, in milliseconds.
+   */
+  updated: number /* int64 */;
+  /**
+   * Path is the file, with the home folder written as ~.
+   */
+  path: string;
+  /**
+   * System is true for Mabari, which can't be deleted or turned off.
+   */
+  system: boolean;
 }
 /**
  * Message types sent over the WebSocket.
@@ -655,6 +712,10 @@ export const MsgToast = "toast";
 /**
  * Message types sent over the WebSocket.
  */
+export const MsgDefs = "defs"; // The agent definitions changed; Defs is the whole list.
+/**
+ * Message types sent over the WebSocket.
+ */
 export const MsgReset = "reset"; // The office was replaced by a wipe or the demo: reload and clear the view.
 /**
  * ServerMessage is one WebSocket message. Type says which of the other fields is set.
@@ -671,6 +732,7 @@ export interface ServerMessage {
   project: Project | null;
   account: Account | null;
   settings: Settings | null;
+  defs: AgentDef[] | null;
   text: string | null;
 }
 /**

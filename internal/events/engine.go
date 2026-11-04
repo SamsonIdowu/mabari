@@ -66,6 +66,8 @@ type Engine struct {
 	eventNext  map[string]int
 	connectors map[string]Connector
 	writeErr   error
+	// defs are the agent definitions from the agent folders. A wipe leaves them: they are files.
+	defs []models.AgentDef
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -970,8 +972,18 @@ func (e *Engine) Snapshot() models.Snapshot {
 		Messages: append([]models.Message{}, e.messages...),
 		Log:      append([]models.LogEntry{}, e.log...),
 		Settings: e.settings.Clone(),
+		Defs:     append([]models.AgentDef{}, e.defs...),
 	}
 }
+
+// SetDefs replaces the agent definitions and tells every page. Call inside Do.
+func (e *Engine) SetDefs(defs []models.AgentDef) {
+	e.defs = append([]models.AgentDef{}, defs...)
+	e.broadcast(models.ServerMessage{Type: models.MsgDefs, Defs: e.Defs()})
+}
+
+// Defs are the agent definitions. Call inside Do.
+func (e *Engine) Defs() []models.AgentDef { return append([]models.AgentDef{}, e.defs...) }
 
 // Store is the database, for reads that need more than the live office holds.
 func (e *Engine) Store() *store.Store { return e.store }

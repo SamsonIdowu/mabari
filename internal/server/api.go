@@ -473,6 +473,44 @@ func (a *api) realRunner(kind models.AccountKind) string {
 	}
 }
 
+// startAgent starts an agent from a checked body, or says why it can't. Call inside Do.
+func (a *api) startAgent(body newAgentBody) (*models.LiveAgent, string) {
+	switch {
+	case !a.connected(body.Account):
+		return nil, "Connect an account first."
+	case a.engine.AgentByName(body.Name) != nil:
+		return nil, "There is already an agent called " + body.Name + ". Pick another name."
+	}
+	spec := simulator.NewAgent{
+		Name: body.Name, Account: body.Account, Model: body.Model, Task: body.Task,
+		Project: body.ProjectID, Folder: body.Folder, DailyCostCap: body.DailyCostCap,
+		AllowedTools: body.AllowedTools, Desk: body.Desk,
+	}
+	if body.LeadID != "" {
+		if spec.Lead = a.engine.Agent(body.LeadID); spec.Lead == nil {
+			return nil, "That lead has left the office."
+		}
+	}
+	// Outside the demo only real connections make agents, never simulated ones.
+	if !a.simulator.DemoActive() {
+		if problem := a.realRunner(body.Account); problem != "" {
+			return nil, problem
+		}
+	}
+	created, failure := a.simulator.CreateAgent(spec)
+	switch {
+	case failure != nil:
+		return nil, "That desk has just been taken. Pick another."
+	case created == nil:
+		return nil, "There's no room for another agent there."
+	}
+	// A signed-in Codex runs the agent as a real thread. The demo office stays simulated.
+	if body.Account == models.AccountCodex && a.codex != nil && !a.simulator.DemoActive() {
+		a.codex.StartAgent(created)
+	}
+	return created, ""
+}
+
 func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 	var body newAgentBody
 	if !readJSON(w, r, &body) {
@@ -484,46 +522,7 @@ func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	var agent *models.LiveAgent
 	var problem string
-	err := a.engine.Do(func() {
-		switch {
-		case !a.connected(body.Account):
-			problem = "Connect an account first."
-			return
-		case a.engine.AgentByName(body.Name) != nil:
-			problem = "There is already an agent called " + body.Name + ". Pick another name."
-			return
-		}
-		spec := simulator.NewAgent{
-			Name: body.Name, Account: body.Account, Model: body.Model, Task: body.Task,
-			Project: body.ProjectID, Folder: body.Folder, DailyCostCap: body.DailyCostCap,
-			AllowedTools: body.AllowedTools, Desk: body.Desk,
-		}
-		if body.LeadID != "" {
-			if spec.Lead = a.engine.Agent(body.LeadID); spec.Lead == nil {
-				problem = "That lead has left the office."
-				return
-			}
-		}
-		// Outside the demo only real connections make agents, never simulated ones.
-		if !a.simulator.DemoActive() {
-			if problem = a.realRunner(body.Account); problem != "" {
-				return
-			}
-		}
-		created, failure := a.simulator.CreateAgent(spec)
-		switch {
-		case failure != nil:
-			problem = "That desk has just been taken. Pick another."
-		case created == nil:
-			problem = "There's no room for another agent there."
-		default:
-			agent = created
-			// A signed-in Codex runs the agent as a real thread. The demo office stays simulated.
-			if body.Account == models.AccountCodex && a.codex != nil && !a.simulator.DemoActive() {
-				a.codex.StartAgent(created)
-			}
-		}
-	})
+	err := a.engine.Do(func() { agent, problem = a.startAgent(body) })
 	switch {
 	case err != nil:
 		internalError(w, err)

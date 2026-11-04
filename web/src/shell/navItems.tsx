@@ -11,7 +11,7 @@ export interface NavItem {
   /** The tooltip, when it should say more than the label. */
   title?: string;
   /** Shown when work needs attention. Hidden until the agents exist. */
-  badge?: 'needs' | 'live';
+  badge?: 'needs' | 'live' | 'unread';
   icon: ReactNode;
 }
 
@@ -19,7 +19,8 @@ const workNav: NavItem[] = [
   {
     route: 'home',
     label: 'Home',
-    title: 'Home: chat with Vee',
+    title: 'Home: chat with Mabari',
+    badge: 'unread',
     icon: (
       <>
         <path d="M3 10.5 12 3l9 7.5" />

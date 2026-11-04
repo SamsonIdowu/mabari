@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Fragment, useEffect, useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
+import { useVee } from '../office/veeStore.ts';
 import type { Route } from '../routes.ts';
 import { Icon } from './Icon.tsx';
 import { navGroups, type NavItem } from './navItems.tsx';
@@ -14,6 +15,12 @@ function NeedsBadge() {
         .length ?? 0,
   );
   return count ? <span className="badge">{count}</span> : null;
+}
+
+/** Replies Mabari relayed while you were on another page. */
+function UnreadBadge() {
+  const unread = useVee((state) => state.unread);
+  return unread ? <span className="badge">{unread > 9 ? '9+' : unread}</span> : null;
 }
 
 function LiveBadge() {
@@ -47,6 +54,7 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
       <span className="lbl">{item.label}</span>
       {item.badge === 'needs' ? <NeedsBadge /> : null}
       {item.badge === 'live' ? <LiveBadge /> : null}
+      {item.badge === 'unread' ? <UnreadBadge /> : null}
     </a>
   );
 }

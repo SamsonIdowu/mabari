@@ -12,8 +12,8 @@ async function home(page: Page, request: Page['request']) {
 }
 
 async function ask(page: Page, text: string) {
-  await page.getByLabel('Message Vee').fill(text);
-  await page.getByLabel('Message Vee').press('Enter');
+  await page.getByLabel('Message Mabari').fill(text);
+  await page.getByLabel('Message Mabari').press('Enter');
   await expect(page.locator('#youSaid')).toHaveText(text);
   await expect(page.locator('#veeSay .typing')).toBeHidden();
 }
@@ -37,7 +37,9 @@ test('home greets and sums up the live office', async ({ page, request }) => {
   await expect(summary).toContainText(/\d+ working/);
   await expect(summary).toContainText('need you');
   await expect(summary).toContainText(/done around \d\d:\d\d/);
-  await expect(page.locator('#veeSay')).toContainText("Hi, I'm Vee.");
+  await expect(page.locator('#veeSay')).toContainText(
+    "Hi, I'm Mabari, your dispatcher. Tell me what you need and I'll hand it to the right agent",
+  );
 });
 
 test('an empty office says so', async ({ page }) => {
@@ -49,7 +51,7 @@ test('an empty office says so', async ({ page }) => {
   await expect(page.locator('.tag .nt').first()).toBeVisible();
 });
 
-test('Vee is drawn and a gesture moves it', async ({ page, request }) => {
+test('Mabari is drawn and a gesture moves it', async ({ page, request }) => {
   await home(page, request);
   const vee = page.locator('#veeHome');
   await expect(vee).toBeVisible();
@@ -69,7 +71,7 @@ test('Vee is drawn and a gesture moves it', async ({ page, request }) => {
   expect(before.equals(await vee.screenshot())).toBe(false);
 });
 
-test('the bubble sits at Vee and stays in view', async ({ page, request }) => {
+test('the bubble sits at Mabari and stays in view', async ({ page, request }) => {
   await home(page, request);
   const stage = (await page.locator('.h2stage').boundingBox())!;
   await expect
@@ -116,14 +118,16 @@ test('opens an agent from the status answer', async ({ page, request }) => {
 test('passes an instruction on through the normal route', async ({ page, request }) => {
   await home(page, request);
   await ask(page, 'Tell Scout to add the pricing pages');
-  await expect(page.locator('#veeSay')).toContainText('Sent to Scout. It has it now.');
-  await expect(page.getByText('Sent to Scout', { exact: true })).toBeVisible();
+  // Mabari says it was sent, then reads out Scout's reply without being asked.
+  await expect(page.locator('#veeSay')).toContainText(
+    /Scout \((Claude|ChatGPT|OpenAI|Custom AI)\) replied: /,
+  );
   await page.getByRole('link', { name: 'Activity log' }).click();
   // Delivered at once, and the demo agent answers straight away.
   await expect(page.locator('tr', { hasText: 'add the pricing pages' })).toContainText('Replied');
 });
 
-test('asking through Vee leaves the answer on the agent', async ({ page, request }) => {
+test('asking through Mabari leaves the answer on the agent', async ({ page, request }) => {
   await home(page, request);
   await ask(page, 'ask Ledger how it is going');
   await expect(page.locator('#veeSay')).toContainText("so it won't be interrupted");
@@ -132,14 +136,91 @@ test('asking through Vee leaves the answer on the agent', async ({ page, request
   await expect(panel.locator('.answer')).toContainText('Ledger was not interrupted.');
 });
 
-test('offers the dispatcher for anything else', async ({ page, request }) => {
+test('dispatches anything else at once and relays the reply when it lands', async ({
+  page,
+  request,
+}) => {
   await home(page, request);
-  await ask(page, 'the invoice rounding is wrong');
-  await page.getByRole('button', { name: 'Send to the team' }).click();
-  await expect(page.locator('#veeSay')).toContainText('Done. I sent it to Ledger.');
+  const box = page.getByLabel('Message Mabari');
+  await box.fill('the invoice rounding is wrong');
+  const started = Date.now();
+  await box.press('Enter');
+  const say = page.locator('#veeSay');
+  await expect(say).toContainText('On it, sent to Ledger (Claude).');
+  await expect(say).toContainText("I'll read you the reply the moment it lands.");
+  // Generous for a browser round trip; the server's own budget is checked in Go.
+  expect(Date.now() - started).toBeLessThan(1500);
+  await expect(page.getByRole('button', { name: 'Send to the team' })).toHaveCount(0);
+  // Ledger is mid step, so it takes the instruction at its next checkpoint and Mabari relays it.
+  await expect(say).toContainText('Ledger (Claude) replied: Got it.', { timeout: 10000 });
+  // Mabari already said it, so the toast doesn't repeat it.
+  await expect(page.getByText('Ledger replied. Open Ledger to read it.')).toHaveCount(0);
 });
 
-test('asking Vee to approve changes nothing', async ({ page, request }) => {
+test('commands that look like questions or gestures are dispatched', async ({ page, request }) => {
+  await home(page, request);
+  for (const text of ['update the README', 'finish the login page', 'Point the API to staging']) {
+    await ask(page, text);
+    await expect(page.locator('#veeSay')).toContainText('On it, sent to ');
+  }
+});
+
+test('a reply that lands while you are elsewhere shows on the Home badge', async ({
+  page,
+  request,
+}) => {
+  await home(page, request);
+  await ask(page, 'the invoice rounding is wrong');
+  await page.getByRole('link', { name: 'Agents' }).click();
+  // The prompt tray on the floor shows who it went to.
+  const tray = page.locator('#promptTray');
+  await expect(tray).toContainText('Mabari → Ledger');
+  await expect(tray).toContainText('Claude ·');
+  const badge = page.locator('.rail a.nav[href="#home"] .badge');
+  await expect(badge).toHaveText('1', { timeout: 10000 });
+  await expect(tray).toContainText('Replied');
+  await page.locator('.rail a.nav[href="#home"]').click();
+  await expect(badge).toHaveCount(0);
+  await expect(page.locator('#veeSay')).toContainText('Ledger (Claude) replied: Got it.');
+});
+
+test('the message bar is one slim line that grows and shrinks back', async ({ page, request }) => {
+  await home(page, request);
+  const bar = (await page.locator('#hcForm').boundingBox())!;
+  expect(bar.height).toBeGreaterThanOrEqual(44);
+  expect(bar.height).toBeLessThanOrEqual(56);
+  const order = await page
+    .locator('#hcForm')
+    .evaluate((form) =>
+      [...form.querySelectorAll('button.h2ic, textarea')].map(
+        (node) => node.getAttribute('aria-label') ?? node.id,
+      ),
+    );
+  expect(order).toEqual(['Gestures', 'hcText', 'Hold to talk', 'Spoken replies']);
+  const box = page.getByLabel('Message Mabari');
+  await expect(box).toHaveAttribute('rows', '1');
+  await box.fill('line\n'.repeat(12));
+  const tall = (await box.boundingBox())!.height;
+  expect(tall).toBeGreaterThan(60);
+  expect(tall).toBeLessThanOrEqual(121);
+  await box.fill('what is happening');
+  await box.press('Enter');
+  await expect(box).toHaveValue('');
+  expect((await box.boundingBox())!.height).toBeLessThan(40);
+});
+
+test('the top bar shows the wordmark only and links home', async ({ page, request }) => {
+  await home(page, request);
+  const brand = page.locator('.brandmark');
+  await expect(brand).toHaveText('Mabari');
+  await expect(brand.locator('svg')).toHaveCount(0);
+  await expect(brand).toHaveAttribute('href', '#home');
+  const name = brand.locator('.bm-name');
+  await expect(name).toHaveCSS('font-size', '22px');
+  await expect(name).toHaveCSS('font-weight', '800');
+});
+
+test('asking Mabari to approve changes nothing', async ({ page, request }) => {
   await home(page, request);
   await ask(page, 'approve it');
   await expect(page.locator('#veeSay')).toContainText('I never approve risky actions for you.');
@@ -151,7 +232,7 @@ test('asking Vee to approve changes nothing', async ({ page, request }) => {
 
 test('shift enter starts a new line and an empty box sends nothing', async ({ page, request }) => {
   await home(page, request);
-  const box = page.getByLabel('Message Vee');
+  const box = page.getByLabel('Message Mabari');
   await box.press('Enter');
   await expect(page.locator('#youSaid')).toBeHidden();
   await box.fill('one');
@@ -189,9 +270,9 @@ test('spoken replies can be switched on and read the reply aloud', async ({ page
   await expect(page.locator('#voiceLbl')).toHaveText('Voice off');
 });
 
-test('Vee opens the new agent form when asked', async ({ page, request }) => {
+test('Mabari opens the new agent form when asked', async ({ page, request }) => {
   await home(page, request);
-  await page.getByLabel('Message Vee').fill('Create a new agent');
-  await page.getByLabel('Message Vee').press('Enter');
+  await page.getByLabel('Message Mabari').fill('Create a new agent');
+  await page.getByLabel('Message Mabari').press('Enter');
   await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeVisible();
 });

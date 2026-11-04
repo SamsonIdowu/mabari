@@ -5,6 +5,12 @@ import { applyMessage } from './applyMessage.ts';
 
 const TOAST_MS = 3800;
 let nextToast = 1;
+let quiet: ((text: string) => boolean) | null = null;
+
+/** Lets a screen that already says something leave out the toast that would repeat it. */
+export function setToastFilter(filter: ((text: string) => boolean) | null) {
+  quiet = filter;
+}
 
 export interface Toast {
   id: number;
@@ -28,7 +34,8 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
     const { office } = get();
     // A message already applied, replayed after a reload, does not toast again.
     if (office && message.seq <= office.seq) return;
-    if (message.type === 'toast' && message.text) get().toast(message.text);
+    if (message.type === 'toast' && message.text && !quiet?.(message.text))
+      get().toast(message.text);
     if (office) set({ office: applyMessage(office, message) });
   },
   toast: (text) => {

@@ -16,6 +16,7 @@ import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { CommandBar } from './CommandBar.tsx';
+import { PromptTray } from './PromptTray.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
@@ -770,6 +771,7 @@ function Stage({ office }: { office: Snapshot }) {
         </div>
         <CanvasTools />
         <div className="readout" ref={readout} aria-live="off" />
+        <PromptTray />
         <span className="stagehint" ref={hint}>
           Click an agent to see its live steps. Drag to move around when zoomed in.
         </span>

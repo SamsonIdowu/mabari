@@ -178,9 +178,11 @@ test('no help text mentions a countdown', async ({ page }) => {
   await expect(page.locator('main')).toContainText('Nothing is sent until you press Send');
 });
 
-// Home: hold Space to talk to Vee. A question is answered at once; an instruction waits in the
+// Home: hold Space to talk to Mabari. A question is answered at once; an instruction waits in the
 // box for Enter, so nothing reaches an agent by voice alone.
-test('on Home a spoken question goes to Vee, and an instruction waits for Enter', async ({ page }) => {
+test('on Home a spoken question goes to Mabari, and an instruction waits for Enter', async ({
+  page,
+}) => {
   const asked: string[] = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/api/vee')) asked.push(request.postData() ?? '');

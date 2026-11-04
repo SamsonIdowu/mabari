@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { api, type VeeLine, type VeeReply } from '../data/api.ts';
 import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
@@ -148,8 +155,22 @@ function Lines({ reply }: { reply: VeeReply }) {
   );
 }
 
+function Replies({ reply }: { reply: VeeReply }) {
+  return (
+    <>
+      <p>Latest replies from your agents:</p>
+      <ul className="hclist">
+        {(reply.lines ?? []).map((line, index) => (
+          <li key={`${line.agentId}-${index}`}>
+            <b>{line.name}</b> <span className="muted">({line.ai})</span>: {line.reply}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function Said({ reply }: { reply: VeeReply }) {
-  const sendToTeam = useVee((state) => state.sendToTeam);
   switch (reply.kind) {
     case 'needs':
     case 'when':
@@ -178,27 +199,29 @@ function Said({ reply }: { reply: VeeReply }) {
           </p>
         </>
       );
-    case 'dispatch':
+    case 'replies':
+      return <Replies reply={reply} />;
+    case 'relayed': {
+      const { agentId } = reply;
       return (
         <>
           <p>{reply.text}</p>
-          <p>
-            <button
-              type="button"
-              className="btn sm primary"
-              onClick={() => void sendToTeam(reply.message)}
-            >
-              Send to the team
-            </button>
-          </p>
+          {agentId ? (
+            <p>
+              <button type="button" className="btn sm" onClick={() => openAgentById(agentId)}>
+                Read it all
+              </button>
+            </p>
+          ) : null}
         </>
       );
+    }
     default:
       return <p>{reply.text}</p>;
   }
 }
 
-/** Paints Vee every frame and keeps the speech bubble at Vee's mouth. */
+/** Paints Mabari every frame and keeps the speech bubble at its mouth. */
 function useVeeStage(
   canvas: React.RefObject<HTMLCanvasElement | null>,
   bubble: React.RefObject<HTMLDivElement | null>,
@@ -303,8 +326,8 @@ function GestureMenu({ close }: { close: () => void }) {
 }
 
 /**
- * Hold the mic, or Space when not typing, to talk to Vee. Speech stays on this computer. On
- * release a question goes straight to Vee, and an instruction waits in the box for Enter or
+ * Hold the mic, or Space when not typing, to talk to Mabari. Speech stays on this computer. On
+ * release a question goes straight to Mabari, and an instruction waits in the box for Enter or
  * Send (decisions 15 and 16), so nothing is sent to an agent by voice alone.
  */
 function useHomeMic(setText: (text: string) => void, send: (text: string) => void) {
@@ -409,11 +432,22 @@ function useHomeMic(setText: (text: string) => void, send: (text: string) => voi
   return { listening, start };
 }
 
+/** The message box starts at one line and grows with what is typed, up to this many pixels. */
+const BOX_MAX_PX = 120;
+
 function ChatBox({ spoken }: { spoken: boolean }) {
   const hear = useVee((state) => state.hear);
   const [text, setText] = useState('');
   const [gestures, setGestures] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
   const mic = useHomeMic(setText, (heard) => void hear(heard));
+  // Fit the box to its text, and back to one line once it is sent.
+  useLayoutEffect(() => {
+    const field = box.current;
+    if (!field) return;
+    field.style.height = 'auto';
+    field.style.height = `${Math.min(field.scrollHeight, BOX_MAX_PX)}px`;
+  }, [text]);
   const send = () => {
     const message = text.trim();
     if (!message) return;
@@ -436,65 +470,63 @@ function ChatBox({ spoken }: { spoken: boolean }) {
   };
   return (
     <form className="h2box" id="hcForm" autoComplete="off" onSubmit={submit}>
+      <div className="ddwrap">
+        <button
+          type="button"
+          className="h2ic"
+          aria-label="Gestures"
+          title="Gestures"
+          aria-expanded={gestures}
+          onClick={() => setGestures(!gestures)}
+        >
+          <Icon>
+            <path d="M12 5v14M5 12h14" />
+          </Icon>
+        </button>
+        {gestures ? <GestureMenu close={() => setGestures(false)} /> : null}
+      </div>
       <label className="sr" htmlFor="hcText">
-        Message Vee
+        Message Mabari
       </label>
       <textarea
         id="hcText"
-        rows={2}
-        placeholder="Ask Vee anything"
+        ref={box}
+        rows={1}
+        placeholder="Ask Mabari anything"
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKey}
       />
-      <div className="h2row">
-        <div className="ddwrap">
-          <button
-            type="button"
-            className="h2ic"
-            aria-label="Gestures"
-            title="Gestures"
-            aria-expanded={gestures}
-            onClick={() => setGestures(!gestures)}
-          >
-            <Icon>
-              <path d="M12 5v14M5 12h14" />
-            </Icon>
-          </button>
-          {gestures ? <GestureMenu close={() => setGestures(false)} /> : null}
-        </div>
-        <span style={{ flex: 1 }} />
-        <button
-          type="button"
-          id="hcMic"
-          className={mic.listening ? 'h2ic on' : 'h2ic'}
-          aria-label="Hold to talk"
-          aria-pressed={mic.listening}
-          title="Hold to talk"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            mic.start();
-          }}
-        >
-          <Icon>
-            <rect x="9" y="3" width="6" height="11" rx="3" />
-            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-          </Icon>
-        </button>
-        <button
-          type="button"
-          className="h2ic"
-          id="hcVoiceOut"
-          aria-label="Spoken replies"
-          aria-pressed={spoken}
-          title={spoken ? 'Vee speaks replies: on' : 'Vee speaks replies: off'}
-          onClick={toggleVoice}
-        >
-          <Icon>
-            <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
-          </Icon>
-        </button>
-      </div>
+      <button
+        type="button"
+        id="hcMic"
+        className={mic.listening ? 'h2ic on' : 'h2ic'}
+        aria-label="Hold to talk"
+        aria-pressed={mic.listening}
+        title="Hold to talk"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          mic.start();
+        }}
+      >
+        <Icon>
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        className="h2ic"
+        id="hcVoiceOut"
+        aria-label="Spoken replies"
+        aria-pressed={spoken}
+        title={spoken ? 'Mabari speaks replies: on' : 'Mabari speaks replies: off'}
+        onClick={toggleVoice}
+      >
+        <Icon>
+          <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
+        </Icon>
+      </button>
     </form>
   );
 }
@@ -510,6 +542,11 @@ function HomeScreen({ office }: { office: Snapshot }) {
   const said = useVee((state) => state.said);
   const heard = useVee((state) => state.heard);
   const play = useVee((state) => state.play);
+  const setOnHome = useVee((state) => state.setOnHome);
+  useEffect(() => {
+    setOnHome(true);
+    return () => setOnHome(false);
+  }, [setOnHome]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const bubble = useRef<HTMLDivElement>(null);
   useVeeStage(canvas, bubble);
@@ -526,7 +563,7 @@ function HomeScreen({ office }: { office: Snapshot }) {
           <canvas
             id="veeHome"
             ref={canvas}
-            aria-label="Vee, the Mabari mascot"
+            aria-label="Mabari, your office assistant"
             onClick={() => play(anyOf(POKE_GESTURES))}
           />
           <div className="veesay2" id="veeSay" aria-live="polite" ref={bubble}>

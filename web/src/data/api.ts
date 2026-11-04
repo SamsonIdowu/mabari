@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import type { Relay } from '../office/relay.ts';
 import type {
   AccountKind,
   Agent,
@@ -114,18 +115,27 @@ export interface VeeLine {
   estimate: Estimate | null;
   summary: string;
   approvalId: string;
+  /** In a list of replies: which AI answered, and the start of what it said. */
+  ai: string;
+  reply: string;
 }
 
+/** Mirrors internal/vee.Reply. "relayed" is the page's own: an agent's reply Mabari passes on. */
 export interface VeeReply {
   text: string;
   gesture: string;
-  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'dispatch' | 'newAgent';
+  kind: '' | 'needs' | 'when' | 'status' | 'office' | 'empty' | 'newAgent' | 'replies' | 'relayed';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
   total: number;
   need: number;
-  message: string;
+  /** Set when Mabari passed an instruction on and will relay the reply. */
+  relay: Relay | null;
+  /** What is read aloud, when it differs from the text. */
+  spoken?: string;
+  /** A relayed reply too long for the bubble names its agent, to read the rest there. */
+  agentId?: string | undefined;
 }
 
 export interface VeeResult {
@@ -273,7 +283,7 @@ export const api = {
     send<{ applied: boolean }>('POST', `/api/approvals/${id}/decision`, { decision }),
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
-  vee: (text: string, dispatch: boolean) => send<VeeResult>('POST', '/api/vee', { text, dispatch }),
+  vee: (text: string) => send<VeeResult>('POST', '/api/vee', { text }),
   agentAction: (id: string, action: 'interrupt' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
   createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),

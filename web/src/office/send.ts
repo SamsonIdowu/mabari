@@ -2,12 +2,15 @@
 import { api, type MessageMode, type MessageResult } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Snapshot } from '../gen/models.ts';
+import { usePromptTray } from './trayStore.ts';
 import { useOfficeUi } from './uiStore.ts';
 
 /** Puts an answer where the user will look for it. */
 export function showResult(result: MessageResult, question: string) {
   const ui = useOfficeUi.getState();
   if (result.answer) {
+    const model = useOfficeStore.getState().office?.settings.queryModel ?? '';
+    usePromptTray.getState().asked(result.answer, model);
     ui.set({
       selected: result.answer.agentId,
       panelTab: 'live',

@@ -356,10 +356,11 @@ section[data-screen='home'] {
 }
 .h2box {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 14px 10px 18px;
-  border-radius: 18px;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 16px;
   background: var(--surface);
   border: 1px solid var(--line2);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -379,15 +380,19 @@ section[data-screen='home'] {
   font: inherit;
   font-size: 16px;
   line-height: 1.45;
-  min-height: 46px;
+  min-height: 24px;
+  max-height: 120px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  align-self: center;
 }
 .h2box textarea::placeholder {
   color: var(--muted);
 }
-.h2row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.h2box > .h2ic,
+.h2box > .ddwrap {
+  flex: none;
 }
 .h2ic {
   width: 36px;

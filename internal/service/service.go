@@ -211,7 +211,7 @@ func (s Service) Disable(ctx context.Context, stopNow bool) error {
 	return nil
 }
 
-// Start, Stop and Restart act on an installed service.
+// Start starts an installed service. Stop and Restart act on it too.
 func (s Service) Start(ctx context.Context) error {
 	if err := s.need(); err != nil {
 		return err
@@ -295,7 +295,7 @@ func (s Service) need() error {
 		return err
 	}
 	if !ours(file.Path) {
-		return errors.New("Mabari isn't installed as a service. Run mabari service install first")
+		return errors.New("not installed as a service: run mabari service install first")
 	}
 	return nil
 }
@@ -351,8 +351,8 @@ func utf16File(text string) []byte {
 	var out bytes.Buffer
 	out.Write([]byte{0xFF, 0xFE})
 	for _, unit := range utf16.Encode([]rune(text)) {
-		out.WriteByte(byte(unit))
-		out.WriteByte(byte(unit >> 8))
+		out.WriteByte(byte(unit & 0xFF)) // #nosec G115 -- masked to one byte
+		out.WriteByte(byte(unit >> 8))   // #nosec G115 -- the high byte of 16 bits
 	}
 	return out.Bytes()
 }

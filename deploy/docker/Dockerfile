@@ -31,7 +31,7 @@ ARG WHISPER_CPP_VERSION=
 RUN mkdir -p /out && if [ -n "$WHISPER_CPP_VERSION" ]; then \
       apt-get update && apt-get install -y --no-install-recommends build-essential cmake git ca-certificates && \
       git clone --depth 1 --branch "v${WHISPER_CPP_VERSION}" https://github.com/ggml-org/whisper.cpp /whisper && \
-      cmake -S /whisper -B /whisper/build -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF && \
+      cmake -S /whisper -B /whisper/build -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF && \
       cmake --build /whisper/build --config Release --target whisper-cli -j && \
       cp /whisper/build/bin/whisper-cli /out/; \
     fi

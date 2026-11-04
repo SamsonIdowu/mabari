@@ -44,7 +44,7 @@ func checkHealth(ctx context.Context, url string) (string, error) {
 	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("Mabari isn't answering: %w", err)
+		return "", fmt.Errorf("nothing is answering on that port: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	var body struct {
@@ -53,7 +53,7 @@ func checkHealth(ctx context.Context, url string) (string, error) {
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&body); err != nil ||
 		response.StatusCode != http.StatusOK || !body.OK {
-		return "", fmt.Errorf("Mabari answered %s", response.Status)
+		return "", fmt.Errorf("unhealthy: the server answered %s", response.Status)
 	}
 	return body.Version, nil
 }

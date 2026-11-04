@@ -352,8 +352,13 @@ func TestRealService(t *testing.T) {
 		base := "http://127.0.0.1:" + port
 		request, _ := http.NewRequest(http.MethodPatch, base+"/api/settings", strings.NewReader(`{"retentionDays":90}`))
 		request.Header.Set("Content-Type", "application/json")
-		if response, err := http.DefaultClient.Do(request); err != nil || response.StatusCode != http.StatusOK {
-			t.Fatalf("settings: %v %v", response, err)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("settings = %d", response.StatusCode)
 		}
 		before := version(t, base)
 		copyFile(t, next, installed)
@@ -367,7 +372,7 @@ func TestRealService(t *testing.T) {
 		if after := version(t, base); after == before {
 			t.Fatalf("still on %s after the upgrade", before)
 		}
-		response, err := http.Get(base + "/api/settings")
+		response, err = http.Get(base + "/api/settings")
 		if err != nil {
 			t.Fatal(err)
 		}

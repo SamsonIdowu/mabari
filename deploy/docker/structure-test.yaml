@@ -39,4 +39,4 @@ commandTests:
     command: /mabari
     args: ["healthcheck"]
     exitCode: 1
-    expectedError: ["isn't answering"]
+    expectedError: ["nothing is answering"]

@@ -12,7 +12,7 @@ Mabari runs on your own computer and opens at **http://localhost:4317**. It only
 | Claude Code sessions | Yes | Yes | Yes | Yes | Yes, with `compose.claude.yaml` (see below) |
 | Codex agents | If the Codex CLI is installed | Same | Same | Same | Only in the `mabari-agents` image |
 | Native folder picker | Yes | Yes | Yes | Yes | No: mount folders under `/workspace` |
-| Local Whisper | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Only in `mabari-agents`, built with `WHISPER_CPP_VERSION` |
+| Local Whisper | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Only in `mabari-agents`, built with `WHISPER_CPP_VERSION` (checked with 1.9.5) |
 | Upgrades restart the service | Yes | Yes | Yes | Replace the binary, then `mabari service restart` | `docker compose up -d --build` |
 
 ## Homebrew

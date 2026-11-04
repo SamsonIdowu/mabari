@@ -28,7 +28,7 @@ func TestCheckHealth(t *testing.T) {
 		t.Error("an ill server passed")
 	}
 	if _, err := checkHealth(context.Background(), "http://127.0.0.1:1/api/health"); err == nil ||
-		!strings.Contains(err.Error(), "isn't answering") {
+		!strings.Contains(err.Error(), "nothing is answering") {
 		t.Errorf("nothing listening: %v", err)
 	}
 }

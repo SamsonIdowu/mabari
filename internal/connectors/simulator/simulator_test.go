@@ -399,21 +399,63 @@ func TestNewAgentsGetAFreshColourAfterARestart(t *testing.T) {
 	}
 }
 
+// Retention follows the setting: data just inside the window stays, and stored events, log rows
+// and the feeds in memory all lose what is older.
 func TestRetentionKeepsOnlyRecentData(t *testing.T) {
-	sim, engine, c, s := setup(t, ":memory:", 1)
-	if err := sim.LoadDemo(); err != nil {
-		t.Fatal(err)
-	}
-	c.ms += 31 * 86_400_000
-	if err := engine.RunRetention(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := s.Log(context.Background(), store.LogQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 0 || len(engine.Snapshot().Log) != 0 {
-		t.Errorf("%d rows stored, %d in memory", len(rows), len(engine.Snapshot().Log))
+	ctx := context.Background()
+	for _, days := range []int{7, 30, 90, 365} {
+		t.Run(strconv.Itoa(days), func(t *testing.T) {
+			sim, engine, c, s := setup(t, ":memory:", 1)
+			if err := sim.LoadDemo(); err != nil {
+				t.Fatal(err)
+			}
+			if err := engine.Do(func() {
+				settings := engine.Settings()
+				settings.RetentionDays = days
+				engine.SaveSettings(settings)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			counts := func() (stored, events, feeds int) {
+				rows, err := s.Log(ctx, store.LogQuery{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, agent := range engine.Snapshot().Agents {
+					found, err := s.Events(ctx, agent.ID, 1000, 0)
+					if err != nil {
+						t.Fatal(err)
+					}
+					events += len(found)
+					feeds += len(agent.Feed)
+				}
+				return len(rows), events, feeds
+			}
+			const day = 86_400_000
+			c.ms += int64(days-1) * day
+			if err := engine.RunRetention(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if stored, events, feeds := counts(); stored == 0 || events == 0 || feeds == 0 {
+				t.Fatalf("inside the window: %d log, %d events, %d in feeds", stored, events, feeds)
+			}
+			c.ms += 2 * day
+			if err := engine.Do(func() {
+				engine.Log("Mori", models.LogInstruction, "Fresh row", "Sent", "")
+				engine.AddEvent(engine.AgentByName("Mori"), "read", "Fresh event", nil)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := engine.RunRetention(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if stored, events, feeds := counts(); stored != 1 || events != 1 || feeds != 1 {
+				t.Errorf("after the window: %d log, %d events, %d in feeds, want 1 each", stored, events, feeds)
+			}
+			if got := engine.Snapshot().Log; len(got) != 1 {
+				t.Errorf("%d log rows in memory", len(got))
+			}
+		})
 	}
 }
 

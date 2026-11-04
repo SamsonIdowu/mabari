@@ -818,6 +818,25 @@ func (e *Engine) RunRetention(ctx context.Context) error {
 			}
 			e.log = kept
 		}
+		// Feeds in memory hold the same events, so they lose the old ones too.
+		trimmed := false
+		for _, agent := range e.agents {
+			feed := agent.Feed[:0:0]
+			for _, event := range agent.Feed {
+				if event.Time >= cutoff {
+					feed = append(feed, event)
+				}
+			}
+			if len(feed) != len(agent.Feed) {
+				agent.Feed = feed
+				e.Touch(agent)
+				trimmed = true
+			}
+		}
+		// Open pages reload, so removed log rows disappear there too.
+		if events+log > 0 || trimmed {
+			e.Reset()
+		}
 	})
 }
 

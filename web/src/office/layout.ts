@@ -44,15 +44,20 @@ export const SPOTS: Record<Exclude<Location, 'desk'> | 'door', Point[]> = {
   door: [{ x: 608, y: 698 }],
 };
 
+/**
+ * Where each state works. Every state stays at the desk: agents walk only to arrive, to leave or
+ * to sit beside their lead (decision 29, the user's call over the prototype, which sent them to
+ * the server room, the library and the pantry).
+ */
 export const STATE_LOCATIONS: Record<AgentState, Location> = {
   thinking: 'desk',
-  reading: 'cabinets',
+  reading: 'desk',
   editing: 'desk',
-  running: 'server',
-  browsing: 'library',
+  running: 'desk',
+  browsing: 'desk',
   approval: 'desk',
-  spawning: 'meeting',
-  idle: 'pantry',
+  spawning: 'desk',
+  idle: 'desk',
   done: 'desk',
   error: 'desk',
   paused: 'desk',

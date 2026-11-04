@@ -15,17 +15,23 @@ describe('desks', () => {
 });
 
 describe('spotFor', () => {
-  it('sends agents to the room for their state', () => {
-    expect(spotFor('editing', 0, 1)).toEqual(deskSeat(0));
-    expect(spotFor('reading', 0, 1)).toEqual({ x: 120, y: 118 });
-    expect(spotFor('running', 0, 1)).toEqual({ x: 1042, y: 136 });
-    expect(spotFor('browsing', 0, 1)).toEqual({ x: 90, y: 568 });
-    expect(spotFor('spawning', 0, 1)).toEqual({ x: 1078, y: 362 });
-    expect(spotFor('idle', 0, 1)).toEqual({ x: 1046, y: 520 });
-  });
-
-  it('wraps round when a room has more agents than spots', () => {
-    expect(spotFor('reading', 0, 3)).toEqual(spotFor('reading', 0, 0));
+  // Decision 29: agents stay at their desks whatever they are doing.
+  it('keeps every state at the desk', () => {
+    for (const state of [
+      'thinking',
+      'reading',
+      'editing',
+      'running',
+      'browsing',
+      'approval',
+      'spawning',
+      'idle',
+      'done',
+      'error',
+      'paused',
+    ] as const) {
+      expect(spotFor(state, 3, 1)).toEqual(deskSeat(3));
+    }
   });
 });
 

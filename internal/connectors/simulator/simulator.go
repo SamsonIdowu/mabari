@@ -463,7 +463,9 @@ func (s *Simulator) checkpoint(agent *models.LiveAgent) {
 		return
 	}
 	s.engine.AddEvent(agent, "instruction", "Received: "+instruction.Text, nil)
-	s.reply(agent, "Got it. "+models.Ack(instruction.Text), 7000)
+	said := "Got it. " + models.Ack(instruction.Text)
+	s.reply(agent, said, 7000)
+	s.engine.Answered(agent, said)
 }
 
 func (s *Simulator) stillHere(agent *models.LiveAgent) bool {
@@ -773,7 +775,7 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 		s.engine.Queue(agent, text)
 		return
 	}
-	s.engine.Log(agent.Name, models.LogInstruction, text, "Delivered", "ok")
+	s.engine.Delivered(agent, text)
 	s.engine.AddEvent(agent, "instruction", "Received: "+text, nil)
 	switch agent.State {
 	case models.StateIdle, models.StateDone, models.StatePaused:
@@ -782,7 +784,9 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 		agent.Rate = s.between(0.0012, 0.002)
 		s.setState(agent, models.StateThinking)
 	}
-	s.reply(agent, "Got it. "+models.Ack(text), 7000)
+	said := "Got it. " + models.Ack(text)
+	s.reply(agent, said, 7000)
+	s.engine.Answered(agent, said)
 }
 
 // Interrupt pauses an agent after its current tool call.

@@ -381,7 +381,9 @@ func (c *Connector) Notify(method string, params json.RawMessage) {
 			c.itemStarted(agent, e)
 		case "item/completed":
 			if e.Item != nil && e.Item.Type == "agentMessage" && e.Item.Text != "" {
-				c.engine.SetReply(agent, clip(e.Item.Text, 90), 8000)
+				full := redact.Text(e.Item.Text)
+				c.engine.SetReply(agent, clip(full, 90), 8000)
+				c.engine.Answered(agent, full)
 			}
 		case "turn/completed":
 			c.mu.Lock()
@@ -625,7 +627,7 @@ func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 		c.engine.Toast(agent.Name + " isn't running in Codex yet. Try again in a moment.")
 		return
 	}
-	c.engine.Log(agent.Name, models.LogInstruction, text, "Delivered", "ok")
+	c.engine.Delivered(agent, text)
 	c.engine.AddEvent(agent, "instruction", "Received: "+clip(text, 120), nil)
 	if turn == "" {
 		agent.Task, agent.Progress, agent.State = clip(models.WithoutName(text), 120), 0, models.StateThinking

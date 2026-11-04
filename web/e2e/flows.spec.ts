@@ -26,6 +26,22 @@ test('flow a: an instruction reaches an agent straight away', async ({ page }) =
   await expect(page.locator('.bub.reply')).toContainText("Got it. I'll add the pricing pages.");
 });
 
+test('the reply to an instruction can be read in full in the agent panel', async ({ page }) => {
+  await loadDemo(page);
+  await target(page, 'Scout');
+  await message(page).fill('Add the pricing pages');
+  await page.getByRole('button', { name: 'Send instruction' }).click();
+  await expect(page.getByText('Scout replied. Open Scout to read it.')).toBeVisible();
+  // Sending to one agent opens its panel.
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
+  const item = panel.locator('.askitem').first();
+  await expect(item).toContainText('“Add the pricing pages”');
+  await expect(item.getByTestId('agentReply')).toHaveText("Got it. I'll add the pricing pages.");
+  await page.getByRole('link', { name: 'Activity log' }).click();
+  await expect(page.locator('tr', { hasText: 'Add the pricing pages' })).toContainText('Replied');
+});
+
 test('flow b: instructions to busy Claude agents wait for a checkpoint', async ({ page }) => {
   await loadDemo(page);
   await target(page, 'Ledger');

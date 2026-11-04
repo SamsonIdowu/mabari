@@ -155,6 +155,30 @@ func TestStopKeepsGoingOnlyWhenSomethingWaits(t *testing.T) {
 	}
 }
 
+// Claude's whole answer is kept with what was sent from Mabari, masked, so it can be read there.
+func TestTheAnswerToAMabariInstructionIsKeptInFull(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Then run the tests") })
+	hook(t, c, "Stop", nil)
+	answer := "Ran the tests: 42 passed.\n\nThe one flaky test now waits for the clock, and the token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 is masked."
+	hook(t, c, "Stop", map[string]any{"stop_hook_active": true, "last_assistant_message": answer})
+	asked := agentOf(t, engine).Asked
+	if len(asked) != 1 || asked[0].Text != "Then run the tests" {
+		t.Fatalf("asked = %+v", asked)
+	}
+	if !strings.HasPrefix(asked[0].Reply, "Ran the tests: 42 passed.\n\nThe one flaky test") ||
+		strings.Contains(asked[0].Reply, "abcdefghijklmnopqrstuvwxyz0123456789") {
+		t.Errorf("reply = %q", asked[0].Reply)
+	}
+	// The next answer, to the person's own prompt in the terminal, doesn't replace it.
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Thanks, now tidy up"})
+	hook(t, c, "Stop", map[string]any{"last_assistant_message": "Tidied."})
+	if got := agentOf(t, engine).Asked[0].Reply; !strings.HasPrefix(got, "Ran the tests") {
+		t.Errorf("replaced by %q", got)
+	}
+}
+
 func TestNobodyWatchingLeavesClaudeCodesOwnPrompt(t *testing.T) {
 	c, engine := newConnector(t)
 	reply := hook(t, c, "PermissionRequest", map[string]any{"tool_name": "Bash",

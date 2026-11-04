@@ -175,7 +175,16 @@ type SessionState struct {
 	TalkUntil  int64  `json:"talkUntil"`
 	TalkColor  string `json:"talkColor"`
 	Leaving    bool   `json:"leaving"`
+	// Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
+	// each with the agent's reply once it gives one. At most AskedKept.
+	Asked []Instruction `json:"asked"`
 }
+
+// AskedKept is how many instructions and replies an agent keeps for its panel.
+const AskedKept = 10
+
+// ReplyLimit caps a stored reply. A longer one is cut and says so.
+const ReplyLimit = 20000
 
 // LiveAgent is an agent as the UI sees it: identity, session, and what is waiting on it.
 type LiveAgent struct {
@@ -253,6 +262,10 @@ type Instruction struct {
 	Time   int64             `json:"time"`
 	// LogID is the activity log row this instruction updates.
 	LogID string `json:"logId"`
+	// Reply is what the agent said back once it had the instruction, in full, with anything that
+	// looks like a secret masked. Empty until it replies.
+	Reply     string `json:"reply"`
+	RepliedAt int64  `json:"repliedAt"`
 }
 
 // ApprovalType is what an agent is asking permission for.

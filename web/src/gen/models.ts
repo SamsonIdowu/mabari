@@ -307,7 +307,20 @@ export interface SessionState {
   talkUntil: number /* int64 */;
   talkColor: string;
   leaving: boolean;
+  /**
+   * Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
+   * each with the agent's reply once it gives one. At most AskedKept.
+   */
+  asked: Instruction[];
 }
+/**
+ * AskedKept is how many instructions and replies an agent keeps for its panel.
+ */
+export const AskedKept = 10;
+/**
+ * ReplyLimit caps a stored reply. A longer one is cut and says so.
+ */
+export const ReplyLimit = 20000;
 /**
  * LiveAgent is an agent as the UI sees it: identity, session, and what is waiting on it.
  */
@@ -417,6 +430,12 @@ export interface Instruction {
    * LogID is the activity log row this instruction updates.
    */
   logId: string;
+  /**
+   * Reply is what the agent said back once it had the instruction, in full, with anything that
+   * looks like a secret masked. Empty until it replies.
+   */
+  reply: string;
+  repliedAt: number /* int64 */;
 }
 /**
  * ApprovalType is what an agent is asking permission for.

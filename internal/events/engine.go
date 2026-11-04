@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
@@ -508,7 +509,66 @@ func (e *Engine) NextQueued(agent *models.LiveAgent) (models.Instruction, bool) 
 	e.Touch(agent)
 	e.record(e.store.SaveInstruction(context.Background(), instruction))
 	e.UpdateLog(instruction.LogID, "Delivered at checkpoint", "ok")
+	e.remember(agent, instruction)
 	return instruction, true
+}
+
+// Delivered records an instruction that went straight into the agent's session, as Codex takes
+// them, so its reply can be shown with it. Call inside Do.
+func (e *Engine) Delivered(agent *models.LiveAgent, text string) models.Instruction {
+	entry := e.Log(agent.Name, models.LogInstruction, text, "Delivered", "ok")
+	id := agent.ID
+	instruction := models.Instruction{
+		ID: newID("ins-"), Agent: &id, Text: text, Mode: models.ModeInstruct,
+		Status: models.InstructionDelivered, Time: e.now().UnixMilli(), LogID: entry.ID,
+	}
+	e.record(e.store.SaveInstruction(context.Background(), instruction))
+	e.remember(agent, instruction)
+	return instruction
+}
+
+// remember keeps a delivered instruction on the agent, for its panel, dropping the oldest.
+func (e *Engine) remember(agent *models.LiveAgent, instruction models.Instruction) {
+	asked := append(agent.Asked[:len(agent.Asked):len(agent.Asked)], instruction)
+	if len(asked) > models.AskedKept {
+		asked = asked[len(asked)-models.AskedKept:]
+	}
+	agent.Asked = asked
+	e.Touch(agent)
+}
+
+// Answered gives the agent's reply to every instruction it had that is still waiting for one,
+// and says so on the activity log and in a toast. text should already be redacted. It returns
+// false when nothing from Mabari was waiting, so a reply to the person's own terminal prompt
+// isn't shown as an answer to them. Call inside Do.
+func (e *Engine) Answered(agent *models.LiveAgent, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if utf8.RuneCountInString(text) > models.ReplyLimit {
+		text = models.Clip(text, models.ReplyLimit) + "\n\n(The rest is in the agent's own session.)"
+	}
+	now := e.now().UnixMilli()
+	answered := false
+	asked := append([]models.Instruction{}, agent.Asked...)
+	for index := range asked {
+		instruction := &asked[index]
+		if instruction.Reply != "" {
+			continue
+		}
+		instruction.Reply, instruction.RepliedAt = text, now
+		e.record(e.store.SaveInstruction(context.Background(), *instruction))
+		e.UpdateLog(instruction.LogID, "Replied", "ok")
+		answered = true
+	}
+	if !answered {
+		return false
+	}
+	agent.Asked = asked
+	e.Touch(agent)
+	e.Toast(agent.Name + " replied. Open " + agent.Name + " to read it.")
+	return true
 }
 
 func approvalSummary(a models.Approval) string {

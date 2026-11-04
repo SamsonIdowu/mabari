@@ -2468,3 +2468,51 @@ section[data-screen='home'] {
   margin: 0;
   font-size: 24px;
 }
+
+/* "From you": what was sent to an agent from Mabari, with its reply in full. Calm on purpose:
+   no red or amber, just the agent's words. */
+.asked {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.askitem {
+  border: 1px solid var(--line);
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.askitem header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.askitem .you {
+  font-weight: 700;
+  color: var(--fg2);
+}
+.askitem small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.askitem .reply {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.askitem footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}

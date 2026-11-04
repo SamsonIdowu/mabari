@@ -287,3 +287,11 @@ func ProjectState(p *Project, agents []*LiveAgent) (ProjectStatus, float64) {
 		return ProjectIdle, progress
 	}
 }
+
+// Clip shortens text to at most limit characters, never cutting a character in half.
+func Clip(text string, limit int) string {
+	if utf8.RuneCountInString(text) <= limit {
+		return text
+	}
+	return string([]rune(text)[:limit])
+}

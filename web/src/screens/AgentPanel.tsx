@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
+import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
@@ -39,6 +40,60 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3>{title}</h3>
       {children}
     </div>
+  );
+}
+
+/**
+ * What you sent this agent from Mabari, newest first, each with the agent's full reply once it
+ * gives one, so the answer can be read here instead of only in the agent's own session.
+ */
+function Replies({ agent }: { agent: LiveAgent }) {
+  const toast = useOfficeStore((state) => state.toast);
+  const asked = [...(agent.asked ?? [])].reverse();
+  if (!asked.length) return null;
+  const time = (at: number) =>
+    new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    <Section title="From you">
+      <div className="asked" id="asked">
+        {asked.map((item) => (
+          <article key={item.id} className={item.reply ? 'askitem replied' : 'askitem'}>
+            <header>
+              <span className="you">“{item.text}”</span>
+              <small>{time(item.time)}</small>
+            </header>
+            {item.reply ? (
+              <>
+                <div className="reply" data-testid="agentReply">
+                  {item.reply}
+                </div>
+                <footer>
+                  <span className="help">
+                    {agent.name} replied at {time(item.repliedAt)}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    onClick={() =>
+                      void navigator.clipboard
+                        ?.writeText(item.reply)
+                        .then(() => toast('Reply copied'))
+                        .catch(() => toast('Copy it by hand: the browser refused the clipboard.'))
+                    }
+                  >
+                    Copy
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <span className="help">
+                Delivered. {agent.name}&apos;s reply shows here when it answers.
+              </span>
+            )}
+          </article>
+        ))}
+      </div>
+    </Section>
   );
 }
 
@@ -605,6 +660,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         <AnswerCard agent={agent} />
         {tab === 'live' ? (
           <>
+            <Replies agent={agent} />
             <Section title="Current task">
               <p style={{ fontWeight: 700, fontSize: 15 }}>{agent.task}</p>
             </Section>

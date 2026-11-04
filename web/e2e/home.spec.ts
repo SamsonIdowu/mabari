@@ -119,7 +119,8 @@ test('passes an instruction on through the normal route', async ({ page, request
   await expect(page.locator('#veeSay')).toContainText('Sent to Scout. It has it now.');
   await expect(page.getByText('Sent to Scout', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Activity log' }).click();
-  await expect(page.locator('tr', { hasText: 'add the pricing pages' })).toContainText('Delivered');
+  // Delivered at once, and the demo agent answers straight away.
+  await expect(page.locator('tr', { hasText: 'add the pricing pages' })).toContainText('Replied');
 });
 
 test('asking through Vee leaves the answer on the agent', async ({ page, request }) => {

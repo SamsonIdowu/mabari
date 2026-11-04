@@ -160,8 +160,14 @@ func TestQueuedInstructionIsDeliveredAtTheNextCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows[0].Outcome != "Delivered at checkpoint" || rows[0].Chip != "ok" {
+	// Delivered at the checkpoint, then answered, so the log says it was replied to.
+	if rows[0].Outcome != "Replied" || rows[0].Chip != "ok" {
 		t.Errorf("row = %+v", rows[0])
+	}
+	asked := sage().Asked
+	if len(asked) != 1 || asked[0].Text != "Also add a changelog entry when you finish" ||
+		!strings.HasPrefix(asked[0].Reply, "Got it.") || asked[0].RepliedAt == 0 {
+		t.Errorf("asked = %+v", asked)
 	}
 }
 

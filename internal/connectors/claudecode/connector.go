@@ -388,9 +388,12 @@ func (c *Connector) observe(in input) []byte {
 		}
 		agent.State = models.StateDone
 		agent.Progress = 1
-		if said := clip(redact.Text(in.LastAssistantMessage), 90); said != "" {
+		full := redact.Text(in.LastAssistantMessage)
+		if said := clip(full, 90); said != "" {
 			c.engine.SetReply(agent, said, 8000)
 		}
+		// Claude's whole answer goes with whatever was sent from Mabari, so it can be read there.
+		c.engine.Answered(agent, full)
 		c.engine.AddEvent(agent, "done", "Finished: "+agent.Task, nil)
 		return nil
 	}

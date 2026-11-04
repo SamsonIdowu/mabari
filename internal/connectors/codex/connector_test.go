@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -302,7 +303,7 @@ func TestFileChangesShowTheirDiff(t *testing.T) {
 
 func TestLaunchWithoutCodexSaysSo(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	if err := New(newEngine(t), "1.0").Launch(context.Background()); err != ErrNotInstalled {
+	if err := New(newEngine(t), "1.0").Launch(context.Background()); !errors.Is(err, ErrNotInstalled) {
 		t.Errorf("err = %v", err)
 	}
 }

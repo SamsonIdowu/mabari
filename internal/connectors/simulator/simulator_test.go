@@ -606,3 +606,51 @@ func TestNoApprovalIsLeftBehind(t *testing.T) {
 		t.Errorf("newest row = %+v", rows[0])
 	}
 }
+
+// Plan first: the lead posts its plan, and the team starts only once it is allowed. A denied
+// plan brings nobody in.
+func TestATeamWaitsForItsPlan(t *testing.T) {
+	for _, allow := range []bool{true, false} {
+		sim, engine, c, _ := setup(t, ":memory:", 1)
+		if err := sim.LoadDemo(); err != nil {
+			t.Fatal(err)
+		}
+		var lead *models.LiveAgent
+		if err := engine.Do(func() {
+			created, err := sim.CreateAgent(NewAgent{Name: "Juniper", Account: models.AccountClaudeCode,
+				Model: "claude-sonnet-4-5", Task: "Plan the shop", Project: "checkout"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lead = created
+			sim.StartTeam(lead, []PlannedMember{{Name: "Orion", Task: "Build the shop"}, {Name: "Maple", Task: "Test it"}},
+				true, "Coffee shop", []string{"Read the files", "Orion (builder): Build the shop"})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		advance(t, sim, c, 6)
+		var approval *models.Approval
+		_ = engine.Do(func() { approval = lead.Approval })
+		if approval == nil || approval.Type != models.ApprovalPlan || len(approval.Detail.Steps) != 2 {
+			t.Fatalf("approval = %+v", approval)
+		}
+		if engine.Snapshot().Agents[len(engine.Snapshot().Agents)-1].Name == "Orion" {
+			t.Fatal("the team started before the plan was approved")
+		}
+		decision := models.DecisionDenied
+		if allow {
+			decision = models.DecisionAllowed
+		}
+		decide(t, engine, approval.ID, decision)
+		advance(t, sim, c, 6)
+		helpers := 0
+		for _, agent := range engine.Snapshot().Agents {
+			if agent.Lead != nil && *agent.Lead == lead.ID {
+				helpers++
+			}
+		}
+		if allow && helpers != 2 || !allow && helpers != 0 {
+			t.Errorf("allow=%v: %d helpers", allow, helpers)
+		}
+	}
+}

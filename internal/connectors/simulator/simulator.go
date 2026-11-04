@@ -67,7 +67,9 @@ type Simulator struct {
 	approvalTimer int
 	convTimer     int
 	hueIndex      int
-	demoMode      bool
+	// planned are teams waiting for their lead's plan to be approved, by lead id.
+	planned  map[string][]PlannedMember
+	demoMode bool
 
 	tickEvery time.Duration
 	mu        sync.Mutex
@@ -740,6 +742,10 @@ func (s *Simulator) maybeRequestApproval() {
 // Decide resumes an agent after an approval.
 func (s *Simulator) Decide(agent *models.LiveAgent, approval models.Approval) {
 	s.approvalTimer = 0
+	if approval.Type == models.ApprovalPlan {
+		s.decidePlan(agent, approval)
+		return
+	}
 	auto := approval.DecidedBy != nil && *approval.DecidedBy == models.DecidedByAuto
 	allowed := approval.Decision != nil && *approval.Decision == models.DecisionAllowed
 	if !allowed {
@@ -865,6 +871,7 @@ func (s *Simulator) loadDemo() {
 	s.timers = nil
 	s.runtimes = map[string]*runtime{}
 	s.approvalTimer, s.convTimer, s.hueIndex = 0, 0, 0
+	s.planned = nil
 	s.demoMode = true
 	s.engine.ClearOffice()
 	s.engine.SetFirstRun(false)
@@ -964,3 +971,66 @@ func (s *Simulator) seedConversations() {
 
 // DemoActive reports whether the demo office is running. Call inside Do.
 func (s *Simulator) DemoActive() bool { return s.demoMode }
+
+// PlannedMember is a subagent that joins its lead's office once the team starts.
+type PlannedMember struct {
+	Name  string
+	Task  string
+	Model string
+}
+
+// planWait is how long a lead takes to write its plan before asking for an OK.
+const planWait = 4200
+
+// StartTeam brings a lead's subagents in, one after another. With askFirst, the lead first
+// posts its plan as an approval, and the team starts only when the plan is allowed. Call
+// inside Do.
+func (s *Simulator) StartTeam(lead *models.LiveAgent, members []PlannedMember, askFirst bool, project string, steps []string) {
+	if len(members) == 0 {
+		return
+	}
+	if !askFirst {
+		s.spawnTeam(lead, members)
+		return
+	}
+	if s.planned == nil {
+		s.planned = map[string][]PlannedMember{}
+	}
+	s.planned[lead.ID] = members
+	s.after(planWait, func() {
+		if !s.stillHere(lead) {
+			return
+		}
+		s.engine.AddEvent(lead, "approval", "Plan ready for your OK", nil)
+		s.engine.RequestApproval(lead, models.Approval{
+			Type: models.ApprovalPlan, Title: "wants you to approve its plan",
+			Detail:    models.ApprovalDetail{Project: project, Steps: steps},
+			Risk:      "Nothing changes until you approve. If you deny, " + lead.Name + " reworks the plan.",
+			RiskLevel: models.RiskLow,
+		})
+	})
+}
+
+func (s *Simulator) spawnTeam(lead *models.LiveAgent, members []PlannedMember) {
+	for index, member := range members {
+		member := member
+		s.after(int64(1200+index*1600), func() {
+			if s.stillHere(lead) {
+				s.AddSubagent(lead, member.Name, member.Task, member.Model)
+			}
+		})
+	}
+}
+
+// decidePlan starts the team on an allowed plan. On a denied one the lead reworks it.
+func (s *Simulator) decidePlan(lead *models.LiveAgent, approval models.Approval) {
+	members := s.planned[lead.ID]
+	delete(s.planned, lead.ID)
+	s.setState(lead, models.StateThinking)
+	if approval.Decision == nil || *approval.Decision != models.DecisionAllowed {
+		s.reply(lead, "I'll rework the plan and come back to you.", 5000)
+		return
+	}
+	s.reply(lead, "Thanks. Bringing in the team.", 5000)
+	s.spawnTeam(lead, members)
+}

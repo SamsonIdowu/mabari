@@ -73,6 +73,7 @@ func New(options Options) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": options.Version})
 	})
 	a.routes(mux)
+	a.projectStartRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)
 	}

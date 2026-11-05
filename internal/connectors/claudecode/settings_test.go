@@ -551,6 +551,93 @@ func TestAConfiguredBinaryWithAnyName(t *testing.T) {
 	}
 }
 
+// RT-3: Mabari's own default agent line goes with a wipe, together with the hooks, and the user's
+// file comes back byte for byte. Scratch folders only, never the real ~/.claude.
+func TestWipeTakesOutHooksAndMabarisDefaultAgent(t *testing.T) {
+	dir := scratch(t, existing)
+	path := filepath.Join(dir, "settings.json")
+	attach, _ := PlanAttach(dir, runHook)
+	if err := Apply(attach); err != nil {
+		t.Fatal(err)
+	}
+	on, err := PlanDefaultAgent(dir, "mabari", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(on); err != nil {
+		t.Fatal(err)
+	}
+	if DefaultAgent(dir) != "mabari" {
+		t.Fatal("the default agent was not set")
+	}
+	// A detach alone leaves the agent line, which is what the wipe used to do.
+	detach, _ := PlanDetach(dir)
+	if !strings.Contains(string(detach.After), `"agent": "mabari"`) {
+		t.Fatal("PlanDetach was expected to leave the default agent alone")
+	}
+	wipe, err := PlanWipe(dir, "mabari")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(wipe); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, path); got != existing {
+		t.Errorf("the original bytes did not come back:\n%s", got)
+	}
+	if Attached(dir) || DefaultAgent(dir) != "" {
+		t.Error("hooks or the default agent are still there")
+	}
+}
+
+// Only Mabari's own value goes. Another agent, or a value that isn't a name, stays as written, and
+// so do the hooks of other programs.
+func TestWipeKeepsADefaultAgentThatIsNotMabaris(t *testing.T) {
+	for _, agentLine := range []string{`"agent": "reviewer"`, `"agent": "mabari-lint"`, `"agent": "Mabari"`, `"agent": ""`, `"agent": 7`, `"agent": ["mabari"]`} {
+		settings := "{\n  " + agentLine + ",\n  \"model\": \"claude-opus-4-1\"\n}\n"
+		dir := scratch(t, settings)
+		wipe, err := PlanWipe(dir, "mabari", "/usr/local/bin/mabari")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wipe.Changed() {
+			t.Errorf("%s: a wipe changes the file:\n%s", agentLine, wipe.After)
+		}
+		if err := Apply(wipe); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, filepath.Join(dir, "settings.json")); got != settings {
+			t.Errorf("%s: the file changed:\n%s", agentLine, got)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "settings.json"+BackupSuffix)); err == nil {
+			t.Errorf("%s: a backup was made for a change that never happened", agentLine)
+		}
+	}
+}
+
+// A wipe backs up first, when nothing has yet, and the backup holds what was there before the wipe.
+func TestWipeBacksUpBeforeTakingOutTheAgentLine(t *testing.T) {
+	settings := "{\n  \"agent\": \"mabari\",\n  \"theme\": \"dark\"\n}\n"
+	dir := scratch(t, settings)
+	path := filepath.Join(dir, "settings.json")
+	wipe, err := PlanWipe(dir, "mabari")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wipe.Changed() {
+		t.Fatal("a wipe leaves Mabari's agent line")
+	}
+	if err := Apply(wipe); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, path+BackupSuffix); got != settings {
+		t.Errorf("the backup is not what was there before:\n%s", got)
+	}
+	if got := read(t, path); got != "{\n  \"theme\": \"dark\"\n}\n" {
+		t.Errorf("after the wipe:\n%s", got)
+	}
+}
+
 func mustString(value any) string {
 	data, _ := json.Marshal(value)
 	return string(data)

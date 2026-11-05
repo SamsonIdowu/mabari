@@ -365,6 +365,9 @@ test('the wipe says what goes and what stays, and does exactly that', async ({ p
   const lists = page.getByTestId('wipeLists');
   await expect(lists).toContainText('Goes:');
   await expect(lists).toContainText('API keys');
+  // RT-3: the wipe takes out the line that made Mabari the default agent, and says so.
+  await expect(lists).toContainText('makes Mabari its default agent');
+  await expect(lists).toContainText('a default agent you chose yourself');
   await expect(lists).toContainText('Stays:');
   await expect(lists).toContainText('your settings');
   await page.getByRole('button', { name: 'Wipe all data…' }).click();

@@ -475,11 +475,13 @@ function WipeCard() {
         <p>
           <b>Goes:</b> every project, agent, message, event and log entry; every account connection;
           your API keys, hub token and access key; and, if you attached Claude Code, Mabari&apos;s
-          hooks in its settings, which are taken out again.
+          hooks in its settings, which are taken out again, with the line that makes Mabari its
+          default agent if you added it.
         </p>
         <p>
           <b>Stays:</b> your settings, except that auto approve and LAN access are turned off; your
-          agent files; your own folders; and everything else in Claude Code&apos;s settings.
+          agent files; your own folders; and everything else in Claude Code&apos;s settings,
+          including a default agent you chose yourself.
         </p>
       </div>
       {confirming ? (

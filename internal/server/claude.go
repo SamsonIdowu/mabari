@@ -215,6 +215,36 @@ func (a *api) detachClaude() error {
 	return a.claude.Secrets.Delete(claudecode.TokenName)
 }
 
+// wipeClaudeSettings is the part of a wipe that reaches Claude Code's settings.json: Mabari's hooks
+// go, and so does "agent": "mabari", the line "Make Mabari the default agent" wrote. Each goes only
+// when it is Mabari's own. Another program's hooks, another agent, and every other entry stay as
+// written, and the first change is backed up first, like every other change to this file. Settings
+// that can't be read as JSON are never touched.
+func (a *api) wipeClaudeSettings() error {
+	if a.claude.TokenFile != "" {
+		return nil // the settings are on the host, and the token is the person's own file
+	}
+	attached := a.claudeAttached()
+	ownAgent := claudecode.DefaultAgent(a.claude.ConfigDir) == agentdefs.MabariName
+	var plan claudecode.Plan
+	var err error
+	switch {
+	case attached:
+		plan, err = claudecode.PlanWipe(a.claude.ConfigDir, agentdefs.MabariName, a.claude.Hook.Binary)
+	case ownAgent:
+		plan, err = claudecode.PlanDefaultAgent(a.claude.ConfigDir, agentdefs.MabariName, false)
+	default:
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := claudecode.Apply(plan); err != nil {
+		return err
+	}
+	return a.claude.Secrets.Delete(claudecode.TokenName)
+}
+
 // setClaudeAccount changes the Claude Code account's status. Call inside Do.
 func (a *api) setClaudeAccount(status models.AccountStatus) {
 	for _, account := range a.engine.StoredAccounts() {

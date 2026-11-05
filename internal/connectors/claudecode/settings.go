@@ -152,6 +152,19 @@ func PlanAttach(configDir string, hook Hook) (Plan, error) {
 // PlanDetach works out the settings with Mabari's hooks taken out and nothing else changed.
 // binaries are any programs, besides those named mabari…, that Mabari is configured to run as its hook.
 func PlanDetach(configDir string, binaries ...string) (Plan, error) {
+	return planRemoval(configDir, "", binaries)
+}
+
+// PlanWipe is PlanDetach for a wipe: it also takes out the default agent, but only when that is
+// `agent`, the value Mabari wrote. An agent someone else chose stays, and so does every other entry.
+// Both go in one plan, so what is left can match the backup and the user's own bytes come back.
+func PlanWipe(configDir, agent string, binaries ...string) (Plan, error) {
+	return planRemoval(configDir, agent, binaries)
+}
+
+// planRemoval takes Mabari's hooks out of the settings and, when agent is not empty and the
+// settings' default agent is that, the default agent too.
+func planRemoval(configDir, agent string, binaries []string) (Plan, error) {
 	path := filepath.Join(configDir, "settings.json")
 	before, existed, err := readSettings(path)
 	if err != nil {
@@ -173,19 +186,29 @@ func PlanDetach(configDir string, binaries ...string) (Plan, error) {
 	} else {
 		settings.set("hooks", mustJSON(hooks))
 	}
+	if agent != "" && defaultAgentOf(settings) == agent {
+		settings.remove(agentKey)
+	}
 	after, err := indent(settings)
 	if err != nil {
 		return Plan{}, err
 	}
-	// Nothing of Mabari's was there, so the file is left exactly as it is. If what is left matches
-	// the backup, the backup's own bytes go back, formatting and all.
-	if bytes.Equal(pretty(before), after) {
-		after = before
-	} else if backup, err := os.ReadFile(path + BackupSuffix); err == nil && sameJSON(backup, after) { // #nosec G304 -- our own backup
-		after = backup
-	}
-	return Plan{Path: path, Before: before, After: after, Diff: Diff(pretty(before), after),
+	after = keepOriginalBytes(path, before, after)
+	return Plan{Path: path, Before: before, After: after, Diff: Diff(pretty(before), pretty(after)),
 		Existed: true}, nil
+}
+
+// keepOriginalBytes chooses what to write for settings that have had Mabari's changes taken out.
+// Nothing of Mabari's was there, so the file is left exactly as it is. If what is left matches the
+// backup, the backup's own bytes go back, formatting and all.
+func keepOriginalBytes(path string, before, after []byte) []byte {
+	if bytes.Equal(pretty(before), after) {
+		return before
+	}
+	if backup, err := os.ReadFile(path + BackupSuffix); err == nil && sameJSON(backup, after) { // #nosec G304 -- our own backup
+		return backup
+	}
+	return after
 }
 
 // Apply backs up the settings the first time, then writes the plan in one step, keeping the
@@ -575,6 +598,11 @@ func DefaultAgent(configDir string) string {
 	if err != nil {
 		return ""
 	}
+	return defaultAgentOf(settings)
+}
+
+// defaultAgentOf is the settings' default agent, or "" when there is none or it isn't a name.
+func defaultAgentOf(settings *object) string {
 	var name string
 	if raw, ok := settings.values[agentKey]; ok && json.Unmarshal(raw, &name) == nil {
 		return name
@@ -608,13 +636,11 @@ func PlanDefaultAgent(configDir, name string, on bool) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	if bytes.Equal(pretty(before), after) {
-		after = before
-	}
+	after = keepOriginalBytes(path, before, after)
 	shown := before
 	if !existed {
 		shown = nil
 	}
-	return Plan{Path: path, Before: shown, After: after, Diff: Diff(pretty(before), after),
+	return Plan{Path: path, Before: shown, After: after, Diff: Diff(pretty(before), pretty(after)),
 		Existed: existed}, nil
 }

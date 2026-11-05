@@ -218,6 +218,95 @@ func TestConnectAndWipeFromABinaryNamedMabariRun(t *testing.T) {
 	}
 }
 
+// RT-3: after "Make Mabari the default agent", a wipe takes the hooks out and that line too, and
+// the user's file comes back as it was, with the backup made first. Scratch settings only.
+func TestWipeTakesOutMabarisDefaultAgentToo(t *testing.T) {
+	o := newClaudeOfficeRunning(t, "/code/mabari/bin/mabari-run")
+	path := filepath.Join(o.dir, "settings.json")
+	original, _ := os.ReadFile(path)
+	if response := o.do(t, http.MethodPost, "/api/accounts/claude/connect", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("connect = %d", response.Code)
+	}
+	if response := o.do(t, http.MethodPost, "/api/accounts/claude/default-agent", `{"on":true,"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("default agent = %d", response.Code)
+	}
+	if claudecode.DefaultAgent(o.dir) != "mabari" {
+		t.Fatal("the default agent was not set")
+	}
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d %s", response.Code, response.Body)
+	}
+	wiped, _ := os.ReadFile(path)
+	if strings.Contains(string(wiped), `"agent"`) || claudecode.DefaultAgent(o.dir) != "" {
+		t.Errorf("a wipe left the default agent in settings.json:\n%s", wiped)
+	}
+	if string(wiped) != string(original) {
+		t.Errorf("a wipe did not give back the user's file:\n%s", wiped)
+	}
+	if backup, err := os.ReadFile(path + claudecode.BackupSuffix); err != nil || string(backup) != string(original) {
+		t.Errorf("the backup is %q, %v", backup, err)
+	}
+}
+
+// The default agent alone, with no hooks attached, still goes with a wipe, after a backup of what
+// was there, and nothing else in the file changes.
+func TestWipeTakesOutMabarisDefaultAgentWithoutHooks(t *testing.T) {
+	o := newClaudeOffice(t)
+	path := filepath.Join(o.dir, "settings.json")
+	with := "{\n  \"agent\": \"mabari\",\n  \"model\": \"claude-opus-4-1\"\n}\n"
+	if err := os.WriteFile(path, []byte(with), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d %s", response.Code, response.Body)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "{\n  \"model\": \"claude-opus-4-1\"\n}\n" {
+		t.Errorf("after the wipe:\n%s", got)
+	}
+	if backup, err := os.ReadFile(path + claudecode.BackupSuffix); err != nil || string(backup) != with {
+		t.Errorf("the backup is %q, %v", backup, err)
+	}
+}
+
+// A default agent someone else chose is never touched by a wipe, with the hooks attached or not.
+func TestWipeLeavesAnotherDefaultAgent(t *testing.T) {
+	for _, attach := range []bool{false, true} {
+		o := newClaudeOffice(t)
+		path := filepath.Join(o.dir, "settings.json")
+		if err := os.WriteFile(path, []byte(`{"agent": "reviewer"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if attach {
+			o.do(t, http.MethodPost, "/api/accounts/claude/connect", `{"confirm":true}`)
+		}
+		if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+			t.Fatalf("wipe = %d %s", response.Code, response.Body)
+		}
+		if got := claudecode.DefaultAgent(o.dir); got != "reviewer" {
+			t.Errorf("attached %v: default agent = %q after a wipe", attach, got)
+		}
+		if claudecode.Attached(o.dir) {
+			t.Errorf("attached %v: hooks left behind", attach)
+		}
+	}
+}
+
+// Settings that aren't valid JSON are never rewritten by a wipe, and the wipe still goes ahead.
+func TestWipeLeavesUnreadableSettingsAlone(t *testing.T) {
+	o := newClaudeOffice(t)
+	path := filepath.Join(o.dir, "settings.json")
+	broken := `{"agent": "mabari", `
+	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d %s", response.Code, response.Body)
+	}
+	if got, _ := os.ReadFile(path); string(got) != broken {
+		t.Errorf("the file changed:\n%s", got)
+	}
+}
+
 func TestConnectNeedsABuiltBinary(t *testing.T) {
 	o := newClaudeOffice(t)
 	handler := New(Options{Engine: o.engine, Simulator: o.simulator, Claude: &ClaudeOptions{

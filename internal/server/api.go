@@ -113,9 +113,9 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "wiping needs confirm: true")
 		return
 	}
-	// A wipe also takes Mabari's hooks out of Claude Code's settings.
-	if a.claude != nil && a.claudeAttached() {
-		if err := a.detachClaude(); err != nil {
+	// A wipe also takes Mabari's hooks, and its default agent line, out of Claude Code's settings.
+	if a.claude != nil {
+		if err := a.wipeClaudeSettings(); err != nil {
 			internalError(w, err)
 			return
 		}

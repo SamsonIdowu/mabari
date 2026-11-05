@@ -27,6 +27,8 @@ export const LOCK_HOLD_MS = 2000;
 export const SWIPE_LOCK_PX = 60;
 /** A press shorter than this is a tap, which only shows how the mic works. */
 export const TAP_MS = 350;
+/** A locked mic gives up after this long, sending nothing, so it is never left listening. */
+export const LOCKED_MAX_MS = 2 * 60 * 1000;
 /** The Type field grows with what is typed, up to this many pixels. */
 const BOX_MAX_PX = 120;
 
@@ -58,6 +60,7 @@ function useHomeMic() {
   const active = useRef(false);
   const locked = useRef(false);
   const press = useRef<{ at: number; y: number; timer: number } | null>(null);
+  const limit = useRef(0);
   const update = (patch: Partial<Mic>) => setMic((current) => ({ ...current, ...patch }));
 
   const finish = useRef(() => {});
@@ -65,6 +68,7 @@ function useHomeMic() {
   useEffect(() => {
     finish.current = () => {
       if (!active.current) return;
+      window.clearTimeout(limit.current);
       active.current = false;
       locked.current = false;
       listener.current = null;
@@ -116,6 +120,7 @@ function useHomeMic() {
   const cancel = () => {
     if (press.current) window.clearTimeout(press.current.timer);
     press.current = null;
+    window.clearTimeout(limit.current);
     if (!active.current) return;
     active.current = false;
     locked.current = false;
@@ -130,6 +135,12 @@ function useHomeMic() {
     if (!active.current || locked.current) return;
     locked.current = true;
     if (press.current) window.clearTimeout(press.current.timer);
+    window.clearTimeout(limit.current);
+    limit.current = window.setTimeout(() => {
+      if (!locked.current) return;
+      cancel();
+      toast('The mic turned off after 2 minutes. Nothing was sent.');
+    }, LOCKED_MAX_MS);
     update({ locked: true, pressing: false });
   };
 
@@ -213,6 +224,7 @@ function useHomeMic() {
   useEffect(
     () => () => {
       if (press.current) window.clearTimeout(press.current.timer);
+      window.clearTimeout(limit.current);
       active.current = false;
       listener.current?.abort();
       useVee.getState().setListening(false);

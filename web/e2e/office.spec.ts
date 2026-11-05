@@ -51,10 +51,11 @@ for (const [width, height] of [
     await page.setViewportSize({ width, height });
     await loadDemo(page);
     const stage = (await page.locator('.stage').boundingBox())!;
-    const head = (await page.locator('.ohead').boundingBox())!;
+    // The demo's banner sits between the header and the office.
+    const above = (await page.locator('#demoBanner').locator('..').boundingBox())!;
     const main = (await page.locator('main').boundingBox())!;
-    // The office sits right under the header and runs to the bottom: no bar under it.
-    expect(stage.y).toBeCloseTo(head.y + head.height, 0);
+    // The office sits right under them and runs to the bottom: no bar under it.
+    expect(stage.y).toBeCloseTo(above.y + above.height, 0);
     expect(stage.x).toBe(main.x);
     expect(stage.x + stage.width).toBe(main.x + main.width);
     expect(stage.y + stage.height).toBeCloseTo(height, 0);

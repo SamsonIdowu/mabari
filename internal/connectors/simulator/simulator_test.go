@@ -40,7 +40,10 @@ func setup(t *testing.T, path string, seed uint32) (*Simulator, *events.Engine, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(engine, Mulberry32(seed), 0), engine, c, s
+	sim := New(engine, Mulberry32(seed), 0)
+	// Long enough for the golden test; TestTheDemoTurnsItselfOff checks the real length's effect.
+	sim.SetDemoLength(24 * time.Hour)
+	return sim, engine, c, s
 }
 
 func advance(t *testing.T, sim *Simulator, c *clock, ticks int) {
@@ -352,22 +355,78 @@ func restartedDemo(t *testing.T, change func(*Simulator, *events.Engine)) (*Simu
 	return resumed, restarted, c
 }
 
-func TestIdleAgentsGoBackToWorkAfterARestart(t *testing.T) {
-	sim, engine, c := restartedDemo(t, nil)
-	var idle []string
-	for _, agent := range engine.Snapshot().Agents {
-		if agent.State == models.StateIdle {
-			idle = append(idle, agent.ID)
+// The demo never outlives Mabari: a restart ends it, takes the simulated agents and the fake
+// connections away, and keeps every real agent.
+func TestARestartEndsTheDemo(t *testing.T) {
+	_, engine, _ := restartedDemo(t, func(_ *Simulator, engine *events.Engine) {
+		mine := &models.LiveAgent{}
+		mine.Name, mine.Source, mine.Provider = "Juniper", "claude", models.ProviderClaude
+		mine.State, mine.Desk = models.StateEditing, 20
+		engine.AddAgent(mine)
+	})
+	snapshot := engine.Snapshot()
+	if snapshot.Demo || snapshot.DemoEndsAt != 0 {
+		t.Errorf("demo = %v, ends %d", snapshot.Demo, snapshot.DemoEndsAt)
+	}
+	if len(snapshot.Agents) != 1 || snapshot.Agents[0].Name != "Juniper" {
+		t.Fatalf("agents = %+v", snapshot.Agents)
+	}
+	if len(snapshot.Projects) != 0 {
+		t.Errorf("demo projects stayed: %+v", snapshot.Projects)
+	}
+	for _, account := range snapshot.Accounts {
+		if account.Status != models.AccountOff {
+			t.Errorf("%s is still %s after the demo", account.Kind, account.Status)
 		}
 	}
-	if len(idle) == 0 {
-		t.Fatal("the demo has no idle agent to check")
+	if active, _ := engine.Store().Meta(context.Background(), store.MetaDemo); active != "0" {
+		t.Errorf("demo flag = %q", active)
 	}
-	advance(t, sim, c, 60)
-	for _, agent := range engine.Snapshot().Agents {
-		if slices.Contains(idle, agent.ID) && agent.State == models.StateIdle {
-			t.Errorf("%s is still idle a minute after the restart", agent.Name)
-		}
+}
+
+// The demo turns itself off after its time, and stopping it keeps real agents and projects.
+func TestTheDemoTurnsItselfOff(t *testing.T) {
+	sim, engine, c, _ := setup(t, ":memory:", 1)
+	sim.SetDemoLength(10 * time.Second)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	if ends := engine.Snapshot().DemoEndsAt; ends != c.ms+10_000 {
+		t.Errorf("ends at %d, want %d", ends, c.ms+10_000)
+	}
+	_ = engine.Do(func() {
+		// A real agent placed in one of the demo's projects stays, and moves out of it.
+		checkout := "checkout"
+		placed := &models.LiveAgent{}
+		placed.Name, placed.Source, placed.Project, placed.Desk = "Hazel", "hub", &checkout, 21
+		engine.AddAgent(placed)
+		// A project made while the demo ran, with only simulated agents, is the demo's too.
+		engine.SaveProject(models.Project{ID: "made-in-demo", Name: "Made in the demo"})
+		// A real agent, and the real project it works in, stay.
+		work := engine.SaveProject(models.Project{ID: "mine", Name: "My real work"})
+		mine := &models.LiveAgent{}
+		mine.Name, mine.Source, mine.Provider = "Juniper", "codex", models.ProviderOpenAI
+		mine.State, mine.Desk, mine.Project = models.StateEditing, 20, &work.ID
+		engine.AddAgent(mine)
+	})
+	advance(t, sim, c, 12)
+	snapshot := engine.Snapshot()
+	if snapshot.Demo || len(snapshot.Agents) != 2 || snapshot.Agents[1].Name != "Juniper" {
+		t.Fatalf("demo = %v, agents = %+v", snapshot.Demo, snapshot.Agents)
+	}
+	if hazel := snapshot.Agents[0]; hazel.Project != nil {
+		t.Errorf("Hazel is still in %v", *hazel.Project)
+	}
+	if len(snapshot.Projects) != 1 || snapshot.Projects[0].ID != "mine" {
+		t.Errorf("projects = %+v", snapshot.Projects)
+	}
+	if snapshot.Log[0].Message != "The demo office turned itself off" {
+		t.Errorf("log = %+v", snapshot.Log[0])
+	}
+	// Nothing simulated keeps running once the demo is off.
+	advance(t, sim, c, 30)
+	if after := engine.Snapshot(); len(after.Agents) != 2 || after.Agents[1].State != models.StateEditing {
+		t.Errorf("after: %+v", after.Agents)
 	}
 }
 
@@ -382,31 +441,6 @@ func TestStoppedAgentLeavesAfterARestart(t *testing.T) {
 	}
 }
 
-func TestNewAgentsGetAFreshColourAfterARestart(t *testing.T) {
-	sim, engine, _ := restartedDemo(t, nil)
-	used := map[string]bool{}
-	for _, agent := range engine.Snapshot().Agents {
-		used[agent.Hue] = true
-	}
-	var hue string
-	if err := engine.Do(func() {
-		agent, err := sim.CreateAgent(NewAgent{Name: "Fresh", Account: models.AccountClaudeCode,
-			Model: sim.Models()[0], Task: "Tidy the notes"})
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		hue = agent.Hue
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(used) < len(hues) && used[hue] {
-		t.Errorf("the new agent reused %s", hue)
-	}
-}
-
-// Retention follows the setting: data just inside the window stays, and stored events, log rows
-// and the feeds in memory all lose what is older.
 func TestRetentionKeepsOnlyRecentData(t *testing.T) {
 	ctx := context.Background()
 	for _, days := range []int{7, 30, 90, 365} {
@@ -581,10 +615,13 @@ func pendingFor(t *testing.T, engine *events.Engine, agentID string) []models.Ap
 	return mine
 }
 
-// An agent waits on one approval at a time. A stop, or a second request, settles the earlier one,
-// and a restart restores the newest.
+// An agent waits on one approval at a time. A stop, or a second request, settles the earlier one.
 func TestNoApprovalIsLeftBehind(t *testing.T) {
-	sim, engine, _ := restartedDemo(t, func(_ *Simulator, engine *events.Engine) {
+	sim, engine, _, _ := setup(t, ":memory:", 1)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	_ = engine.Do(func() {
 		atlas := engine.AgentByName("Atlas")
 		engine.RequestApproval(atlas, models.Approval{Type: models.ApprovalCommand,
 			Title: "Run a command", Detail: models.ApprovalDetail{Cmd: "npm test"}})

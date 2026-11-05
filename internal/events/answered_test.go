@@ -4,6 +4,7 @@ package events
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -76,5 +77,29 @@ func TestAnAgentKeepsItsLatestRequestsAndLongRepliesAreCut(t *testing.T) {
 	if !strings.HasSuffix(reply, "(The rest is in the agent's own session.)") ||
 		!strings.HasPrefix(reply, strings.Repeat("é", models.ReplyLimit)) {
 		t.Errorf("reply was not cut cleanly: %d runes", len([]rune(reply)))
+	}
+}
+
+// The empty "My first project" earlier versions made goes away on start, unless it was used.
+func TestThePlaceholderProjectIsDropped(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mabari.db")
+	ctx := context.Background()
+	for _, used := range []bool{false, true} {
+		s, err := store.Open(ctx, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = s.SaveProject(ctx, models.Project{ID: "general", Name: "My first project", Files: []string{}})
+		if used {
+			_ = s.SaveProject(ctx, models.Project{ID: "general", Name: "My first project", Instructions: "Mine now"})
+		}
+		engine, err := New(ctx, s, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(engine.Snapshot().Projects); got != map[bool]int{false: 0, true: 1}[used] {
+			t.Errorf("used = %v: %d projects", used, got)
+		}
+		_ = s.Close()
 	}
 }

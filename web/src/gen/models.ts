@@ -609,6 +609,10 @@ export interface Snapshot {
    * Demo is true while the demo office runs. Only then are agents simulated.
    */
   demo: boolean;
+  /**
+   * DemoEndsAt is when the demo turns itself off, in milliseconds, or zero.
+   */
+  demoEndsAt: number /* int64 */;
   projects: Project[];
   accounts: Account[];
   agents: LiveAgent[];

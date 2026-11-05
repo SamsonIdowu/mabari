@@ -175,3 +175,40 @@ test('Chats uses the two speech bubbles icon', async ({ page }) => {
     'M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1',
   ]);
 });
+
+test('the demo can be turned off from the Agents page, leaving only real agents', async ({
+  page,
+  request,
+}) => {
+  await office(page);
+  // A real agent reporting through the hub while the demo runs.
+  const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
+    token: string;
+  };
+  const seated = await request.post(
+    `http://127.0.0.1:${process.env.MABARI_API_PORT ?? '4327'}/hub/v1/events`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { agent: 'real-1', name: 'Juniper', state: 'editing', task: 'Real work' },
+    },
+  );
+  expect(seated.status()).toBe(200);
+  const banner = page.locator('#demoBanner');
+  await expect(banner).toContainText('This is the demo office.');
+  await expect(banner).toContainText(/turns itself off at \d\d:\d\d/);
+  await banner.getByRole('button', { name: 'Turn off the demo' }).click();
+  await expect(page.getByText('The demo has stopped. Only real agents show now.')).toBeVisible();
+  await expect(banner).toBeHidden();
+  await expect(page.locator('.tag .nt')).toHaveCount(1);
+  await expect(page.locator('.tag .nt')).toContainText('Juniper');
+  // The demo's projects go too.
+  await expect(page.locator('#wallBar .pwin', { hasText: 'Checkout revamp' })).toHaveCount(0);
+  await page.goto('/#projects');
+  await expect(page.locator('main')).not.toContainText('Checkout revamp');
+  await expect(page.locator('main')).not.toContainText('Docs site');
+  await page.goto('/#office');
+  await page.reload();
+  await expect(page.locator('.tag .nt')).toHaveCount(1);
+  const snapshot = (await (await request.get('/api/snapshot')).json()) as { demo: boolean };
+  expect(snapshot.demo).toBe(false);
+});

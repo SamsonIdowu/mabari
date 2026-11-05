@@ -385,13 +385,15 @@ type Snapshot struct {
 	Seq      uint64 `json:"seq"`
 	FirstRun bool   `json:"firstRun"`
 	// Demo is true while the demo office runs. Only then are agents simulated.
-	Demo     bool        `json:"demo"`
-	Projects []Project   `json:"projects"`
-	Accounts []Account   `json:"accounts"`
-	Agents   []LiveAgent `json:"agents"`
-	Messages []Message   `json:"messages"`
-	Log      []LogEntry  `json:"log"`
-	Settings Settings    `json:"settings"`
+	Demo bool `json:"demo"`
+	// DemoEndsAt is when the demo turns itself off, in milliseconds, or zero.
+	DemoEndsAt int64       `json:"demoEndsAt"`
+	Projects   []Project   `json:"projects"`
+	Accounts   []Account   `json:"accounts"`
+	Agents     []LiveAgent `json:"agents"`
+	Messages   []Message   `json:"messages"`
+	Log        []LogEntry  `json:"log"`
+	Settings   Settings    `json:"settings"`
 	// Defs are the agent definitions found in the agent folders on this computer.
 	Defs []AgentDef `json:"defs"`
 }

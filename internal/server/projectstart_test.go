@@ -172,7 +172,7 @@ func TestFolderChecks(t *testing.T) {
 	}
 }
 
-// Stopping the demo clears its agents, and outside the demo New agent makes no simulated ones.
+// Stopping the demo clears its agents and projects, and outside the demo New agent makes no simulated ones.
 func TestStoppingTheDemoLeavesOnlyRealAgents(t *testing.T) {
 	office := newOffice(t)
 	if !office.demo(t).Demo {
@@ -182,7 +182,7 @@ func TestStoppingTheDemoLeavesOnlyRealAgents(t *testing.T) {
 		t.Fatalf("stop = %d", response.Code)
 	}
 	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
-	if snapshot.Demo || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 1 {
+	if snapshot.Demo || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 0 {
 		t.Fatalf("after stop: demo=%v agents=%d projects=%d", snapshot.Demo, len(snapshot.Agents), len(snapshot.Projects))
 	}
 	_ = office.engine.Do(func() {

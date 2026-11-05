@@ -62,6 +62,7 @@ type Engine struct {
 	settings   models.Settings
 	firstRun   bool
 	demo       bool
+	demoEndsAt int64
 	messages   []models.Message
 	log        []models.LogEntry
 	dirty      map[string]struct{}
@@ -132,9 +133,6 @@ func (e *Engine) load(ctx context.Context) error {
 	for index := range projects {
 		e.projects = append(e.projects, &projects[index])
 	}
-	if len(e.projects) == 0 {
-		e.SaveProject(models.FirstProject())
-	}
 
 	if e.messages, err = e.store.Messages(ctx, messageLimit); err != nil {
 		return err
@@ -145,8 +143,33 @@ func (e *Engine) load(ctx context.Context) error {
 	if err := e.loadEventNumbers(ctx); err != nil {
 		return err
 	}
-	return e.loadAgents(ctx)
+	if err := e.loadAgents(ctx); err != nil {
+		return err
+	}
+	e.dropPlaceholder()
+	return nil
 }
+
+// dropPlaceholder removes the empty "My first project" earlier versions made on a fresh install
+// and after a wipe, as long as nobody has used it. Projects are only ever ones people made.
+func (e *Engine) dropPlaceholder() {
+	for _, project := range e.projects {
+		if project.ID != placeholderID || project.Name != "My first project" || project.Repository != nil ||
+			project.Instructions != "" || len(project.Files) > 0 {
+			continue
+		}
+		for _, agent := range e.agents {
+			if agent.Project != nil && *agent.Project == placeholderID {
+				return
+			}
+		}
+		e.RemoveProject(placeholderID)
+		return
+	}
+}
+
+// placeholderID is the id of the empty project earlier versions made.
+const placeholderID = "general"
 
 func (e *Engine) loadEventNumbers(ctx context.Context) error {
 	ids, err := e.store.EventIDs(ctx)
@@ -728,7 +751,10 @@ func (e *Engine) SetFirstRun(firstRun bool) {
 	e.record(e.store.SetMeta(context.Background(), store.MetaFirstRun, value))
 }
 
-// SetMeta stores a connector's own value. Call inside Do.
+// SetDemoEnds says when the demo turns itself off, or zero. Call inside Do.
+func (e *Engine) SetDemoEnds(at int64) { e.demoEndsAt = at }
+
+// SetMeta stores a connector's own value, which outlives a restart. Call inside Do.
 func (e *Engine) SetMeta(key, value string) {
 	e.record(e.store.SetMeta(context.Background(), key, value))
 	if key == store.MetaDemo {
@@ -846,8 +872,8 @@ func (e *Engine) ClearOffice() {
 	e.accounts = accounts
 }
 
-// Wipe removes everything Mabari stores and returns to first run, with one empty project as on a
-// fresh install. Preferences stay, as in the prototype, except auto approve, which is turned off so
+// Wipe removes everything Mabari stores and returns to first run, with no projects, as on a fresh
+// install. Preferences stay, as in the prototype, except auto approve, which is turned off so
 // nothing is approved without a click after a wipe, and LAN access, so the network is closed until
 // someone opens it again. Asking for the key on a shared computer stays on. Restoring settings backups joins this in
 // Stage 7. Call inside Do.
@@ -862,7 +888,6 @@ func (e *Engine) Wipe() {
 	e.resetMemory()
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
-	e.SaveProject(models.FirstProject())
 	e.firstRun, e.demo = true, false
 	e.Reset()
 }
@@ -964,17 +989,18 @@ func (e *Engine) Snapshot() models.Snapshot {
 		projects = append(projects, *project)
 	}
 	return models.Snapshot{
-		BootID:   e.bootID,
-		Seq:      e.seq,
-		FirstRun: e.firstRun,
-		Demo:     e.demo,
-		Projects: projects,
-		Accounts: e.accountList(),
-		Agents:   agents,
-		Messages: append([]models.Message{}, e.messages...),
-		Log:      append([]models.LogEntry{}, e.log...),
-		Settings: e.settings.Clone(),
-		Defs:     append([]models.AgentDef{}, e.defs...),
+		BootID:     e.bootID,
+		Seq:        e.seq,
+		FirstRun:   e.firstRun,
+		Demo:       e.demo,
+		DemoEndsAt: e.demoEndsAt,
+		Projects:   projects,
+		Accounts:   e.accountList(),
+		Agents:     agents,
+		Messages:   append([]models.Message{}, e.messages...),
+		Log:        append([]models.LogEntry{}, e.log...),
+		Settings:   e.settings.Clone(),
+		Defs:       append([]models.AgentDef{}, e.defs...),
 	}
 }
 

@@ -16,7 +16,7 @@ import {
 import type { LiveAgent, Project } from '../gen/models.ts';
 import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
-import { LATER, PageHead } from './parts.tsx';
+import { PageHead } from './parts.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 
@@ -360,7 +360,12 @@ export function Projects() {
           title="Projects"
           description="Agents grouped by the work they do. A green tick means the project is completed. Open a project to see only its agents on the floor."
         >
-          <button type="button" className="btn primary" disabled title={LATER}>
+          <button
+            type="button"
+            className="btn primary"
+            title="Describe a project and let the planner pick a team"
+            onClick={() => useOfficeUi.getState().set({ newProject: true })}
+          >
             <Icon>
               <path d="M12 5v14M5 12h14" />
             </Icon>
@@ -383,7 +388,24 @@ export function Projects() {
             ))}
           </div>
         </div>
-        {filter !== 'all' && shown.length === 0 ? (
+        {projects.length === 0 ? (
+          <div className="card" id="noProjects" style={{ textAlign: 'center', padding: 48 }}>
+            <h2>No projects yet</h2>
+            <p className="help">
+              Describe what you want built and the planner proposes a team. Attach a folder or a Git
+              URL if you have one, or start from scratch.
+            </p>
+            <p>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => useOfficeUi.getState().set({ newProject: true })}
+              >
+                Start a new project
+              </button>
+            </p>
+          </div>
+        ) : filter !== 'all' && shown.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: 48 }}>
             <h2>No completed projects yet</h2>
             <p className="help">

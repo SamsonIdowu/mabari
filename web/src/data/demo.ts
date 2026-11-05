@@ -6,5 +6,9 @@ import { useOfficeStore } from './officeStore.ts';
 export async function exploreDemo() {
   await api.loadDemo();
   window.location.hash = '#office';
-  useOfficeStore.getState().toast('Demo office loaded. Every agent state is on the floor.');
+  useOfficeStore
+    .getState()
+    .toast(
+      'Demo office loaded. Every agent state is on the floor. It turns itself off in 10 minutes.',
+    );
 }

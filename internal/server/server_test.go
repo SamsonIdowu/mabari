@@ -207,9 +207,9 @@ func TestProjectRoutes(t *testing.T) {
 	if updated.Instructions != "Be kind" || updated.Name != "Docs" {
 		t.Errorf("updated = %+v", updated)
 	}
-	// A fresh install starts with My first project.
-	if listed := decode[[]models.Project](t, office.do(t, http.MethodGet, "/api/projects", "")); len(listed) != 2 ||
-		listed[0].Name != "My first project" {
+	// A fresh install has no projects: only the ones people make.
+	if listed := decode[[]models.Project](t, office.do(t, http.MethodGet, "/api/projects", "")); len(listed) != 1 ||
+		listed[0].Name != "Docs" {
 		t.Errorf("listed = %+v", listed)
 	}
 	if response := office.do(t, http.MethodDelete, path, ""); response.Code != http.StatusNoContent {
@@ -539,8 +539,8 @@ func TestWipeNeedsConfirmationAndReturnsToFirstRun(t *testing.T) {
 		t.Fatalf("wipe = %d", response.Code)
 	}
 	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
-	if !snapshot.FirstRun || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 1 ||
-		snapshot.Projects[0].ID != "general" || len(snapshot.Log) != 0 || len(snapshot.Messages) != 0 {
+	if !snapshot.FirstRun || len(snapshot.Agents) != 0 || len(snapshot.Projects) != 0 ||
+		len(snapshot.Log) != 0 || len(snapshot.Messages) != 0 {
 		t.Errorf("after wipe: %+v", snapshot)
 	}
 	// Preferences stay, as in the prototype, but auto approve is off.

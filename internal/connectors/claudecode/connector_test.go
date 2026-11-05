@@ -70,7 +70,7 @@ func TestASessionTakesADesk(t *testing.T) {
 	}
 	if agent.Provider != models.ProviderClaude || agent.Model != "claude-sonnet-4-5" ||
 		agent.Folder != "/home/me/shop" || agent.Desk != 0 || agent.Name != "Juniper" ||
-		agent.Project == nil || *agent.Project != "general" {
+		agent.Project != nil {
 		t.Errorf("agent = %+v", agent.Agent)
 	}
 	for _, account := range engine.Accounts() {

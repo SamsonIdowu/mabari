@@ -126,10 +126,7 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   await collapse.click();
   await expect.poll(width).toBe(58);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
-  await expect(rail.getByRole('link', { name: 'Library' })).toHaveAttribute(
-    'title',
-    /^Library/,
-  );
+  await expect(rail.getByRole('link', { name: 'Library' })).toHaveAttribute('title', /^Library/);
   await expect(rail.getByRole('link', { name: 'Projects' })).toHaveAttribute('title', 'Projects');
 
   await page.reload();

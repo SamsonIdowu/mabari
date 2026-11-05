@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
-import { minsText } from '../format.ts';
+import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
@@ -125,9 +125,7 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
           title="Clear the demo agents. Only real agents from your connections stay."
           onClick={() => {
             close();
-            void api
-              .stopDemo()
-              .then(() => useOfficeStore.getState().toast('The demo has stopped.'));
+            stopDemo();
           }}
         >
           <Icon>
@@ -355,6 +353,41 @@ function TeamBanner({ lead, agents }: { lead: LiveAgent; agents: LiveAgent[] }) 
         </span>
         <button type="button" className="btn sm" onClick={() => set({ team: null })}>
           Back to the full floor
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Stops the demo, so the office shows only agents from real connections. */
+function stopDemo() {
+  void api
+    .stopDemo()
+    .then(() => useOfficeStore.getState().toast('The demo has stopped. Only real agents show now.'))
+    .catch((error: unknown) =>
+      useOfficeStore.getState().toast(error instanceof Error ? error.message : 'Try again'),
+    );
+}
+
+/** While the demo runs, says so and offers to turn it off. It also turns itself off in time. */
+function DemoBanner({ office }: { office: Snapshot }) {
+  if (!office.demo) return null;
+  return (
+    <div style={{ padding: '0 20px' }}>
+      <div className="banner" id="demoBanner" style={{ marginTop: 12 }}>
+        <Icon>
+          <path d="M12 8v5M12 16h.01" />
+          <circle cx="12" cy="12" r="9" />
+        </Icon>
+        <span className="grow">
+          <b>This is the demo office.</b> These agents are simulated
+          {office.demoEndsAt
+            ? `, and the demo turns itself off at ${clockText(office.demoEndsAt)}`
+            : ''}
+          . Your real agents stay on the floor when it ends.
+        </span>
+        <button type="button" className="btn sm" onClick={stopDemo}>
+          Turn off the demo
         </button>
       </div>
     </div>
@@ -878,6 +911,7 @@ export function Office() {
         <div className="ocol">
           <OfficeHead office={office} scoped={scoped} />
           {lead ? <TeamBanner lead={lead} agents={office.agents} /> : null}
+          <DemoBanner office={office} />
           <AutoBanner office={office} />
           <AccountBanners office={office} />
           <Stage office={office} />

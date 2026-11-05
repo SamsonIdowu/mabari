@@ -264,11 +264,19 @@ test('All projects opens the whole office, even after a project was opened', asy
   await expect(page.locator('.dd').first()).toContainText('All projects');
 });
 
-test('a fresh install starts with My first project', async ({ page }) => {
+test('a fresh install has no projects, and a new one can be started from scratch', async ({
+  page,
+}) => {
   await page.goto('/#projects');
-  await expect(page.locator('article', { hasText: 'My first project' })).toContainText(
-    'No agents yet. Start one and choose this project.',
-  );
+  await expect(page.locator('main')).not.toContainText('My first project');
+  const empty = page.locator('#noProjects');
+  await expect(empty).toContainText('No projects yet');
+  await empty.getByRole('button', { name: 'Start a new project' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New project' });
+  await expect(dialog).toContainText('What should the team work on?');
+  await page.keyboard.press('Escape');
+  await page.locator('.phead').getByRole('button', { name: 'New project' }).click();
+  await expect(dialog).toBeVisible();
 });
 
 test('the status screens point to the builder and show Mori on the floor', async ({ page }) => {

@@ -78,6 +78,9 @@ type Scan struct {
 	// Instructions is the folder's CLAUDE.md or AGENTS.md, shortened, if it has one.
 	Instructions     string `json:"instructions"`
 	InstructionsFrom string `json:"instructionsFrom"`
+	// Agents are the agent files in the folder's .claude/agents, by name. Mabari loads them with
+	// the project once it starts.
+	Agents []string `json:"agents"`
 }
 
 // scanLimit stops counting in very large folders.
@@ -103,7 +106,14 @@ func Look(path string) (Scan, error) {
 	if !info.IsDir() {
 		return Scan{}, errors.New(path + " is a file, not a folder")
 	}
-	scan := Scan{Root: filepath.Base(path), Path: path, Markers: []string{}}
+	scan := Scan{Root: filepath.Base(path), Path: path, Markers: []string{}, Agents: []string{}}
+	if entries, err := os.ReadDir(filepath.Join(path, ".claude", "agents")); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+				scan.Agents = append(scan.Agents, strings.TrimSuffix(entry.Name(), ".md"))
+			}
+		}
+	}
 	for _, name := range markerNames {
 		if _, err := os.Stat(filepath.Join(path, name)); err == nil {
 			scan.Markers = append(scan.Markers, name)

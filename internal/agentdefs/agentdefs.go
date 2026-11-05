@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -123,6 +124,8 @@ type Library struct {
 	files map[string]string
 	// seen is what the folders looked like at the last scan, to notice changes.
 	seen string
+	// counts are how many agents each project's folder had at the last scan.
+	counts map[string]int
 }
 
 // New makes a library.
@@ -154,7 +157,16 @@ func (l *Library) projectFolder(id string) (string, bool) {
 	return "", false
 }
 
-func agentsDir(folder string) string { return filepath.Join(folder, ".claude", "agents") }
+// agentsDir is a project's agent folder. Projects keep paths the way people type them, so a
+// leading ~ is the home folder.
+func agentsDir(folder string) string {
+	if folder == "~" || strings.HasPrefix(folder, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			folder = filepath.Join(home, strings.TrimPrefix(folder, "~"))
+		}
+	}
+	return filepath.Join(folder, ".claude", "agents")
+}
 
 func (l *Library) shown(path string) string {
 	if l.folders.Home != "" {
@@ -246,6 +258,7 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 	})
 	l.files = files
 	l.seen = l.signature()
+	l.counts = maps.Clone(report.Projects)
 	return defs, report, nil
 }
 
@@ -747,7 +760,8 @@ func (l *Library) Refresh(office Office) (Report, error) {
 	return report, err
 }
 
-// Keep refreshes whenever a file changes or a project gains a folder, until ctx ends.
+// Keep refreshes whenever a file changes or a project gains a folder, until ctx ends. When a
+// project's repository brings agents with it, the office hears about it.
 func (l *Library) Keep(ctx context.Context, office Office, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -757,11 +771,50 @@ func (l *Library) Keep(ctx context.Context, office Office, every time.Duration) 
 			return
 		case <-ticker.C:
 			l.SetProjects(foldersOf(office))
-			if l.Changed() {
-				if _, err := l.Refresh(office); err != nil {
-					slog.Warn("could not read the agent folders", "error", err)
+			if !l.Changed() {
+				continue
+			}
+			l.mu.Lock()
+			before := maps.Clone(l.counts)
+			l.mu.Unlock()
+			report, err := l.Refresh(office)
+			if err != nil {
+				slog.Warn("could not read the agent folders", "error", err)
+				continue
+			}
+			l.announce(office, before, report)
+		}
+	}
+}
+
+// Announcer is an office that can say things in a toast.
+type Announcer interface {
+	Toast(text string)
+}
+
+// announce says when a project's repository brought agents the office didn't have before.
+func (l *Library) announce(office Office, before map[string]int, report Report) {
+	for id, count := range report.Projects {
+		if count <= before[id] {
+			continue
+		}
+		toaster, ok := office.(Announcer)
+		if !ok {
+			continue
+		}
+		_ = office.Do(func() {
+			name := id
+			for _, project := range office.Projects() {
+				if project.ID == id {
+					name = project.Name
 				}
 			}
-		}
+			added := count - before[id]
+			noun := "agents"
+			if added == 1 {
+				noun = "agent"
+			}
+			toaster.Toast("Loaded " + strconv.Itoa(added) + " " + noun + " from " + name + "'s repository. They're in the agent builder.")
+		})
 	}
 }

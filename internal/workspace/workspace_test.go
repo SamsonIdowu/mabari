@@ -126,3 +126,23 @@ func TestRecentFolders(t *testing.T) {
 		t.Errorf("%d kept", len(recent))
 	}
 }
+
+func TestLookListsTheFoldersAgents(t *testing.T) {
+	dir := t.TempDir()
+	agents := filepath.Join(dir, ".claude", "agents")
+	if err := os.MkdirAll(agents, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"billing.md", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(agents, name), []byte("---\nname: x\n---\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scan, err := Look(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scan.Agents) != 1 || scan.Agents[0] != "billing" {
+		t.Errorf("agents = %v", scan.Agents)
+	}
+}

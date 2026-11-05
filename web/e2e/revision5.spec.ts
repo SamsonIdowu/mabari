@@ -212,3 +212,22 @@ test('the demo can be turned off from the Agents page, leaving only real agents'
   const snapshot = (await (await request.get('/api/snapshot')).json()) as { demo: boolean };
   expect(snapshot.demo).toBe(false);
 });
+
+test('a repository attached to a new project shows the agents it brings', async ({ page }) => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const repo = mkdtempSync(join(tmpdir(), 'mabari-repo-'));
+  mkdirSync(join(repo, '.claude', 'agents'), { recursive: true });
+  writeFileSync(
+    join(repo, '.claude', 'agents', 'billing-expert.md'),
+    '---\nname: billing-expert\ndescription: Use for invoices\ntools: Read\n---\nMoney in cents.\n',
+  );
+  await page.goto('/#projects');
+  await page.locator('.phead').getByRole('button', { name: 'New project' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New project' });
+  await dialog.locator('#bRepoSrc').fill(repo);
+  await dialog.getByRole('button', { name: 'Attach', exact: true }).click();
+  await expect(dialog.locator('#bRepoAgents')).toContainText('1 agent in .claude/agents');
+  await expect(dialog.locator('#bRepoAgents')).toContainText('billing-expert');
+});

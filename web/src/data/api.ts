@@ -213,6 +213,8 @@ export interface FolderScan {
   tests: string;
   instructions: string;
   instructionsFrom: string;
+  /** The agent files in the folder's .claude/agents, by name. */
+  agents: string[] | null;
 }
 
 export interface FolderCheck {

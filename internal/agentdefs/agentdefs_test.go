@@ -3,12 +3,16 @@
 package agentdefs
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 func folders(t *testing.T) Folders {
@@ -318,5 +322,59 @@ func TestEditingKeepsOtherFields(t *testing.T) {
 	data, _ = os.ReadFile(filepath.Join(folder, ".claude", "agents", "backend.md"))
 	if strings.Contains(string(data), "permissionMode") || saved.ID != "project:shop:backend" {
 		t.Errorf("moved file kept hidden fields:\n%s", data)
+	}
+}
+
+// A project's repository brings its own agents: once the project has the folder, they load, and
+// a folder written with ~ is found in the home folder.
+func TestARepositorysAgentsLoadWithItsProject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := filepath.Join(home, "code", "shop", ".claude", "agents")
+	if err := os.MkdirAll(repo, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "billing.md"), []byte("---\nname: billing\ndescription: Use for invoices\ntools: Read\n---\nMoney in cents.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	engine, err := events.New(ctx, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	library := New(Folders{Account: filepath.Join(home, ".claude", "agents"), State: filepath.Join(home, ".mabari", "state.json"), Home: home})
+	if _, err := library.Refresh(engine); err != nil {
+		t.Fatal(err)
+	}
+	sub := engine.Subscribe(events.Resume{}).Sub
+	defer engine.Unsubscribe(sub)
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "shop", Name: "Shop", Repository: &models.Repository{Path: "~/code/shop"}})
+	})
+	run, stop := context.WithCancel(ctx)
+	defer stop()
+	go library.Keep(run, engine, 20*time.Millisecond)
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case message := <-sub.C:
+			if message.Type == models.MsgToast {
+				if message.Text != "Loaded 1 agent from Shop's repository. They're in the agent builder." {
+					t.Errorf("toast = %q", message.Text)
+				}
+				defs := engine.Snapshot().Defs
+				if len(defs) != 2 || defs[1].ID != "project:shop:billing" || defs[1].Path != "~/code/shop/.claude/agents/billing.md" {
+					t.Errorf("defs = %+v", defs)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("the repository's agents never loaded")
+		}
 	}
 }

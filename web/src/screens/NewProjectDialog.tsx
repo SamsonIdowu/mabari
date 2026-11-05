@@ -757,6 +757,16 @@ function Brief() {
                           : ''}
                       </span>
                     ) : null}
+                    {repo.check.scan?.agents?.length ? (
+                      <span className="help" id="bRepoAgents">
+                        <b>
+                          {repo.check.scan.agents.length} agent
+                          {repo.check.scan.agents.length === 1 ? '' : 's'} in .claude/agents:
+                        </b>{' '}
+                        <span className="mono">{repo.check.scan.agents.join(', ')}</span>. They load
+                        into the agent builder with this project.
+                      </span>
+                    ) : null}
                     <span className="help">
                       Working folder:{' '}
                       <span className="mono">

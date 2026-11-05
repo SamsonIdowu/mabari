@@ -23,7 +23,8 @@ function UnreadBadge() {
   return unread ? <span className="badge">{unread > 9 ? '9+' : unread}</span> : null;
 }
 
-function LiveBadge() {
+/** True for a few seconds after agents last talked, for the Chats link's "live" badge. */
+function useLive() {
   const last = useOfficeStore((state) => state.office?.messages.at(-1)?.time ?? 0);
   const [live, setLive] = useState(false);
   useEffect(() => {
@@ -32,33 +33,33 @@ function LiveBadge() {
     const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
   }, [last]);
-  // Decorative: the link's name already says what it is, and "live" only means "just now".
-  return live ? (
-    <span className="badge amber" aria-hidden="true">
-      live
-    </span>
-  ) : null;
+  return live;
+}
+
+/** The visible label must be part of the name, for people who speak to their computer. While
+ * the "live" badge shows, the link's own text names it, so the badge is part of the name too. */
+function linkName(item: NavItem, live: boolean) {
+  if (live || !item.name) return undefined;
+  return item.name.toLowerCase().includes(item.label.toLowerCase())
+    ? item.name
+    : `${item.label}, ${item.name.toLowerCase()}`;
 }
 
 function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
   const isCurrent = item.route === current;
+  const live = useLive() && item.badge === 'live';
   return (
     <a
       className={isCurrent ? 'nav on' : 'nav'}
       href={`#${item.route}`}
       title={item.title ?? item.label}
-      // The visible label must be part of the name, for people who speak to their computer.
-      aria-label={
-        !item.name || item.name.toLowerCase().includes(item.label.toLowerCase())
-          ? item.name
-          : `${item.label}, ${item.name.toLowerCase()}`
-      }
+      aria-label={linkName(item, live)}
       aria-current={isCurrent ? 'page' : undefined}
     >
       <Icon>{item.icon}</Icon>
       <span className="lbl">{item.label}</span>
       {item.badge === 'needs' ? <NeedsBadge /> : null}
-      {item.badge === 'live' ? <LiveBadge /> : null}
+      {live ? <span className="badge amber">live</span> : null}
       {item.badge === 'unread' ? <UnreadBadge /> : null}
     </a>
   );

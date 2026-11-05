@@ -79,7 +79,7 @@ function ProjectPanels({ office }: { office: Snapshot }) {
           );
         }
         const agents = office.agents.filter((agent) => agent.projectId === project.id);
-        const working = agents.filter((agent) => agent.estimate).length;
+        const working = agents.filter((agent) => agent.working).length;
         const need = agents.filter((agent) => agent.state === 'approval').length;
         const percent = Math.round(project.progress * 100);
         const done = project.status === 'done';

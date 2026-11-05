@@ -154,7 +154,7 @@ function CompletedBody({ project }: { project: Project }) {
 }
 
 function OpenBody({ project, agents }: { project: Project; agents: LiveAgent[] }) {
-  const working = agents.filter((agent) => agent.estimate).length;
+  const working = agents.filter((agent) => agent.working).length;
   const spend = agents.reduce((total, agent) => total + agent.cost, 0);
   const waiting = agents.some((agent) => agent.state === 'approval' || agent.state === 'error');
   const { estimate } = project;

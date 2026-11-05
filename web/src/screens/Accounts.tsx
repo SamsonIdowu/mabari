@@ -680,7 +680,15 @@ function HubCard({ account }: { account: Account | undefined }) {
             href={HUB_API_GUIDE}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: 'var(--fg)', textDecoration: 'underline' }}
+            style={{
+              color: 'var(--fg)',
+              textDecoration: 'underline',
+              // A target of at least 24 by 24 px, as every control is: 28 once the page's 0.88 zoom
+              // is applied.
+              display: 'inline-block',
+              minHeight: 28,
+              lineHeight: '28px',
+            }}
           >
             hub API guide<span className="sr"> (opens on GitHub in a new tab)</span>
           </a>{' '}

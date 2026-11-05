@@ -159,6 +159,8 @@ func hasWord(text, word string) bool {
 }
 
 type view struct {
+	// scope names the project the view covers, or is empty for the whole office.
+	scope   string
 	agents  []*models.LiveAgent
 	working []*models.LiveAgent
 	need    []*models.LiveAgent
@@ -245,6 +247,8 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	if ok {
 		return office.unknown(q, in.Projects)
 	}
+	// Questions about how things stand answer for the project picked on Home, if there is one.
+	asked := office.scoped(in, now)
 	isQ, small := IsQuestion(q), short(q)
 	if small {
 		for _, gesture := range gestures {
@@ -257,14 +261,14 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	named := office.named(q)
 	switch {
 	case chat && greeting.MatchString(q):
-		return office.greet()
+		return asked.greet()
 	case chat && has(q, "thank"):
 		return office.reply("Any time. Keeping an eye on things is my favourite job.", "bow", KindPlain)
 	case isQ && has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"),
 		deciding.MatchString(q):
-		return office.needs()
+		return asked.needs()
 	case isQ && eta.MatchString(q):
-		return office.when()
+		return asked.when()
 	case improving.MatchString(q):
 		reply := office.reply("", "nod", KindImprove)
 		reply.Target = strings.TrimSpace(improving.FindStringSubmatch(q)[1])
@@ -286,10 +290,10 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	case isQ && has(q, "happening", "status", "update", "going on", "summary", "what's up", "whats up",
 		"progress", "catch me up"),
 		isQ && has(q, "who is", "who's", "whos"):
-		return office.status()
+		return asked.status()
 	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
 		"responses", "answers"):
-		return office.replies()
+		return asked.replies()
 	}
 	if route, ask := office.forProject(text, in); ask != nil {
 		return *ask
@@ -301,6 +305,28 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	dispatched := office.reply("", "nod", KindPlain)
 	dispatched.Dispatch = true
 	return dispatched
+}
+
+// scoped is the view of the project picked on Home, or the whole office when none is.
+func (o view) scoped(in Office, now time.Time) view {
+	if in.InView == "" || in.InView == AnyProject {
+		return o
+	}
+	for _, project := range open(in.Projects) {
+		if project.ID != in.InView {
+			continue
+		}
+		var agents []*models.LiveAgent
+		for _, agent := range in.Agents {
+			if agent.Project != nil && *agent.Project == project.ID {
+				agents = append(agents, agent)
+			}
+		}
+		scoped := look(agents, now)
+		scoped.scope = project.Name
+		return scoped
+	}
+	return o
 }
 
 // unknown is the reply to "tell X to …" when X is neither an agent nor a project.
@@ -452,6 +478,9 @@ func (o view) greet() Reply {
 func (o view) needs() Reply {
 	count := len(o.need)
 	if count == 0 {
+		if o.scope != "" {
+			return o.reply("Nothing in "+o.scope+" needs you right now.", "wink", KindPlain)
+		}
 		return o.reply("Nothing needs you right now. Everyone's either working or happily idle.", "wink", KindPlain)
 	}
 	text := strconv.Itoa(count) + " things need you."
@@ -477,7 +506,7 @@ func (o view) needs() Reply {
 
 func (o view) when() Reply {
 	if o.finish == nil {
-		return o.reply("Nothing is in progress, so there's nothing to wait for.", "shrug", KindPlain)
+		return o.reply("Nothing is in progress"+o.in()+", so there's nothing to wait for.", "shrug", KindPlain)
 	}
 	slowest := slices.Clone(o.working)
 	slices.SortStableFunc(slowest, func(a, b *models.LiveAgent) int {
@@ -498,12 +527,23 @@ func seconds(a *models.LiveAgent, now time.Time) int64 {
 	return 0
 }
 
+// in says which project a reply is about, as " in Shop", or nothing for the whole office.
+func (o view) in() string {
+	if o.scope == "" {
+		return ""
+	}
+	return " in " + o.scope
+}
+
 func (o view) status() Reply {
+	if len(o.agents) == 0 && o.scope != "" {
+		return o.reply("Nothing is running in "+o.scope+" yet. Send it a task and I'll get it started.", "shrug", KindPlain)
+	}
 	if len(o.agents) == 0 {
 		return o.reply("The office is empty for now. Connect an account or explore the demo office to see agents at work.",
 			"shrug", KindEmpty)
 	}
-	reply := o.reply(strconv.Itoa(len(o.working))+" agents are working and "+strconv.Itoa(len(o.need))+" need you.",
+	reply := o.reply(strconv.Itoa(len(o.working))+" agents are working"+o.in()+" and "+strconv.Itoa(len(o.need))+" need you.",
 		"point", KindStatus)
 	for _, agent := range o.working[:min(6, len(o.working))] {
 		reply.Lines = append(reply.Lines, o.line(agent))

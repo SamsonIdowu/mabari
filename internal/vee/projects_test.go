@@ -75,7 +75,7 @@ func TestMabariChoosesOrAsks(t *testing.T) {
 		t.Errorf("in view: %+v", reply.Route)
 	}
 	// A question about the office is still Mabari's to answer.
-	if reply := AnswerIn("what needs me?", inProjects("eq"), now); reply.Route != nil || reply.Kind != KindNeeds {
+	if reply := AnswerIn("what needs me?", inProjects("eq"), now); reply.Route != nil || reply.Text != "Nothing in Experience and Quality needs you right now." {
 		t.Errorf("question: %+v", reply)
 	}
 	// Mabari's map: the folder, the instructions, and what the agents there are doing.
@@ -161,5 +161,25 @@ func TestOneWordIsNotAFit(t *testing.T) {
 	}
 	if reply := AnswerIn("update the README install steps", in, now); reply.Route == nil || reply.Route.ProjectID != alpha {
 		t.Errorf("two words: %+v", reply)
+	}
+}
+
+// Status questions answer for the project picked on Home; with none picked, for the whole office.
+func TestStatusAnswersForThePickedProject(t *testing.T) {
+	in := inProjects("lad")
+	if reply := AnswerIn("what's happening?", in, now); reply.Kind != KindStatus || reply.Total != 1 ||
+		reply.Text != "1 agents are working in Lad Project All and 0 need you." {
+		t.Errorf("lad = %+v", reply)
+	}
+	if reply := AnswerIn("what's happening?", inProjects("eq"), now); reply.Text != "Nothing is running in Experience and Quality yet. Send it a task and I'll get it started." {
+		t.Errorf("eq = %q", reply.Text)
+	}
+	if reply := AnswerIn("who needs me?", inProjects("eq"), now); reply.Text != "Nothing in Experience and Quality needs you right now." {
+		t.Errorf("needs = %q", reply.Text)
+	}
+	for _, view := range []string{"", AnyProject} {
+		if reply := AnswerIn("what's happening?", inProjects(view), now); reply.Total != len(office()) {
+			t.Errorf("%q: total = %d", view, reply.Total)
+		}
 	}
 }

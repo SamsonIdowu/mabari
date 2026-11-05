@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
-import { clockText, filterLog } from '../format.ts';
+import { clockText, emptyLogText, filterLog, logAgents, logTypes } from '../format.ts';
 import { PageHead } from './parts.tsx';
 
 const TYPE_CHIPS: Record<string, string> = {
@@ -14,8 +14,12 @@ export function Activity() {
   const office = useOfficeStore((state) => state.office);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
+  const [agent, setAgent] = useState('all');
   if (!office) return null;
-  const rows = filterLog(office.log, search, type);
+  const agents = logAgents(office.log);
+  // An agent that has left the log can't stay picked.
+  const shownAgent = agents.includes(agent) ? agent : 'all';
+  const rows = filterLog(office.log, search, type, shownAgent);
 
   return (
     <section data-screen="activity">
@@ -47,9 +51,28 @@ export function Activity() {
             onChange={(event) => setType(event.target.value)}
           >
             <option value="all">All types</option>
-            <option value="Instruction">Instructions</option>
-            <option value="Query">Queries</option>
-            <option value="Approval">Approvals</option>
+            {logTypes(office.log).map(([id, label]) => (
+              <option value={id} key={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <label className="sr" htmlFor="logAgent">
+            Agent
+          </label>
+          <select
+            className="in"
+            id="logAgent"
+            style={{ width: 'auto' }}
+            value={shownAgent}
+            onChange={(event) => setAgent(event.target.value)}
+          >
+            <option value="all">All agents</option>
+            {agents.map((name) => (
+              <option value={name} key={name}>
+                {name}
+              </option>
+            ))}
           </select>
         </div>
         <div className="table-wrap">
@@ -92,7 +115,7 @@ export function Activity() {
               ) : (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 40 }} className="muted">
-                    Nothing matches. Try a different word or type.
+                    {emptyLogText(office.log.length)}
                   </td>
                 </tr>
               )}

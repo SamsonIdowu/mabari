@@ -124,11 +124,48 @@ export function isOpen(project: Pick<Project, 'status'>): boolean {
   return project.status !== 'done';
 }
 
-export function filterLog(log: LogEntry[], search: string, type: string): LogEntry[] {
+export function filterLog(
+  log: LogEntry[],
+  search: string,
+  type: string,
+  agent = 'all',
+): LogEntry[] {
   const query = search.toLowerCase();
   return log.filter((row) => {
     if (type !== 'all' && row.type !== type) return false;
+    if (agent !== 'all' && row.agent !== agent) return false;
     if (!query) return true;
     return `${row.agent} ${row.message} ${row.outcome} ${row.type}`.toLowerCase().includes(query);
   });
+}
+
+/** What the server writes to the activity log, as the type filter names them. */
+const LOG_TYPES: [string, string][] = [
+  ['Instruction', 'Instructions'],
+  ['Query', 'Queries'],
+  ['Approval', 'Approvals'],
+  ['Session', 'Sessions'],
+];
+
+/** The types the filter offers: every kind the server writes, and any other that is in the log. */
+export function logTypes(log: Pick<LogEntry, 'type'>[]): [string, string][] {
+  const known = new Set(LOG_TYPES.map(([type]) => type));
+  const others = [...new Set(log.map((row) => row.type as string))]
+    .filter((type) => !known.has(type))
+    .sort();
+  return [...LOG_TYPES, ...others.map((type): [string, string] => [type, type])];
+}
+
+/** The agents with something in the log, by name, for the agent filter. */
+export function logAgents(log: Pick<LogEntry, 'agent'>[]): string[] {
+  return [...new Set(log.map((row) => row.agent))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/** What the log's table says when it has no rows: nothing has happened, or the filter hides it all. */
+export function emptyLogText(entries: number): string {
+  return entries === 0
+    ? 'Nothing has happened yet. Instructions, questions, approvals and sessions show here.'
+    : 'Nothing matches. Try a different word, type or agent.';
 }

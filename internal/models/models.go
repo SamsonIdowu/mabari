@@ -150,6 +150,13 @@ type Agent struct {
 	CreatedAt    int64    `json:"createdAt"`
 	// DefID is the agent definition it was started from, or empty.
 	DefID string `json:"defId"`
+	// Workflow marks a workflow sub-agent: one not started from an agent definition file, such
+	// as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
+	// or a subagent whose type matches no loaded definition.
+	Workflow bool `json:"workflow"`
+	// Bench seats the agent in the workflow sub-agents' area, where Desk counts bench seats. A
+	// workflow lead sits there, and its subagents sit with it.
+	Bench bool `json:"bench"`
 }
 
 // SessionState is what an agent is doing and how far along it is.
@@ -160,7 +167,10 @@ type SessionState struct {
 	Progress float64 `json:"progress"`
 	// Rate is progress per office second, which drives the estimate.
 	Rate float64 `json:"rate"`
-	// Estimate is null unless the agent is working. See EstimateFor.
+	// Working is true while the agent is at work, as opposed to waiting or finished. It counts
+	// agents that report no progress rate, such as Claude Code sessions.
+	Working bool `json:"working"`
+	// Estimate is null unless the agent is working and reports a rate. See EstimateFor.
 	Estimate *Estimate `json:"estimate"`
 	// TeamEstimate is when a lead and its subagents should all be done, or null if it has none.
 	TeamEstimate *Estimate `json:"teamEstimate"`

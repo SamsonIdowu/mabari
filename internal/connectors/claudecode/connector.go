@@ -159,7 +159,10 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 }
 
 // agentFor finds the session's agent, seating a new one if this is the first event from it.
-// It returns nil when every desk is taken. Call inside Do.
+// A session started with `claude --agent <name>` runs that agent's definition and takes a desk.
+// Any other session is a workflow sub-agent and sits at the workflow benches: Mabari can't tell
+// whether it was opened in a terminal, an editor, on the web or in the Claude app, and doesn't
+// need to. It returns nil only when the office is at its MaxDesks limit. Call inside Do.
 func (c *Connector) agentFor(in input) *models.LiveAgent {
 	id := agentID(in.SessionID)
 	if agent := c.engine.Agent(id); agent != nil {
@@ -169,13 +172,25 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 		}
 		return agent
 	}
-	desk := c.freeDesk()
+	project := c.projectFor(in.Cwd)
+	// Inside a subagent agent_type is the subagent's, so only a session's own event names its
+	// --agent definition.
+	def, defined := models.AgentDef{}, false
+	if in.AgentID == "" {
+		def, defined = c.defFor(in.AgentType, project)
+	}
+	desk := models.FreeDesk(c.engine.Agents(), !defined, -1)
 	if desk < 0 {
-		c.engine.Toast("Every desk is taken, so a new Claude Code session isn't shown.")
+		c.engine.Toast("The office is full, so a new Claude Code session isn't shown.")
 		return nil
 	}
 	agents := c.engine.Agents()
 	agent := &models.LiveAgent{}
+	if defined {
+		agent.DefID = def.ID
+	} else {
+		agent.Workflow, agent.Bench = true, true
+	}
 	agent.ID = id
 	agent.Name = c.nameFor(in.Cwd)
 	agent.Provider = models.ProviderClaude
@@ -193,12 +208,12 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	agent.Task = "Waiting for work"
 	agent.Queued = []models.Instruction{}
 	agent.Files = []string{}
-	if project := c.projectFor(in.Cwd); project != "" {
+	if project != "" {
 		agent.Project = &project
 	}
 	c.engine.AddAgent(agent)
 	c.engine.Log(agent.Name, models.LogSession, "Claude Code session started in "+in.Cwd,
-		"Took desk "+strconv.Itoa(desk+1), "ok")
+		seatText(agent), "ok")
 
 	c.connected()
 	return agent
@@ -214,27 +229,77 @@ func (c *Connector) connected() {
 	}
 }
 
-func (c *Connector) freeDesk() int {
-	used := map[int]bool{}
-	for _, agent := range c.engine.Agents() {
-		used[agent.Desk] = true
+// seatText is where the log says an agent sat down.
+func seatText(agent *models.LiveAgent) string {
+	if agent.Bench {
+		return "Took a seat at the workflow benches"
 	}
-	for desk := range models.DeskCount {
-		if !used[desk] {
-			return desk
+	return "Took desk " + strconv.Itoa(agent.Desk+1)
+}
+
+// defFor finds the Claude Code agent definition with this name: the project's own first, as
+// Claude Code prefers it, then the account's. Call inside Do.
+func (c *Connector) defFor(name, project string) (models.AgentDef, bool) {
+	if name == "" {
+		return models.AgentDef{}, false
+	}
+	var account *models.AgentDef
+	for _, def := range c.engine.Defs() {
+		if (def.Kind != "" && def.Kind != models.DefClaude) || !strings.EqualFold(def.Name, name) {
+			continue
+		}
+		if def.Scope == models.DefProject && project != "" && def.ProjectID == project {
+			return def, true
+		}
+		if def.Scope == models.DefAccount && account == nil {
+			account = &def
 		}
 	}
-	return -1
+	if account != nil {
+		return *account, true
+	}
+	return models.AgentDef{}, false
 }
 
 // TidyNames renames sessions an earlier version gave made up names, after their folder, so even
-// ones that never report again stop looking like agents that came with the app. Call inside Do.
+// ones that never report again stop looking like agents that came with the app. Sessions saved
+// before workflow sub-agents were told apart move to the workflow benches, with their subagents.
+// Call inside Do.
 func (c *Connector) TidyNames() {
 	for _, agent := range c.engine.Agents() {
-		if agent.Source == Source && agent.Lead == nil && legacyNames[agent.Name] {
+		if agent.Source != Source || agent.Lead != nil {
+			continue
+		}
+		if legacyNames[agent.Name] {
 			agent.Name = c.nameFor(agent.Folder)
 			c.engine.Touch(agent)
 		}
+		if agent.DefID == "" && !agent.Workflow {
+			desk := models.FreeDesk(c.engine.Agents(), true, -1)
+			agent.Workflow, agent.Bench, agent.Desk = true, true, desk
+			c.engine.Touch(agent)
+			c.moveHelpers(agent)
+		}
+	}
+}
+
+// moveHelpers seats a lead's subagents next to it again, after it moved. Call inside Do.
+func (c *Connector) moveHelpers(lead *models.LiveAgent) {
+	for _, helper := range c.engine.Agents() {
+		if helper.Lead == nil || *helper.Lead != lead.ID || helper.Bench == lead.Bench {
+			continue
+		}
+		desk := models.FreeDesk(c.engine.Agents(), lead.Bench, lead.Desk)
+		helper.Bench, helper.Desk = lead.Bench, desk
+		if helper.DefID == "" {
+			project := ""
+			if helper.Project != nil {
+				project = *helper.Project
+			}
+			def, found := c.defFor(strings.TrimRight(helper.Name, " 0123456789"), project)
+			helper.DefID, helper.Workflow = def.ID, !found
+		}
+		c.engine.Touch(helper)
 	}
 }
 
@@ -851,22 +916,24 @@ func helperID(in input) string {
 	return agentID(in.SessionID) + "-" + sessionChars.ReplaceAllString(in.AgentID, "")
 }
 
-// seatHelper gives a Claude Code subagent a desk in its lead's office, with the lead's handoff
-// as its first message. A lead has three helpers at most on the floor. Call inside Do.
+// seatHelper gives a Claude Code subagent a seat beside its lead, in the lead's area, with the
+// lead's handoff as its first message. Every subagent is shown, however many the lead starts.
+// One whose type names a loaded Claude agent definition is linked to it; any other, such as
+// general-purpose or Explore, is a workflow sub-agent. Call inside Do.
 func (c *Connector) seatHelper(lead *models.LiveAgent, in input) {
 	if in.AgentID == "" || c.engine.Agent(helperID(in)) != nil {
 		return
 	}
-	helpers := 0
-	for _, agent := range c.engine.Agents() {
-		if agent.Lead != nil && *agent.Lead == lead.ID && agent.State != models.StateDone {
-			helpers++
-		}
-	}
-	desk := c.nearDesk(lead.Desk)
-	if helpers >= models.MaxSubagents || desk < 0 {
+	desk := models.FreeDesk(c.engine.Agents(), lead.Bench, lead.Desk)
+	if desk < 0 {
+		c.engine.Toast("The office is full, so " + lead.Name + "'s new subagent isn't shown.")
 		return
 	}
+	project := ""
+	if lead.Project != nil {
+		project = *lead.Project
+	}
+	def, defined := c.defFor(in.AgentType, project)
 	c.mu.Lock()
 	task := c.handing[in.SessionID]
 	delete(c.handing, in.SessionID)
@@ -885,6 +952,7 @@ func (c *Connector) seatHelper(lead *models.LiveAgent, in input) {
 	helper.Provider, helper.Account, helper.Source = models.ProviderClaude, models.AccountClaudeCode, Source
 	helper.Model, helper.SubModel, helper.Desk, helper.Folder = lead.Model, "inherit", desk, lead.Folder
 	helper.Lead, helper.Project = &lead.ID, lead.Project
+	helper.DefID, helper.Workflow, helper.Bench = def.ID, !defined, lead.Bench
 	count := len(c.engine.Agents())
 	helper.Hue = models.Hues[count%len(models.Hues)]
 	helper.Skin = models.Skins[count%len(models.Skins)]
@@ -894,26 +962,4 @@ func (c *Connector) seatHelper(lead *models.LiveAgent, in input) {
 	helper.Queued, helper.Files = []models.Instruction{}, []string{}
 	c.engine.AddAgent(helper)
 	c.engine.AddMessage(lead, helper, "Can you take this for me: "+models.LowerFirst(strings.TrimSuffix(helper.Task, "."))+"?", models.MessageHandoff, 0)
-}
-
-// nearDesk is the free desk closest to the lead's, on the office's real desk grid.
-func (c *Connector) nearDesk(near int) int {
-	used := map[int]bool{}
-	for _, agent := range c.engine.Agents() {
-		used[agent.Desk] = true
-	}
-	position := func(index int) (float64, float64) { return float64(8 + index%4*5), float64(4 + index/4*4) }
-	nx, ny := position(near)
-	best, bestDistance := -1, 0.0
-	for desk := range models.DeskCount {
-		if used[desk] {
-			continue
-		}
-		x, y := position(desk)
-		distance := (x-nx)*(x-nx) + (y-ny)*(y-ny)
-		if best < 0 || distance < bestDistance {
-			best, bestDistance = desk, distance
-		}
-	}
-	return best
 }

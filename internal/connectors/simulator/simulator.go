@@ -221,9 +221,6 @@ type agentSpec struct {
 	spawned   bool
 }
 
-// deskPosition is a desk's tile, matching web/src/office/layout.ts: columns 5 tiles apart, rows 4.
-func deskPosition(index int) (x, y int) { return 8 + index%4*5, 4 + index/4*4 }
-
 // NewAgent is what the Create a new agent dialog asks for.
 type NewAgent struct {
 	Name         string
@@ -248,7 +245,7 @@ var ErrDeskTaken = errors.New("that desk has just been taken")
 func (s *Simulator) CreateAgent(spec NewAgent) (*models.LiveAgent, error) {
 	if spec.Desk != nil {
 		for _, agent := range s.engine.Agents() {
-			if agent.Desk == *spec.Desk {
+			if !agent.Bench && agent.Desk == *spec.Desk {
 				return nil, ErrDeskTaken
 			}
 		}
@@ -277,31 +274,13 @@ func (s *Simulator) CreateAgent(spec NewAgent) (*models.LiveAgent, error) {
 	return agent, nil
 }
 
+// freeDesk is the lowest free desk, or the free desk nearest near, as in the prototype.
 func (s *Simulator) freeDesk(near *int) int {
-	used := map[int]bool{}
-	for _, agent := range s.engine.Agents() {
-		used[agent.Desk] = true
-	}
-	order := make([]int, models.DeskCount)
-	for index := range order {
-		order[index] = index
-	}
+	from := -1
 	if near != nil {
-		nearX, nearY := deskPosition(*near)
-		distance := func(desk int) float64 {
-			x, y := deskPosition(desk)
-			return math.Abs(float64(x-nearX))/3 + math.Abs(float64(y-nearY))/3
-		}
-		sort.SliceStable(order, func(i, j int) bool {
-			return distance(order[i]) < distance(order[j])
-		})
+		from = *near
 	}
-	for _, desk := range order {
-		if !used[desk] {
-			return desk
-		}
-	}
-	return -1
+	return models.FreeDesk(s.engine.Agents(), false, from)
 }
 
 // orElse matches the prototype's `value||fallback()`: zero means unset, and the fallback only
@@ -319,7 +298,7 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 	if spec.desk != nil {
 		desk = *spec.desk
 	} else if desk = s.freeDesk(spec.near); desk < 0 {
-		s.engine.Toast("Every desk is taken. Stop an agent to free one.")
+		s.engine.Toast("The office is full. Stop an agent to free a desk.")
 		return nil
 	}
 	task := spec.task

@@ -967,6 +967,21 @@ func TestCreateAgent(t *testing.T) {
 	}
 }
 
+// The desk grid grows, so a desk past the first sixteen is a real desk, and the server says who
+// is working.
+func TestCreateAgentAtAGrownDesk(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	response := createAgent(t, office, newAgentJSON+`,"desk":30}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	juniper := agentNamed(t, office, "Juniper")
+	if juniper.Desk != 30 || !juniper.Working || juniper.Bench || juniper.Workflow {
+		t.Errorf("got %+v", juniper)
+	}
+}
+
 func TestCreateAgentRefusals(t *testing.T) {
 	office := newOffice(t)
 	if response := createAgent(t, office, newAgentJSON+`}`); response.Code != http.StatusConflict ||

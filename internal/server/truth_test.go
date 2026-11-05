@@ -3,12 +3,14 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/planner"
 )
 
 // An instruction to an agent paused on an approval is held, not answered "Got it", and is
@@ -117,5 +119,46 @@ func TestAnsweringTheDemosQuestionThroughTheAPI(t *testing.T) {
 	}
 	if response := office.do(t, http.MethodPost, path, good); response.Code != http.StatusConflict {
 		t.Errorf("answering twice = %d", response.Code)
+	}
+}
+
+// The planner names a project from accented and non-Latin letters (SETUP-11), the name fits what
+// starting a project accepts, and a name with no plain letters still gets a folder.
+func TestThePlannerKeepsAccentsAndOtherScripts(t *testing.T) {
+	if planner.NameMax != maxProjectName {
+		t.Fatalf("the planner's longest name is %d, the server's is %d", planner.NameMax, maxProjectName)
+	}
+	office := newOffice(t)
+	office.demo(t)
+	for brief, want := range map[string]string{
+		"Café ordering für Zürich app":                      "Café Ordering Zürich",
+		"Ünïcödé thing":                                     "Ünïcödé Thing",
+		"做一个咖啡店的网站":                                         "做一个咖啡店的网站",
+		"Internationalization documentation infrastructure": "Internationalization",
+	} {
+		reply := decode[planReply](t, office.do(t, http.MethodPost, "/api/planner", `{"said":["`+brief+`"]}`))
+		if reply.Plan.Name != want || !strings.HasPrefix(reply.Plan.LeadTask, "Plan "+strings.ToLower(want)+",") {
+			t.Errorf("%q: name %q, lead task %q, want %q", brief, reply.Plan.Name, reply.Plan.LeadTask, want)
+		}
+		plan, _ := json.Marshal(reply.Plan)
+		body := `{"plan":` + string(plan) + `,"name":"` + reply.Plan.Name + `","mode":"go","brief":"x"}`
+		if response := office.do(t, http.MethodPost, "/api/projects/start", body); response.Code != http.StatusCreated {
+			t.Errorf("starting %q = %d %s", reply.Plan.Name, response.Code, response.Body)
+		}
+	}
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	folders := map[string]string{}
+	for _, project := range snapshot.Projects {
+		if project.Repository != nil {
+			folders[project.Name] = project.Repository.Path
+		}
+	}
+	for name, folder := range map[string]string{
+		"Café Ordering Zürich": "~/code/cafe-ordering-zurich",
+		"做一个咖啡店的网站":            "~/code/project",
+	} {
+		if folders[name] != folder {
+			t.Errorf("%q works in %q, want %q (%v)", name, folders[name], folder, folders)
+		}
 	}
 }

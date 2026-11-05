@@ -25,8 +25,10 @@ func TestTheExamplesGiveThePrototypesTeams(t *testing.T) {
 		minutes            int
 	}{
 		{Examples[0], "Landing Page Coffee", "build,test", 65},
-		{Examples[1], "Competitors Report Their", "research,write", 40},
-		{Examples[2], "Internal Dashboard Shows", "build,data", 65},
+		// The prototype named these "Competitors Report Their" and "Internal Dashboard Shows": the
+		// teams are still its teams, but a name no longer ends on a little word or a verb (DAILY-8).
+		{Examples[1], "Competitors", "research,write", 40},
+		{Examples[2], "Internal Dashboard", "build,data", 65},
 		{"", "New Project", "build,test", 65},
 	}
 	for _, tc := range cases {

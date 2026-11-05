@@ -202,7 +202,8 @@ type SessionState struct {
 	Error        string    `json:"error"`
 	// Files are what the agent is working on, used by tool feeds and the dispatcher.
 	Files []string `json:"files"`
-	// Bubble is what the speech bubble says now, and BubbleKind is "", "reply" or "talk".
+	// Bubble is what the speech bubble says now, and BubbleKind is "", "reply", "talk" or "ask",
+	// for a question waiting on the person.
 	Bubble     string `json:"bubble"`
 	BubbleKind string `json:"bubbleKind"`
 	Reply      string `json:"reply"`
@@ -235,7 +236,49 @@ type LiveAgent struct {
 	Feed     []Event       `json:"feed"`
 	Queued   []Instruction `json:"queued"`
 	Approval *Approval     `json:"approval"`
+	// Question is what the agent is asking the person and waiting to hear back on, or null. It
+	// lives only as long as the agent's session waits for it, so it is never stored.
+	Question *Question `json:"question"`
 }
+
+// Question is one or more questions an agent asks the person, each with options to pick from,
+// such as Claude Code's AskUserQuestion. It is not an approval: auto approve never answers it.
+type Question struct {
+	ID    string         `json:"id"`
+	Agent string         `json:"agentId"`
+	Time  int64          `json:"time"`
+	Items []QuestionItem `json:"items"`
+}
+
+// QuestionItem is one question with its options. MultiSelect lets the person pick more than one.
+type QuestionItem struct {
+	Question    string           `json:"question"`
+	Header      string           `json:"header"`
+	Options     []QuestionOption `json:"options"`
+	MultiSelect bool             `json:"multiSelect"`
+}
+
+// QuestionOption is one choice, with what it means.
+type QuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// QuestionAnswer is the person's answer to one QuestionItem: the options picked, by their place
+// in the list, and their own words for "Other". An answer needs at least one of them.
+type QuestionAnswer struct {
+	Picked []int  `json:"picked"`
+	Other  string `json:"other"`
+}
+
+// Limits on questions. An agent asking more, or longer, is left to ask in its own window.
+const (
+	QuestionsMax       = 4
+	QuestionOptionsMax = 10
+	QuestionTextMax    = 2000
+	// AnswerOtherMax caps the person's own words for "Other", in characters.
+	AnswerOtherMax = 1000
+)
 
 // Event is one thing an agent did, such as a tool call.
 type Event struct {

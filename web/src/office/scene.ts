@@ -43,7 +43,9 @@ import {
 } from './layout.ts';
 import { useLayers } from './layers.ts';
 import { teamLinks } from './links.ts';
+import { lastSaid, nextVisit, onRound, projectUpdate, VISIT_MS, worthSaying } from './rounds.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
+import { useVee } from './veeStore.ts';
 
 /** An agent as the floor sees it: the server's agent plus where it is walking. */
 export type Walker = LiveAgent & {
@@ -162,6 +164,24 @@ export class OfficeScene {
   /** The floor's size last frame, to notice it changing. */
   private world: Size = { width: BASE_W, height: BASE_H };
   private readonly restingById = new Map<string, Walker>();
+  /**
+   * Mabari, the office manager, on its rounds: where it is, where it's walking, who it's with
+   * and until when, and who it saw last.
+   */
+  readonly manager = {
+    x: 0,
+    y: 0,
+    path: [] as Point[],
+    dir: 0,
+    walk: 0,
+    placed: false,
+    visiting: null as string | null,
+    until: 0,
+    last: null as string | null,
+  };
+  /** Mabari's label, drawn over the floor in overlays.ts, and whether it's at its desk. */
+  mabariLabel = 'Mabari · Manager';
+  mabariHome = true;
   private readonly context: CanvasRenderingContext2D;
   private readonly motes = makeMotes();
   private frame = 0;
@@ -466,8 +486,96 @@ export class OfficeScene {
     }
   }
 
+  /**
+   * Mabari's rounds: it walks to each agent at work in turn, project by project, stays by its
+   * desk a moment to check in, and says how that project is doing in its updates. With nobody at
+   * work it goes back to its desk by the door.
+   */
+  private doRounds(now: number, dt: number): void {
+    const m = this.manager;
+    const floor = this.floor;
+    const home = receptionOf(floor);
+    const teleport = reducedMotion();
+    if (!m.placed) {
+      m.x = home.x;
+      m.y = home.y;
+      m.placed = true;
+    }
+    const target = m.path[0];
+    if (target) {
+      const dx = target.x - m.x;
+      const dy = target.y - m.y;
+      const distance = Math.hypot(dx, dy);
+      const step = 0.08 * dt;
+      m.walk += dt;
+      m.dir = Math.abs(dx) > 1 ? Math.sign(dx) : m.dir;
+      if (teleport || distance <= step) {
+        m.x = target.x;
+        m.y = target.y;
+        m.path.shift();
+        if (!m.path.length && m.visiting) m.until = now + VISIT_MS;
+      } else {
+        m.x += (dx / distance) * step;
+        m.y += (dy / distance) * step;
+      }
+      return;
+    }
+    const office = useOfficeStore.getState().office;
+    const agents = onFloor(office?.agents ?? []);
+    // Mabari doesn't check in with itself, when its own agent file is at work.
+    const mabariFiles = new Set(
+      (office?.defs ?? []).filter((def) => def.system).map((def) => def.id),
+    );
+    const round = onRound(agents.filter((agent) => !mabariFiles.has(agent.defId)));
+    if (m.visiting) {
+      const still = round.some((agent) => agent.id === m.visiting);
+      if (still && now < m.until) return;
+      const seen = agents.find((agent) => agent.id === m.visiting);
+      if (seen) {
+        const key = seen.projectId ?? '';
+        const project = office?.projects.find((item) => item.id === seen.projectId) ?? null;
+        const text = projectUpdate(project, agents, seen.projectId ?? null);
+        if (worthSaying(text, lastSaid.get(key), now)) {
+          lastSaid.set(key, { text, at: now });
+          useVee.getState().report(key, text);
+        }
+      }
+      m.visiting = null;
+    }
+    const next = nextVisit(round, m.last);
+    const walker = next ? this.walkers.get(next.id) : undefined;
+    if (!next || !walker || walker.path.length) {
+      if (!next && Math.hypot(m.x - home.x, m.y - home.y) > 2) m.path = pathTo(m, home, floor);
+      return;
+    }
+    // It stands beside the agent's chair, in the gap before the next desk.
+    const spot = { x: walker.x + 46, y: walker.y + 2 };
+    m.visiting = next.id;
+    m.last = next.id;
+    m.until = now + VISIT_MS;
+    m.path = pathTo(m, spot, floor);
+  }
+
+  /**
+   * Whether a point on the canvas is on Mabari, wherever its rounds have taken it. Like an
+   * agent, it never gets smaller than a fingertip to click, and where it stands beside an agent,
+   * whichever is nearer the point wins.
+   */
+  mabariAt(point: Point): boolean {
+    const world = this.worldOf(point);
+    const m = this.manager;
+    const { reachX, reachY } = this.reach();
+    const dx = Math.abs(world.x - m.x);
+    if (dx > Math.max(22, reachX) || Math.abs(world.y - (m.y - 22)) > Math.max(34, reachY)) {
+      return false;
+    }
+    const agent = this.hit(point);
+    return !agent || dx < Math.abs(world.x - agent.x);
+  }
+
   private moveAgents(dt: number): void {
     this.wander(Date.now());
+    this.doRounds(Date.now(), dt);
     for (const walker of [...this.walkers.values(), ...this.resting.map((item) => item.walker)]) {
       const target = walker.path[0];
       if (!target) {
@@ -807,9 +915,23 @@ export class OfficeScene {
     this.drawLinks(scoped, theme, t);
     // Everyone is drawn from back to front.
     const restingShown = this.restingShown();
+    // An agent running Mabari's own agent file is Mabari, so it looks like Mabari.
+    const office = useOfficeStore.getState().office;
+    const mabariFiles = new Set(
+      (office?.defs ?? []).filter((def) => def.system).map((def) => def.id),
+    );
     const figures: { y: number; paint: () => void }[] = scoped.map((walker) => ({
       y: walker.y,
-      paint: () => drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
+      paint: () =>
+        mabariFiles.has(walker.defId)
+          ? drawMabariAt(c, walker.x, walker.y, 1, t, theme, {
+              pose: walker.working ? 'work' : 'idle',
+              turn: walker.path.length ? walker.dir * 0.7 : 0,
+              happy: false,
+              dim: !matches(walker, ui),
+              ring: ui.selected === walker.id ? walker.hue : '',
+            })
+          : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
     }));
     if (restingShown) {
       for (const { walker } of this.resting) {
@@ -829,41 +951,79 @@ export class OfficeScene {
   }
 
   /**
-   * Mabari, the office manager, at the reception desk by the door. It waves for a moment when it
-   * routes a request, and its label names who got it.
+   * Mabari, the office manager: its desk by the door, and Mabari wherever its rounds have taken
+   * it. It waves for a moment when it routes a request, and its label says what it's doing.
    */
   private drawMabariDesk(theme: 'dark' | 'light', t: number): void {
     const c = this.context;
     const P = PAL[theme];
-    const { x, y } = receptionOf(this.floor);
-    blk(c, x - 46, y - 6, 92, 14, 14, P.desk, P.deskFront, P, P.deskEdge);
+    const desk = receptionOf(this.floor);
+    blk(c, desk.x - 46, desk.y - 6, 92, 14, 14, P.desk, P.deskFront, P, P.deskEdge);
+    const m = this.manager;
     const routed = useOfficeStore
       .getState()
       .office?.log.find((row) => row.agent === 'Mabari' && row.outcome.startsWith('Routed to '));
     const ping = !!routed && Date.now() - routed.time < MABARI_PING_MS;
-    const scale = 1.15;
-    c.save();
-    c.translate(x - 16 * scale, y - 44 * scale);
-    c.scale(scale, scale);
-    drawMascot(c, t, {
-      pose: ping ? 'wave' : 'idle',
-      rig: ping ? { eyes: 'happy' } : { look: { x: Math.sin(t / 3000) * 0.6, y: -0.2 } },
-      scarf: '#F4F4F4',
-      dark: theme === 'dark',
+    const visiting = m.visiting && !m.path.length ? this.walkers.get(m.visiting) : undefined;
+    const walking = m.path.length > 0;
+    drawMabariAt(c, m.x, m.y, 1.15, t, theme, {
+      pose: ping || visiting ? (ping || t % 4000 < 900 ? 'wave' : 'ask') : 'idle',
+      turn: walking ? m.dir * 0.7 : visiting ? -0.5 : 0,
+      happy: ping,
+      dim: false,
+      ring: '',
     });
-    c.restore();
-    const label =
+    this.mabariLabel =
       ping && routed
         ? `Mabari · sent to ${routed.outcome.slice('Routed to '.length)}`
-        : 'Mabari · Manager';
-    c.font = '800 10px Nunito, sans-serif';
-    const width = c.measureText(label).width + 16;
-    c.fillStyle = 'rgba(14,13,18,.86)';
-    rrect(c, x - width / 2, y + 20, width, 16, 6);
-    c.fill();
-    c.fillStyle = '#F5F5F5';
-    c.fillText(label, x - width / 2 + 8, y + 31);
+        : visiting
+          ? `Mabari · checking in with ${visiting.name}`
+          : 'Mabari · Manager';
+    this.mabariHome = Math.hypot(m.x - desk.x, m.y - desk.y) < 2;
   }
+}
+
+/** Mabari's mascot with its feet at x, y. Mabari always looks like this, whatever it does. */
+function drawMabariAt(
+  c: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  t: number,
+  theme: 'dark' | 'light',
+  look: {
+    pose: 'idle' | 'wave' | 'ask' | 'work';
+    turn: number;
+    happy: boolean;
+    /** Faded, as agents a filter leaves out are. */
+    dim: boolean;
+    /** The selection ring's colour, or empty when it isn't selected. */
+    ring: string;
+  },
+): void {
+  c.save();
+  if (look.dim) c.globalAlpha = 0.2;
+  if (look.ring && !look.dim) {
+    c.strokeStyle = look.ring;
+    c.lineWidth = 2;
+    c.beginPath();
+    c.ellipse(x, y, 17 + Math.sin(t / 250), 7, 0, 0, Math.PI * 2);
+    c.stroke();
+  }
+  c.translate(x - 16 * scale, y - 44 * scale);
+  c.scale(scale, scale);
+  drawMascot(c, t, {
+    pose: look.pose,
+    rig: {
+      turn: look.turn,
+      ...(look.happy
+        ? { eyes: 'happy' }
+        : { look: { x: look.turn || Math.sin(t / 3000) * 0.6, y: -0.2 } }),
+    },
+    scarf: '#F4F4F4',
+    dark: theme === 'dark',
+  });
+  c.restore();
 }
 
 /** How long Mabari waves and names the agent after routing a request. */

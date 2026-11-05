@@ -290,6 +290,13 @@ export interface AccessInfo {
   token?: string;
 }
 
+/** The reply to POST /api/desks/start. Mirrors internal/server deskStartResult. */
+export interface DeskStartResult {
+  notice: string;
+  opened: boolean;
+  agentId: string;
+}
+
 export const api = {
   session: () => request<SessionInfo>('/api/session'),
   signIn: (key: string) =>
@@ -339,6 +346,12 @@ export const api = {
    */
   sendToProject: (id: string, text: string) =>
     send<ProjectSendResult>('POST', `/api/projects/${id}/send`, { text }),
+  /**
+   * Puts one of the agent files at the free desk, working on a task: for real, Claude Code opens
+   * in the project's folder running as that agent; in the demo, the agent sits down at once.
+   */
+  startAtDesk: (defId: string, projectId: string, task: string) =>
+    send<DeskStartResult>('POST', '/api/desks/start', { defId, projectId, task }),
   /** Takes back an instruction before it is delivered. */
   removeInstruction: (id: string) =>
     send<unknown>('DELETE', `/api/instructions/${encodeURIComponent(id)}`),

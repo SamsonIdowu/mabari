@@ -126,8 +126,8 @@ test('the server turns down a name already in use', async ({ page }) => {
   await expect(form.getByRole('alert')).toContainText('There is already an agent called Ledger.');
 });
 
-test('clicking the free desk starts an agent there, with what it should do', async ({ page }) => {
-  await loadDemo(page);
+/** Waits until the free desk takes a click, then clicks it. */
+async function clickFreeDesk(page: Page) {
   await expect(page.locator('.tag .nt')).toHaveCount(10);
   // Once everyone has sat down and the view has settled, the free desk takes a click.
   let desk = { x: 0, y: 0 };
@@ -139,6 +139,45 @@ test('clicking the free desk starts an agent there, with what it should do', asy
     })
     .toBe('pointer');
   await page.mouse.click(desk.x, desk.y);
+}
+
+test('clicking the free desk puts one of your agents to work there', async ({ page, request }) => {
+  await request.post('/api/defs', {
+    data: {
+      def: {
+        name: 'desk-reviewer',
+        description: 'Use to review changes.',
+        scope: 'account',
+        model: 'inherit',
+        tools: ['Read'],
+        instructions: 'Review.',
+        color: '#7FA8FF',
+      },
+      previousId: '',
+    },
+  });
+  try {
+    await loadDemo(page);
+    await clickFreeDesk(page);
+    const form = page.getByRole('dialog', { name: /Start work at desk/ });
+    await expect(form).toBeVisible();
+    await form.getByLabel('Agent').selectOption({ label: 'desk-reviewer · account' });
+    await form.getByLabel('What should it do?').fill('Review the checkout changes.');
+    await form.getByRole('button', { name: 'Start' }).click();
+    await expect(form).toBeHidden();
+    await expect(page.locator('.tag .nt', { hasText: 'desk-reviewer' })).toBeVisible();
+  } finally {
+    await request.delete(`/api/defs/${encodeURIComponent('account:desk-reviewer')}`);
+  }
+});
+
+test('from the free desk you can make a new agent instead', async ({ page }) => {
+  await loadDemo(page);
+  await clickFreeDesk(page);
+  await page
+    .getByRole('dialog', { name: /Start work at desk/ })
+    .getByRole('button', { name: 'Make a new agent instead' })
+    .click();
   const form = dialog(page);
   await expect(form).toBeVisible();
   await form.getByLabel('Name').fill('Deskmate');

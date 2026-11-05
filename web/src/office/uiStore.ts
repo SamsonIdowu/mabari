@@ -25,6 +25,8 @@ interface OfficeUi extends OfficeFilters {
   autoBanner: boolean;
   /** The Create a new agent dialog, with the desk or project it was opened for. */
   newAgent: { desk?: number; project?: string } | null;
+  /** The free desk someone clicked, to put an agent file's agent at it with a task. */
+  startAtDesk: number | null;
   /** The New project chat. */
   newProject: boolean;
   /** The project whose chat is open on the Projects page. */
@@ -74,6 +76,7 @@ const FRESH_VIEW = {
   follow: false,
   autoBanner: false,
   newAgent: null,
+  startAtDesk: null,
   newProject: false,
   projectChat: null,
   mabariUpdates: false,

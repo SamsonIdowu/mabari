@@ -7,6 +7,7 @@ import { Accounts } from '../screens/Accounts.tsx';
 import { Activity } from '../screens/Activity.tsx';
 import { Conversations } from '../screens/Conversations.tsx';
 import { Home } from '../screens/Home.tsx';
+import { DeskDialog } from '../screens/DeskDialog.tsx';
 import { NewAgentDialog } from '../screens/NewAgentDialog.tsx';
 import { NewProjectDialog } from '../screens/NewProjectDialog.tsx';
 import { Office } from '../screens/Office.tsx';
@@ -69,6 +70,7 @@ export function Shell() {
         {route ? <Screen route={route} /> : null}
       </main>
       <NewAgentDialog />
+      <DeskDialog />
       <NewProjectDialog />
       <Toasts />
     </div>

@@ -31,6 +31,8 @@ export interface MabariUpdate {
   id: number;
   text: string;
   at: number;
+  /** For an update from Mabari's rounds, the project it is about ("" for none). */
+  about?: string;
 }
 
 const UPDATES_KEPT = 30;
@@ -68,6 +70,11 @@ interface VeeStore {
   setListening: (listening: boolean) => void;
   play: (name: string) => void;
   say: (reply: VeeReply, queued?: boolean) => void;
+  /**
+   * Adds what Mabari found about a project on its rounds, without saying it out loud on Home. It
+   * replaces the last one about the same project, so the rounds never crowd out replies.
+   */
+  report: (about: string, text: string) => void;
   /** Sends a message, to the project given or else the one picked next to the box. */
   hear: (text: string, project?: string) => Promise<void>;
   setOnHome: (on: boolean) => void;
@@ -185,6 +192,13 @@ export const useVee = create<VeeStore>((set, get) => ({
     const gesture = VEE_GESTURES[name];
     if (gesture) set({ gesture: { name, start: performance.now(), dur: gesture.dur } });
   },
+  report: (about, text) =>
+    set((state) => ({
+      updates: [
+        ...state.updates.filter((update) => update.about !== about),
+        { id: nextUpdate++, text, at: Date.now(), about },
+      ].slice(-UPDATES_KEPT),
+    })),
   say: (reply, queued = false) => {
     set((state) => ({
       updates: [...state.updates, { id: nextUpdate++, text: reply.text, at: Date.now() }].slice(

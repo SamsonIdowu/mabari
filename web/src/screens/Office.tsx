@@ -13,6 +13,7 @@ import { onFloor } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
+import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
@@ -775,6 +776,12 @@ function Stage({ office }: { office: Snapshot }) {
       });
     } else {
       set({ selected: null, follow: false });
+      // Mabari, on its rounds or at its desk, shows its updates.
+      if (scene.current.mabariAt(pointIn(event))) {
+        set({ mabariUpdates: true });
+        useVee.setState({ unread: 0 });
+        return;
+      }
       // An agent file resting in the lounge opens in the builder.
       const def = scene.current.restingAt(pointIn(event));
       if (def) {
@@ -783,18 +790,23 @@ function Stage({ office }: { office: Snapshot }) {
       }
       // The free desk starts a new agent there, with what it should do.
       const desk = scene.current.deskAt(pointIn(event));
-      if (desk !== null) set({ newAgent: { desk } });
+      if (desk !== null) set({ startAtDesk: desk });
     }
   };
 
   const hover = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!scene.current) return;
     const point = pointIn(event);
-    const desk = scene.current.deskAt(point);
+    // A click on Mabari opens its updates, so the desk under it isn't offered then.
+    const desk = scene.current.mabariAt(point) ? null : scene.current.deskAt(point);
     scene.current.hoverDesk = desk;
-    const clickable = scene.current.hit(point) || scene.current.restingAt(point) || desk !== null;
+    const clickable =
+      scene.current.hit(point) ||
+      scene.current.restingAt(point) ||
+      scene.current.mabariAt(point) ||
+      desk !== null;
     event.currentTarget.style.cursor = clickable ? 'pointer' : '';
-    event.currentTarget.title = desk !== null ? 'Put a new agent at this free desk' : '';
+    event.currentTarget.title = desk !== null ? 'Put one of your agents to work at this desk' : '';
   };
 
   return (

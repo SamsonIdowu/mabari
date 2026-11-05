@@ -79,4 +79,13 @@ describe('Mabari relays replies', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(useVee.getState().said.text).toBe('Ledger (Claude) replied: Got it.');
   });
+
+  it("keeps one update from Mabari's rounds per project, so replies aren't crowded out", () => {
+    const store = useVee.getState();
+    store.report('shop', 'Shop: 2 working.');
+    store.report('docs', 'Docs: 1 working.');
+    store.report('shop', 'Shop: 3 working.');
+    const rounds = useVee.getState().updates.filter((update) => update.about !== undefined);
+    expect(rounds.map((update) => update.text)).toEqual(['Docs: 1 working.', 'Shop: 3 working.']);
+  });
 });

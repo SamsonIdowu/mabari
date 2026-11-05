@@ -359,6 +359,26 @@ function placeQueueNote(note: HTMLElement, scene: OfficeScene, agents: LiveAgent
   note.style.top = `${Math.min(80, (walker.y / height) * 100 + 9)}%`;
 }
 
+/**
+ * Mabari's label. At its desk it sits under Mabari, as in the prototype; out on its rounds it
+ * goes above its head, over the bubbles, so it's never hidden by whoever it's with.
+ */
+function renderMabari(layer: HTMLElement, scene: OfficeScene): void {
+  let element = layer.querySelector<HTMLElement>('.mabtag');
+  if (!element) {
+    element = document.createElement('div');
+    element.className = 'mabtag';
+    layer.appendChild(element);
+  }
+  const { width, height } = scene.size;
+  const m = scene.manager;
+  const point = scene.screenOf({ x: m.x, y: scene.mabariHome ? m.y + 20 : m.y - 58 });
+  element.classList.toggle('away', !scene.mabariHome);
+  element.style.left = `${(point.x / width) * 100}%`;
+  element.style.top = `${(point.y / height) * 100}%`;
+  if (element.textContent !== scene.mabariLabel) element.textContent = scene.mabariLabel;
+}
+
 /** Everything drawn in HTML over the canvas, updated once a frame. */
 export function renderOverlays(
   elements: OverlayElements,
@@ -370,6 +390,7 @@ export function renderOverlays(
   const shown = walker && inScope(walker, ui, agents) && matches(walker, ui) ? walker : null;
   renderTags(elements.tags, scene, agents);
   renderResting(elements.tags, scene);
+  renderMabari(elements.tags, scene);
   scaleTags(elements.tags, scene);
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());

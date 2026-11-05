@@ -135,6 +135,8 @@ Agent files load on their own: `~/.claude/agents` and `~/.codex/agents` for your
 
 A project works in its own folder. **New project** makes the folder (or clones a repository into it) and opens Claude Code there. On the **Projects** page, each card has **Chat**: send a message or a `/command` and it goes to the Claude Code session working in that project, or opens Claude Code in the folder with it. On Home, pick the project in the dock, or name it ("send /review to Shop"), and Mabari passes it on.
 
+In the office, click the free desk to put one of your agents to work there: pick the agent file and the project, say what it should do, and Claude Code opens in the project's folder running as that agent. Mabari, the office manager, walks round the agents at work and posts how each project is doing to its updates; click Mabari to read them.
+
 ## Voice
 
 Hold the mic on Home, or Space, to talk to Mabari; release to send. Hold the mic for 2 seconds or swipe up to lock it on, then tap to send or press Esc to cancel. Speech is recognised on this computer, by the browser or by [whisper.cpp](https://github.com/ggml-org/whisper.cpp) if you choose Local Whisper in Settings. Voice can never approve anything.

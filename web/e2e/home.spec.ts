@@ -11,7 +11,14 @@ async function home(page: Page, request: Page['request']) {
   await expect(page.locator('#homeSum')).toContainText('working');
 }
 
+/** The Type button shows the text field above the dock; it stays until Esc or Type hides it. */
+async function typing(page: Page) {
+  if (!(await page.locator('#hcForm').isVisible())) await page.locator('#hcType').click();
+  return page.getByLabel('Message Mabari');
+}
+
 async function ask(page: Page, text: string) {
+  await typing(page);
   await page.getByLabel('Message Mabari').fill(text);
   await page.getByLabel('Message Mabari').press('Enter');
   await expect(page.locator('#youSaid')).toHaveText(text);
@@ -141,7 +148,7 @@ test('dispatches anything else at once and relays the reply when it lands', asyn
   request,
 }) => {
   await home(page, request);
-  const box = page.getByLabel('Message Mabari');
+  const box = await typing(page);
   await box.fill('the invoice rounding is wrong');
   const started = Date.now();
   await box.press('Enter');
@@ -190,29 +197,45 @@ test('a reply that lands while you are elsewhere shows on the Home badge', async
   await expect(page.locator('#veeSay')).toContainText('Ledger (Claude) replied: Got it.');
 });
 
-test('the message bar is one slim line that grows and shrinks back', async ({ page, request }) => {
+test('the dock has the project, Type, the mic, Voice and Gestures, with no message bar', async ({
+  page,
+  request,
+}) => {
   await home(page, request);
-  const bar = (await page.locator('#hcForm').boundingBox())!;
-  expect(bar.height).toBeGreaterThanOrEqual(44);
-  expect(bar.height).toBeLessThanOrEqual(56);
-  const order = await page
-    .locator('#hcForm')
-    .evaluate((form) =>
-      [...form.querySelectorAll('button.h2ic, textarea')].map(
-        (node) => node.getAttribute('aria-label') ?? node.id,
-      ),
-    );
-  expect(order).toEqual(['Gestures', 'hcText', 'Hold to talk', 'Spoken replies']);
+  await expect(page.locator('.h2under')).toHaveCount(0);
+  await expect(page.locator('#hcForm')).toHaveCount(0);
+  const labels = await page.locator('.h2dock .dklbl').allTextContents();
+  expect(labels).toEqual(['All projects', 'Type', 'Hold to talk', 'Voice off', 'Gestures']);
+  const mic = (await page.locator('#hcMic .dkic').boundingBox())!;
+  const type = (await page.locator('#hcType .dkic').boundingBox())!;
+  expect(Math.round(mic.width)).toBe(68);
+  expect(Math.round(type.width)).toBe(48);
+});
+
+test('Type shows a field above the dock that sends on Enter and hides on Esc', async ({
+  page,
+  request,
+}) => {
+  await home(page, request);
+  const type = page.locator('#hcType');
+  await type.click();
+  await expect(type).toHaveAttribute('aria-pressed', 'true');
   const box = page.getByLabel('Message Mabari');
-  await expect(box).toHaveAttribute('rows', '1');
+  await expect(box).toBeFocused();
+  await expect(box).toHaveAttribute('placeholder', 'Type to Mabari');
+  const field = (await page.locator('#hcForm').boundingBox())!;
+  const dock = (await page.locator('.h2dock').boundingBox())!;
+  expect(field.y + field.height).toBeLessThanOrEqual(dock.y);
   await box.fill('line\n'.repeat(12));
-  const tall = (await box.boundingBox())!.height;
-  expect(tall).toBeGreaterThan(60);
-  expect(tall).toBeLessThanOrEqual(121);
+  expect((await box.boundingBox())!.height).toBeLessThanOrEqual(121);
   await box.fill('what is happening');
   await box.press('Enter');
+  await expect(page.locator('#youSaid')).toHaveText('what is happening');
+  // Sending keeps the field; Esc hides it.
   await expect(box).toHaveValue('');
-  expect((await box.boundingBox())!.height).toBeLessThan(40);
+  await box.press('Escape');
+  await expect(page.locator('#hcForm')).toHaveCount(0);
+  await expect(type).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('the top bar shows the wordmark only and links home', async ({ page, request }) => {
@@ -238,7 +261,7 @@ test('asking Mabari to approve changes nothing', async ({ page, request }) => {
 
 test('shift enter starts a new line and an empty box sends nothing', async ({ page, request }) => {
   await home(page, request);
-  const box = page.getByLabel('Message Mabari');
+  const box = await typing(page);
   await box.press('Enter');
   await expect(page.locator('#youSaid')).toBeHidden();
   await box.fill('one');
@@ -263,7 +286,7 @@ test('spoken replies can be switched on and read the reply aloud', async ({ page
     Object.assign(window, { said });
     window.speechSynthesis.speak = (utterance) => void said.push(utterance.text);
   });
-  const voice = page.getByRole('button', { name: 'Spoken replies' });
+  const voice = page.locator('#hcVoiceOut');
   await expect(voice).toHaveAttribute('aria-pressed', 'false');
   await voice.click();
   await expect(voice).toHaveAttribute('aria-pressed', 'true');
@@ -278,6 +301,7 @@ test('spoken replies can be switched on and read the reply aloud', async ({ page
 
 test('Mabari opens the agent builder when asked for a new agent', async ({ page, request }) => {
   await home(page, request);
+  await typing(page);
   await page.getByLabel('Message Mabari').fill('Create a new agent');
   await page.getByLabel('Message Mabari').press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Build an agent' });

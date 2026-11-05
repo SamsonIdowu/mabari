@@ -63,6 +63,9 @@ interface VeeStore {
    */
   project: string;
   setProject: (project: string) => void;
+  /** True while the mic on Home is listening, so nothing makes Mabari gesture over it. */
+  listening: boolean;
+  setListening: (listening: boolean) => void;
   play: (name: string) => void;
   say: (reply: VeeReply, queued?: boolean) => void;
   /** Sends a message, to the project given or else the one picked next to the box. */
@@ -167,6 +170,8 @@ export const useVee = create<VeeStore>((set, get) => ({
   unread: 0,
   onHome: false,
   project: savedProject(),
+  listening: false,
+  setListening: (listening) => set({ listening }),
   setProject: (project) => {
     set({ project });
     try {

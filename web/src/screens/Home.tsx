@@ -1,32 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
-import { api, type VeeLine, type VeeReply } from '../data/api.ts';
+import { useEffect, useRef } from 'react';
+import { type VeeLine, type VeeReply } from '../data/api.ts';
 import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText, shortMinutes } from '../format.ts';
 import type { Snapshot } from '../gen/models.ts';
 import { openAgent, useOfficeUi } from '../office/uiStore.ts';
-import {
-  drawMascot,
-  GESTURE_LABELS,
-  IDLE_GESTURES,
-  POKE_GESTURES,
-  veeFrame,
-} from '../office/vee.ts';
-import { detect } from '../office/voice.ts';
-import { listen, type Listener } from '../office/speech.ts';
-import { useVee, VEE_HELLO } from '../office/veeStore.ts';
-import { Icon } from '../shell/Icon.tsx';
-import { useEscape } from '../shell/useEscape.ts';
+import { mascotBox, MouseGestures } from '../office/mouseGestures.ts';
+import { drawMascot, IDLE_GESTURES, POKE_GESTURES, veeFrame } from '../office/vee.ts';
+import { useVee } from '../office/veeStore.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
+import { HomeDock } from './HomeDock.tsx';
 
 const LOOK_EASE = 0.08;
 const HOME_SCALE = 0.78;
@@ -266,13 +251,23 @@ function useVeeStage(
     const lookAt = { x: 0, y: 0 };
     let nextIdle = 0;
     let frame = 0;
+    const gestures = new MouseGestures(Date.now());
 
     const onMove = (event: MouseEvent) => {
       const box = view.getBoundingClientRect();
       const clamp = (value: number) => Math.max(-1, Math.min(1, value));
       lookAt.x = clamp((event.clientX - (box.left + box.width / 2)) / (box.width * 0.9));
       lookAt.y = clamp((event.clientY - (box.top + box.height * 0.35)) / (box.height * 0.9));
+      // Mabari reacts to the pointer too, but not over a dialog, and never while it listens or a
+      // gesture is still playing.
+      if (document.querySelector('.scrim')) return;
+      const vee = useVee.getState();
+      const playing = !!vee.gesture && performance.now() - vee.gesture.start < vee.gesture.dur;
+      const point = { x: event.clientX, y: event.clientY, t: Date.now() };
+      const gesture = gestures.move(point, mascotBox(box), vee.listening || playing);
+      if (gesture) vee.play(gesture);
     };
+    const onLeave = () => gestures.leave();
 
     const paint = (t: number) => {
       frame = requestAnimationFrame(paint);
@@ -280,7 +275,8 @@ function useVeeStage(
       look.y += (lookAt.y - look.y) * LOOK_EASE;
       const vee = useVee.getState();
       vee.settle(t);
-      if (vee.state === 'idle' && !vee.gesture && t > nextIdle) {
+      // Random idle gestures wait while the pointer moves, so they don't talk over its own.
+      if (vee.state === 'idle' && !vee.gesture && t > nextIdle && !gestures.moving(Date.now())) {
         if (nextIdle && !still) vee.play(anyOf(IDLE_GESTURES));
         nextIdle = t + IDLE_MIN_MS + Math.random() * IDLE_SPREAD_MS;
       }
@@ -325,319 +321,14 @@ function useVeeStage(
     };
 
     document.addEventListener('mousemove', onMove);
+    document.documentElement.addEventListener('mouseleave', onLeave);
     frame = requestAnimationFrame(paint);
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener('mousemove', onMove);
+      document.documentElement.removeEventListener('mouseleave', onLeave);
     };
   }, [canvas, bubble, dark]);
-}
-
-function GestureMenu({ close }: { close: () => void }) {
-  const play = useVee((state) => state.play);
-  useEscape(close);
-  return (
-    <div className="menu up" id="gestMenu">
-      <div className="gmhead">Gestures</div>
-      {GESTURE_LABELS.map(([name, label]) => (
-        <button
-          type="button"
-          className="mi"
-          key={name}
-          onClick={() => {
-            play(name);
-            close();
-          }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Hold the mic, or Space when not typing, to talk to Mabari. Speech stays on this computer. On
- * release a question goes straight to Mabari, and an instruction waits in the box for Enter or
- * Send (decisions 15 and 16), so nothing is sent to an agent by voice alone.
- */
-function useHomeMic(setText: (text: string) => void, send: (text: string) => void) {
-  const toast = useOfficeStore((state) => state.toast);
-  const [listening, setListening] = useState(false);
-  const listener = useRef<Listener | null>(null);
-  const heard = useRef('');
-  const active = useRef(false);
-  const finish = useRef(() => {});
-  const start = () => {
-    if (active.current) return;
-    active.current = true;
-    heard.current = '';
-    setListening(true);
-    listener.current = listen(
-      {
-        onText: (text) => {
-          heard.current = text;
-          setText(text);
-        },
-        onError: (message) => {
-          toast(message);
-          active.current = false;
-          setListening(false);
-          listener.current = null;
-        },
-        onEnd: () => finish.current(),
-      },
-      useOfficeStore.getState().office?.settings.voiceEngine,
-    );
-  };
-  /** Release stops listening. The text is final once the engine ends, which for Local Whisper
-   * is after it has turned the recording into text. */
-  const release = useRef(() => {});
-  useEffect(() => {
-    release.current = () => {
-      if (!active.current) return;
-      setListening(false);
-      if (listener.current) listener.current.stop();
-      else finish.current();
-    };
-    finish.current = () => {
-      if (!active.current) return;
-      active.current = false;
-      setListening(false);
-      listener.current = null;
-      const text = heard.current.trim();
-      heard.current = '';
-      if (!text) {
-        useVee.getState().say({
-          ...VEE_HELLO,
-          text: "I didn't catch that. Hold the mic and try again.",
-          gesture: 'shrug',
-        });
-        return;
-      }
-      const office = useOfficeStore.getState().office;
-      if (detect(text, office?.agents ?? [], null).mode === 'query') {
-        setText('');
-        send(text);
-      } else {
-        setText(text);
-        toast('Press Enter to send it, or edit it first.');
-      }
-    };
-  });
-  useEffect(() => {
-    const up = () => release.current();
-    const down = (event: globalThis.KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat) return;
-      const focused = document.activeElement as HTMLElement | null;
-      if (focused?.id === 'hcText' && (focused as HTMLTextAreaElement).value) return;
-      if (
-        focused &&
-        focused.id !== 'hcText' &&
-        /INPUT|TEXTAREA|SELECT|BUTTON/.test(focused.tagName)
-      )
-        return;
-      event.preventDefault();
-      start();
-    };
-    const keyUp = (event: globalThis.KeyboardEvent) => {
-      if (event.code === 'Space') release.current();
-    };
-    window.addEventListener('pointerup', up);
-    window.addEventListener('keydown', down, true);
-    window.addEventListener('keyup', keyUp, true);
-    return () => {
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('keydown', down, true);
-      window.removeEventListener('keyup', keyUp, true);
-    };
-  });
-  // Leaving Home stops listening. Only on leaving: the effect above runs after every render.
-  useEffect(
-    () => () => {
-      active.current = false;
-      listener.current?.abort();
-    },
-    [],
-  );
-  return { listening, start };
-}
-
-/** The message box starts at one line and grows with what is typed, up to this many pixels. */
-const BOX_MAX_PX = 120;
-
-/** The projects a message can go to, picked next to the box. */
-function ProjectMenu({ close }: { close: () => void }) {
-  const projects = useOfficeStore((state) => state.office?.projects ?? []).filter(
-    (project) => !project.done,
-  );
-  const picked = useVee((state) => state.project);
-  const setProject = useVee((state) => state.setProject);
-  useEscape(close);
-  const choose = (project: string) => {
-    setProject(project);
-    close();
-  };
-  return (
-    <div className="menu up" id="projMenu">
-      <div className="gmhead">Send messages to</div>
-      <button
-        type="button"
-        className={picked === '' ? 'mi on' : 'mi'}
-        aria-pressed={picked === ''}
-        onClick={() => choose('')}
-      >
-        Let Mabari pick the project
-      </button>
-      {projects.map((project) => (
-        <button
-          type="button"
-          key={project.id}
-          className={picked === project.id ? 'mi on' : 'mi'}
-          aria-pressed={picked === project.id}
-          onClick={() => choose(project.id)}
-        >
-          <span className="pdot" style={{ background: project.color }} />
-          {project.name}
-        </button>
-      ))}
-      <button
-        type="button"
-        className={picked === 'any' ? 'mi on' : 'mi'}
-        aria-pressed={picked === 'any'}
-        onClick={() => choose('any')}
-      >
-        Any free agent
-      </button>
-    </div>
-  );
-}
-
-/** Which project messages go to, as the chip next to the box shows it. */
-function useProjectLabel(): { label: string; color: string } {
-  const picked = useVee((state) => state.project);
-  const project = useOfficeStore((state) =>
-    state.office?.projects.find((item) => item.id === picked && !item.done),
-  );
-  if (project) return { label: project.name, color: project.color };
-  if (picked === 'any') return { label: 'Any agent', color: '' };
-  return { label: 'Mabari picks', color: '' };
-}
-
-function ChatBox({ spoken }: { spoken: boolean }) {
-  const hear = useVee((state) => state.hear);
-  const [projects, setProjects] = useState(false);
-  const to = useProjectLabel();
-  const [text, setText] = useState('');
-  const [gestures, setGestures] = useState(false);
-  const box = useRef<HTMLTextAreaElement>(null);
-  const mic = useHomeMic(setText, (heard) => void hear(heard));
-  // Fit the box to its text, and back to one line once it is sent.
-  useLayoutEffect(() => {
-    const field = box.current;
-    if (!field) return;
-    field.style.height = 'auto';
-    field.style.height = `${Math.min(field.scrollHeight, BOX_MAX_PX)}px`;
-  }, [text]);
-  const send = () => {
-    const message = text.trim();
-    if (!message) return;
-    setText('');
-    void hear(message);
-  };
-  const toggleVoice = () => {
-    if (spoken) window.speechSynthesis?.cancel();
-    void api.updateSettings({ spokenReplies: !spoken });
-  };
-  const onKey = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      send();
-    }
-  };
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    send();
-  };
-  return (
-    <form className="h2box" id="hcForm" autoComplete="off" onSubmit={submit}>
-      <div className="ddwrap">
-        <button
-          type="button"
-          className="h2ic"
-          aria-label="Gestures"
-          title="Gestures"
-          aria-expanded={gestures}
-          onClick={() => setGestures(!gestures)}
-        >
-          <Icon>
-            <path d="M12 5v14M5 12h14" />
-          </Icon>
-        </button>
-        {gestures ? <GestureMenu close={() => setGestures(false)} /> : null}
-      </div>
-      <div className="ddwrap">
-        <button
-          type="button"
-          className="h2proj"
-          id="hcProject"
-          aria-label={`Send to: ${to.label}`}
-          title="Which project messages go to"
-          aria-expanded={projects}
-          onClick={() => setProjects(!projects)}
-        >
-          {to.color ? <span className="pdot" style={{ background: to.color }} /> : null}
-          <span className="h2projname">{to.label}</span>
-          <Icon>
-            <path d="M7 10l5 5 5-5" />
-          </Icon>
-        </button>
-        {projects ? <ProjectMenu close={() => setProjects(false)} /> : null}
-      </div>
-      <label className="sr" htmlFor="hcText">
-        Message Mabari
-      </label>
-      <textarea
-        id="hcText"
-        ref={box}
-        rows={1}
-        placeholder="Ask Mabari anything"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={onKey}
-      />
-      <button
-        type="button"
-        id="hcMic"
-        className={mic.listening ? 'h2ic on' : 'h2ic'}
-        aria-label="Hold to talk"
-        aria-pressed={mic.listening}
-        title="Hold to talk"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          mic.start();
-        }}
-      >
-        <Icon>
-          <rect x="9" y="3" width="6" height="11" rx="3" />
-          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-        </Icon>
-      </button>
-      <button
-        type="button"
-        className="h2ic"
-        id="hcVoiceOut"
-        aria-label="Spoken replies"
-        aria-pressed={spoken}
-        title={spoken ? 'Mabari speaks replies: on' : 'Mabari speaks replies: off'}
-        onClick={toggleVoice}
-      >
-        <Icon>
-          <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
-        </Icon>
-      </button>
-    </form>
-  );
 }
 
 /** Waits for the office, because the stage needs its canvas on the page when it starts. */
@@ -649,7 +340,6 @@ export function Home() {
 function HomeScreen({ office }: { office: Snapshot }) {
   const thinking = useVee((state) => state.state === 'think');
   const said = useVee((state) => state.said);
-  const heard = useVee((state) => state.heard);
   const play = useVee((state) => state.play);
   const setOnHome = useVee((state) => state.setOnHome);
   useEffect(() => {
@@ -687,18 +377,7 @@ function HomeScreen({ office }: { office: Snapshot }) {
             )}
           </div>
         </div>
-        <div className="h2bottom">
-          {heard ? (
-            <div className="yousaid" id="youSaid">
-              {heard}
-            </div>
-          ) : null}
-          <ChatBox spoken={office.settings.spokenReplies} />
-          <div className="h2under">
-            <span>Enter to send · hold the mic or Space to talk</span>
-            <span id="voiceLbl">{office.settings.spokenReplies ? 'Voice on' : 'Voice off'}</span>
-          </div>
-        </div>
+        <HomeDock spoken={office.settings.spokenReplies} />
       </div>
       <ApprovalCard office={office} />
     </section>

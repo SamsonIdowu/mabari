@@ -179,6 +179,7 @@ test('Run starts an agent from a built agent straight away', async ({ page, requ
 
 test('Home asks Mabari to create or improve an agent', async ({ page }) => {
   await page.goto('/#home');
+  await page.locator('#hcType').click();
   await page
     .getByLabel('Message Mabari')
     .fill('create an agent that reviews pull requests for security');

@@ -65,35 +65,56 @@ test('a queued instruction can be taken back from the panel', async ({ page }) =
   );
 });
 
-test('on Home, messages go to the project picked or the one Mabari asks about', async ({
-  page,
-  request,
-}) => {
+test('on Home, the project picker scopes what Mabari dispatches', async ({ page, request }) => {
   await request.post('/api/demo/load');
+  const sent: { text: string; projectId: string }[] = [];
+  page.on('request', (call) => {
+    if (call.url().endsWith('/api/vee')) sent.push(call.postDataJSON());
+  });
   await page.goto('/#home');
   await expect(page.locator('#homeSum')).toContainText('working');
+  await page.locator('#hcType').click();
   const box = page.getByLabel('Message Mabari');
-  // With nothing to go on, Mabari asks which project.
+  const said = page.locator('#veeSay');
+  // With All projects, Mabari asks when nothing tells it which project.
   await box.fill('make it faster');
   await box.press('Enter');
-  const said = page.locator('#veeSay');
   await expect(said).toContainText('Which project is this for?');
   await said.getByRole('button', { name: 'Docs site' }).click();
   await expect(said).toContainText('in Docs site');
-  // A project picked next to the box takes what follows.
-  await page.locator('#hcProject').click();
-  await page.locator('#projMenu').getByRole('button', { name: 'Test coverage' }).click();
-  await expect(page.locator('#hcProject')).toHaveAccessibleName('Send to: Test coverage');
+  // Picking a project sends its id with every message, and the dispatch stays inside it.
+  await page.locator('#homeProjBtn').click();
+  const menu = page.locator('#homeProjMenu');
+  await expect(menu.locator('.gmhead')).toHaveText('Send to project');
+  await expect(menu.getByRole('button').first()).toHaveText('All projects · Mabari picks');
+  await expect(menu.getByRole('button').last()).toHaveText('+ New project');
+  await menu.getByRole('button', { name: 'Test coverage' }).click();
+  await expect(page.locator('.toast').last()).toContainText(
+    'Instructions now go to Test coverage.',
+  );
+  await expect(page.locator('#homeProjLbl')).toHaveText('Test coverage');
   await box.fill('make it faster');
+  const answered = page.waitForResponse((response) => response.url().endsWith('/api/vee'));
   await box.press('Enter');
-  await expect(said).toContainText('in Test coverage');
+  // The agent there may reply before this looks, so check what Mabari answered.
+  const reply = (await (await answered).json()).reply;
+  expect(reply.project.name).toBe('Test coverage');
+  expect(reply.text).toContain('in Test coverage');
+  const tests = (await (await request.get('/api/snapshot')).json()).projects.find(
+    (project: { name: string }) => project.name === 'Test coverage',
+  );
+  expect(sent.at(-1)).toEqual({ text: 'make it faster', projectId: tests.id });
+  // Status questions answer for the project.
+  const ask = async (text: string) => {
+    await box.fill(text);
+    const response = page.waitForResponse((call) => call.url().endsWith('/api/vee'));
+    await box.press('Enter');
+    return (await (await response).json()).reply as { text: string };
+  };
+  expect((await ask("what's happening?")).text).toContain('in Test coverage');
   // Naming a project wins over the one picked.
-  await box.fill('send update the changelog to Docs site');
-  await box.press('Enter');
-  await expect(said).toContainText('in Docs site');
-  await page.locator('#hcProject').click();
-  await page
-    .locator('#projMenu')
-    .getByRole('button', { name: 'Let Mabari pick the project' })
-    .click();
+  expect((await ask('send update the changelog to Docs site')).text).toContain('in Docs site');
+  await page.locator('#homeProjBtn').click();
+  await menu.getByRole('button', { name: /All projects/ }).click();
+  await expect(page.locator('#homeProjLbl')).toHaveText('All projects');
 });

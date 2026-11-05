@@ -2476,11 +2476,6 @@ section[data-screen='home'] {
 .hcform .in {
   flex: 1;
 }
-#hcMic.on {
-  background: var(--red);
-  color: #fff;
-  border-color: transparent;
-}
 @media (max-width: 1180px) {
   .home {
     grid-template-columns: minmax(0, 1fr) 360px;

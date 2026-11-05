@@ -181,38 +181,3 @@ test('no help text mentions a countdown', async ({ page }) => {
   await expect(page.locator('main')).not.toContainText(/2 second|Send now/);
   await expect(page.locator('main')).toContainText('Nothing is sent until you press Send');
 });
-
-// Home: hold Space to talk to Mabari. A question is answered at once; an instruction waits in the
-// box for Enter, so nothing reaches an agent by voice alone.
-test('on Home a spoken question goes to Mabari, and an instruction waits for Enter', async ({
-  page,
-}) => {
-  const asked: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().endsWith('/api/vee')) asked.push(request.postData() ?? '');
-  });
-  await office(page);
-  await page.goto('/#home');
-  await expect(page.locator('.h2under')).toContainText('hold the mic or Space to talk');
-  await page.locator('#hcText').focus();
-
-  await page.keyboard.down('Space');
-  expect(await page.evaluate(() => window.fakeSpeech.started)).toBeGreaterThan(0);
-  await expect(page.locator('#hcMic')).toHaveClass(/on/);
-  expect(await page.evaluate(() => window.fakeSpeech.local)).toBe(true);
-  await page.evaluate(() => window.fakeSpeech.say("What's happening in the office?"));
-  await expect(page.locator('#hcText')).toHaveValue("What's happening in the office?");
-  await page.keyboard.up('Space');
-  await expect.poll(() => asked.length).toBe(1);
-  await expect(page.locator('#hcText')).toHaveValue('');
-
-  await page.locator('#hcMic').dispatchEvent('pointerdown');
-  await page.evaluate(() => window.fakeSpeech.say('Tell Ledger to add tests for the totals'));
-  await page.mouse.up();
-  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup')));
-  await expect(page.locator('#hcText')).toHaveValue('Tell Ledger to add tests for the totals');
-  await page.waitForTimeout(400);
-  expect(asked).toHaveLength(1);
-  await page.locator('#hcText').press('Enter');
-  await expect.poll(() => asked.length).toBe(2);
-});

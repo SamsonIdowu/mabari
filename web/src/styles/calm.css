@@ -380,6 +380,7 @@ section[data-screen='home'] {
   animation-delay: 0.4s;
 }
 .h2bottom {
+  align-items: center;
   width: 100%;
   max-width: 760px;
   display: flex;
@@ -400,81 +401,6 @@ section[data-screen='home'] {
 .yousaid::before {
   content: 'You: ';
   color: var(--fg2);
-}
-.h2box {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line2);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-.h2box:focus-within {
-  border-color: var(--fg2);
-}
-.h2box.listening {
-  border-color: var(--red);
-}
-.h2box textarea {
-  border: 0;
-  outline: 0;
-  resize: none;
-  background: none;
-  color: var(--fg);
-  font: inherit;
-  font-size: 16px;
-  line-height: 1.45;
-  min-height: 24px;
-  max-height: 120px;
-  flex: 1;
-  min-width: 0;
-  padding: 6px;
-  align-self: center;
-}
-.h2box textarea::placeholder {
-  color: var(--muted);
-}
-.h2box > .h2ic,
-.h2box > .ddwrap {
-  flex: none;
-}
-.h2ic {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 10px;
-  background: none;
-  color: var(--fg2);
-  cursor: pointer;
-}
-.h2ic:hover {
-  background: var(--surface2);
-  color: var(--fg);
-}
-.h2ic .ico {
-  width: 20px;
-  height: 20px;
-}
-.h2ic[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-#hcMic.on {
-  background: var(--red);
-  color: #fff;
-}
-.h2under {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 18px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
 }
 .menu.up {
   bottom: calc(100% + 8px);
@@ -686,38 +612,236 @@ section[data-screen]:not([data-screen='office']) .acc {
   width: 16px;
   height: 16px;
 }
-/* which project Home's messages go to */
-.h2proj {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  max-width: 180px;
-  padding: 0 8px 0 10px;
-  border: 1px solid var(--line2);
-  border-radius: 999px;
-  background: var(--surface2);
-  color: var(--fg2);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.h2proj:hover {
-  color: var(--fg);
-}
-.h2proj .ico {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-.h2projname {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .pickproj {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Home's dock: round buttons with labels under Mabari, as in the prototype */
+.h2type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(560px, 100%);
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  animation: rise 0.18s ease;
+}
+.h2type textarea {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 15.5px;
+  line-height: 1.45;
+  max-height: 120px;
+  padding: 6px 0;
+}
+.h2type textarea::placeholder {
+  color: var(--muted);
+}
+.h2send {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.h2send .ico {
+  width: 18px;
+  height: 18px;
+}
+.h2dock {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 22px;
+}
+.dkbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--fg2);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  min-width: 64px;
+}
+.dkic {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.dkic .ico {
+  width: 20px;
+  height: 20px;
+}
+.dkbtn:hover .dkic {
+  border-color: var(--fg2);
+}
+.dklbl {
+  font-size: 12.5px;
+  font-weight: 700;
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dkbtn[aria-pressed='true'] .dkic {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.dkbtn[aria-pressed='true'] .dklbl {
+  color: var(--fg);
+}
+.dkmain .dkic {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.dkmain .dkic .ico {
+  width: 26px;
+  height: 26px;
+}
+.dkmain .dklbl {
+  color: var(--fg);
+}
+.micwrap {
+  position: relative;
+  display: flex;
+}
+.miclock {
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--fg2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.25s ease;
+}
+.miclock .ico {
+  width: 14px;
+  height: 14px;
+}
+.miclock[aria-pressed='true'] {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+#hcMic.on .dkic {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  animation: pulse 1.2s infinite;
+}
+#hcMic.on.locked .dkic {
+  animation: none;
+  opacity: 1;
+}
+#hcMic.on {
+  background: none;
+  color: var(--fg);
+}
+/* While the mic is held: the padlock rises above it with an up arrow, and a ring fills round it
+   over the 2 s it takes to lock. Not in the prototype; sized to sit inside its 22px gap. */
+.micup {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--fg2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.micup .ico {
+  width: 14px;
+  height: 14px;
+}
+.micwrap.pressing .miclock {
+  transform: translate(-22px, -46px);
+}
+.micwrap.pressing .micup {
+  opacity: 1;
+}
+.micring {
+  position: absolute;
+  inset: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.micring circle {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: micfill 2s linear forwards;
+}
+@keyframes micfill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+#homeProjDot .ico {
+  color: var(--pjc, var(--fg2));
+  fill: color-mix(in srgb, var(--pjc, transparent) 25%, transparent);
+}
+.h2dock .menu {
+  min-width: 240px;
+}
+.h2dock .menu .mi {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h2dock .menu.up {
+  left: 50%;
+  transform: translateX(-50%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .micring circle {
+    animation-duration: 0.01s;
+    animation-delay: 1.99s;
+  }
+  .miclock {
+    transition: none;
+  }
 }

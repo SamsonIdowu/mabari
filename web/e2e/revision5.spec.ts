@@ -121,18 +121,18 @@ test('noise filters hide layers, quiet mode hides them all, and the browser reme
   await expect(page.locator('.ovl > div').first()).toHaveClass('');
 });
 
-test('Home says good morning, afternoon or evening, with Mabari centred above the chat box', async ({
+test('Home says good morning, afternoon or evening, with Mabari centred above the dock', async ({
   page,
 }) => {
   await page.request.post('/api/demo/load');
   await page.goto('/#home');
   await expect(page.locator('#homeGreet')).toHaveText(/^Good (morning|afternoon|evening)$/);
   const stage = (await page.locator('.h2stage').boundingBox())!;
-  const box = (await page.locator('#hcForm').boundingBox())!;
+  const box = (await page.locator('.h2dock').boundingBox())!;
   const view = page.viewportSize()!;
   expect(stage.height).toBeLessThanOrEqual(Math.min(view.height * 0.54, 480) + 1);
   expect(box.y - (stage.y + stage.height)).toBeGreaterThanOrEqual(28);
-  // The chat box no longer hugs the bottom edge.
+  // The dock doesn't hug the bottom edge.
   expect(view.height - (box.y + box.height)).toBeGreaterThan(60);
 });
 

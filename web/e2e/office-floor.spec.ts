@@ -499,6 +499,56 @@ for (const [width, height] of SMALL) {
   });
 }
 
+// RT-8: at 200% zoom the floor fills most of the view, and a wheel over it always zoomed it, so a
+// trackpad could not scroll the page from there. Where the page scrolls, a plain wheel scrolls it
+// and Ctrl or a pinch zooms. Where it fits, the wheel zooms as it always did.
+test('at 720x450 a wheel over the floor scrolls the page, and Ctrl and the wheel zoom', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 450 });
+  await loadDemo(page);
+  await page.waitForTimeout(500);
+  const percent = page.locator('#zoomPct');
+  const scrollTop = () => page.locator('main').evaluate((main) => main.scrollTop);
+  expect(await page.locator('main').evaluate((main) => main.scrollHeight > main.clientHeight)).toBe(
+    true,
+  );
+  await expect(percent).toHaveText('100%');
+  expect(await scrollTop()).toBe(0);
+
+  // The pointer is on the floor itself, away from the header strip.
+  const floor = (await page.locator('#stage').boundingBox())!;
+  await page.mouse.move(floor.x + floor.width / 2, Math.min(floor.y + 80, 440));
+  await page.mouse.wheel(0, 120);
+  await expect.poll(scrollTop).toBeGreaterThan(0);
+  await expect(percent).toHaveText('100%');
+
+  // Ctrl and the wheel, as a pinch arrives, zoom the floor and leave the page where it is.
+  const before = await scrollTop();
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -120);
+  await page.keyboard.up('Control');
+  await expect(percent).toHaveText('125%');
+  expect(await scrollTop()).toBe(before);
+});
+
+test('at 1440x900, where the page fits, the wheel over the floor still zooms it', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  await page.waitForTimeout(500);
+  const percent = page.locator('#zoomPct');
+  expect(
+    await page.locator('main').evaluate((main) => main.scrollHeight <= main.clientHeight + 1),
+  ).toBe(true);
+  await page.locator('#floor').hover();
+  await page.mouse.wheel(0, -100);
+  await expect(percent).toHaveText('125%');
+  await page.mouse.wheel(0, 100);
+  await expect(percent).toHaveText('100%');
+  expect(await page.locator('main').evaluate((main) => main.scrollTop)).toBe(0);
+});
+
 /**
  * What is wrong with the speech bubbles and name tags showing right now: a quiet bubble over a
  * name tag, two bubbles over each other, and a word broken across two lines.

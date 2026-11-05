@@ -10,6 +10,7 @@ import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
+import { pageScrolls, sidewaysOf, wheelUse } from '../office/wheel.ts';
 import { onFloor, restKey } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
 import { selectAgent, selectResting, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
@@ -730,13 +731,19 @@ function Stage({ office }: { office: Snapshot }) {
     let scrolled = 0;
     let lastStep = 0;
     const onWheel = (event: WheelEvent) => {
+      // Scrolling sideways, or with Shift held, moves along a wide office. Up and down zooms,
+      // except where the page can scroll: there a plain wheel is the page's, and Ctrl, Command or
+      // a pinch zooms (RT-8).
+      const use = wheelUse(event, pageScrolls(element));
+      if (use === 'scroll') return;
       event.preventDefault();
-      // Scrolling sideways, or with Shift held, moves along a wide office. Up and down zooms.
-      const sideways = event.shiftKey ? event.deltaY || event.deltaX : event.deltaX;
-      if (Math.abs(sideways) > Math.abs(event.shiftKey ? 0 : event.deltaY)) {
+      if (use === 'pan') {
         if (!running.canPan()) return;
         const { pan, set: update } = useOfficeUi.getState();
-        update({ follow: false, pan: { x: pan.x + sideways / running.matrix().a, y: pan.y } });
+        update({
+          follow: false,
+          pan: { x: pan.x + sidewaysOf(event) / running.matrix().a, y: pan.y },
+        });
         return;
       }
       scrolled += event.deltaY;

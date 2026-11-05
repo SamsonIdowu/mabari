@@ -112,7 +112,7 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A wipe also takes Mabari's hooks out of Claude Code's settings.
-	if a.claude != nil && claudecode.Attached(a.claude.ConfigDir) {
+	if a.claude != nil && a.claudeAttached() {
 		if err := a.detachClaude(); err != nil {
 			internalError(w, err)
 			return

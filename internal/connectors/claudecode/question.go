@@ -106,7 +106,7 @@ func (c *Connector) ask(ctx context.Context, in input) []byte {
 	if reply != nil {
 		return reply
 	}
-	if c.ConfigDir != "" && !HookWaits(c.ConfigDir) {
+	if c.ConfigDir != "" && !HookWaits(c.ConfigDir, c.HookBinary) {
 		return nil
 	}
 	pending, shown, ok := readQuestions(in.ToolInput)

@@ -268,7 +268,8 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 		claude.TidyNames()
 		// Earlier versions stored the demo's pretend Claude Code connection. Without Mabari's
 		// hooks in Claude Code's settings, nothing can be connected.
-		if dir, err := claudecode.ConfigDir(os.Getenv); err == nil && !claudecode.Attached(dir) {
+		binary, _ := hookBinary() // under go run there is none, and only names starting with mabari count
+		if dir, err := claudecode.ConfigDir(os.Getenv); err == nil && !claudecode.Attached(dir, binary) {
 			for _, account := range engine.StoredAccounts() {
 				if account.Kind == models.AccountClaudeCode && account.Status == models.AccountConnected {
 					account.Status = models.AccountOff

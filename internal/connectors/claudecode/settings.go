@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -101,7 +102,8 @@ func readSettings(path string) ([]byte, bool, error) {
 }
 
 // PlanAttach works out the settings with Mabari's hooks added, keeping every other entry and the
-// order of the keys. Any earlier Mabari hooks are replaced, so attaching twice changes nothing.
+// order of the keys. Any earlier Mabari hooks, whatever path wrote them, are replaced, so attaching
+// twice changes nothing and an install that moved never leaves two sets behind.
 func PlanAttach(configDir string, hook Hook) (Plan, error) {
 	path := filepath.Join(configDir, "settings.json")
 	before, existed, err := readSettings(path)
@@ -112,7 +114,7 @@ func PlanAttach(configDir string, hook Hook) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
-	hooks, err := withoutOurHooks(settings)
+	hooks, err := withoutOurHooks(settings, hook.Binary)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -148,7 +150,8 @@ func PlanAttach(configDir string, hook Hook) (Plan, error) {
 }
 
 // PlanDetach works out the settings with Mabari's hooks taken out and nothing else changed.
-func PlanDetach(configDir string) (Plan, error) {
+// binaries are any programs, besides those named mabari…, that Mabari is configured to run as its hook.
+func PlanDetach(configDir string, binaries ...string) (Plan, error) {
 	path := filepath.Join(configDir, "settings.json")
 	before, existed, err := readSettings(path)
 	if err != nil {
@@ -161,7 +164,7 @@ func PlanDetach(configDir string) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
-	hooks, err := withoutOurHooks(settings)
+	hooks, err := withoutOurHooks(settings, binaries...)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -215,8 +218,9 @@ func Apply(plan Plan) error {
 	return os.Rename(temp, plan.Path)
 }
 
-// Attached reports whether Mabari's hooks are in the settings.
-func Attached(configDir string) bool {
+// Attached reports whether Mabari's hooks are in the settings. binaries are any programs, besides
+// those named mabari…, that Mabari is configured to run as its hook.
+func Attached(configDir string, binaries ...string) bool {
 	data, existed, err := readSettings(filepath.Join(configDir, "settings.json"))
 	if err != nil || !existed {
 		return false
@@ -242,7 +246,7 @@ func Attached(configDir string) bool {
 		}
 		for _, group := range groups {
 			for _, handler := range group.Hooks {
-				if isOurs(handler) {
+				if isOurs(handler, binaries...) {
 					return true
 				}
 			}
@@ -254,7 +258,7 @@ func Attached(configDir string) bool {
 // HookWaits reports whether Mabari's PreToolUse hook in the settings has a timeout long enough to
 // wait for an answer to Claude's question. Hooks attached by older versions of Mabari time out
 // after 5 seconds, so their questions are left to Claude Code until the hooks are attached again.
-func HookWaits(configDir string) bool {
+func HookWaits(configDir string, binaries ...string) bool {
 	data, existed, err := readSettings(filepath.Join(configDir, "settings.json"))
 	if err != nil || !existed {
 		return false
@@ -272,7 +276,7 @@ func HookWaits(configDir string) bool {
 			var h struct {
 				Timeout int `json:"timeout"`
 			}
-			if isOurs(handler) && json.Unmarshal(handler, &h) == nil && h.Timeout > PermissionWait {
+			if isOurs(handler, binaries...) && json.Unmarshal(handler, &h) == nil && h.Timeout > PermissionWait {
 				return true
 			}
 		}
@@ -280,8 +284,11 @@ func HookWaits(configDir string) bool {
 	return false
 }
 
-// isOurs reports whether a hook handler runs `mabari hook`.
-func isOurs(handler json.RawMessage) bool {
+// isOurs reports whether a hook handler runs `mabari hook`: its first argument is "hook", and it
+// runs either one of the binaries given, the one Mabari is configured to write, or a program whose
+// name starts with "mabari". The second covers a copy or wrapper of the binary, such as the
+// bin/mabari-run a login service runs, and hooks written by an older install under another path.
+func isOurs(handler json.RawMessage, binaries ...string) bool {
 	var h struct {
 		Command string   `json:"command"`
 		Args    []string `json:"args"`
@@ -289,14 +296,17 @@ func isOurs(handler json.RawMessage) bool {
 	if json.Unmarshal(handler, &h) != nil || len(h.Args) == 0 || h.Args[0] != "hook" {
 		return false
 	}
+	if h.Command != "" && slices.Contains(binaries, h.Command) {
+		return true
+	}
 	// Settings written on Windows use backslashes, whichever system reads them.
 	name := h.Command[strings.LastIndexAny(h.Command, `/\`)+1:]
-	return strings.TrimSuffix(strings.ToLower(name), ".exe") == "mabari"
+	return strings.HasPrefix(strings.ToLower(name), "mabari")
 }
 
 // withoutOurHooks returns the settings' hooks object with every Mabari handler removed, dropping
 // groups and events left empty. Other people's hooks stay exactly as written.
-func withoutOurHooks(settings *object) (*object, error) {
+func withoutOurHooks(settings *object, binaries ...string) (*object, error) {
 	hooks := &object{}
 	raw, ok := settings.values["hooks"]
 	if !ok {
@@ -326,7 +336,7 @@ func withoutOurHooks(settings *object) (*object, error) {
 			}
 			theirs := []json.RawMessage{}
 			for _, handler := range handlers {
-				if !isOurs(handler) {
+				if !isOurs(handler, binaries...) {
 					theirs = append(theirs, handler)
 				}
 			}

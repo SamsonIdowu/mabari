@@ -76,8 +76,19 @@ export function currentOpener(): HTMLElement | null {
 // Open dialogs, the newest last. Only the newest takes Tab and is not inert.
 const stack: HTMLElement[] = [];
 
-/** How many dialogs are open now. Escape closes the newest, so a layer asks this to see if one opened over it. */
-export const openDialogs = () => stack.length;
+/** The dialogs open now, oldest first, so a layer can tell which ones it was shown over. */
+export const openDialogList = (): readonly HTMLElement[] => stack.slice();
+
+/**
+ * Whether Escape is for a layer that was shown while the dialogs in `shown` were open. It is,
+ * unless a dialog it was not shown over is on top, since Escape belongs to the newest layer. It
+ * compares which dialogs are open, not how many: when a lower dialog closes and another opens,
+ * the count is unchanged, and counting would let Escape close both.
+ */
+export function escapeIsFor(shown: ReadonlySet<unknown>, open: readonly unknown[]): boolean {
+  const top = open.at(-1);
+  return top === undefined || shown.has(top);
+}
 // What this file made inert, so it never undoes an inert it did not set.
 const made = new Set<Element>();
 

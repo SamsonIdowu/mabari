@@ -312,6 +312,53 @@ test('Escape closes only the dialog on top when one is open over another', async
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+// REV-5: Escape compared how many dialogs were open with how many were open when it was shown. When
+// a dialog under another closed and a new one opened, the count was the same as before and one
+// Escape closed two.
+test('Escape closes one dialog when a lower one has closed and another has opened', async ({
+  page,
+  request,
+}) => {
+  await loadDemo(page);
+  const snapshot = (await (await request.get('/api/snapshot')).json()) as {
+    agents: { name: string; approval?: { id: string } }[];
+  };
+  const approval = snapshot.agents.find((agent) => agent.name === 'Atlas')!.approval!.id;
+  // Nothing on the page opens a dialog over a dialog, since the page behind is inert, so the store
+  // that opens them is driven directly, as a spoken "allow" does.
+  const ui = (change: Record<string, unknown>) =>
+    page.evaluate(async (next) => {
+      const path = '/src/office/uiStore.ts';
+      const { useOfficeUi } = (await import(
+        /* @vite-ignore */ path
+      )) as typeof import('../src/office/uiStore.ts');
+      useOfficeUi.getState().set(next);
+    }, change);
+  const newAgent = page.getByRole('dialog', { name: /Create a new agent/ });
+  const atlas = page.getByRole('dialog', { name: /Atlas/ });
+
+  await ui({ newAgent: {} });
+  await expect(newAgent).toBeVisible();
+  await ui({ reviewing: approval, spokenApproval: true });
+  await expect(atlas).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(2);
+  // The one underneath goes, and another opens over the one that is left.
+  await ui({ newAgent: null });
+  await expect(newAgent).toBeHidden();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await ui({ newAgent: {} });
+  await expect(newAgent).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(2);
+
+  // One Escape closes the newest only.
+  await page.keyboard.press('Escape');
+  await expect(newAgent).toBeHidden();
+  await expect(atlas).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(atlas).toBeHidden();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 test('Close panel gives focus back to the agent in the list', async ({ page }) => {
   await loadDemo(page);
   const row = entry(page, 'Scout');

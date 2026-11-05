@@ -8,6 +8,7 @@ import { api } from './api.ts';
 import { flushBeforeInput, frameBatch } from './frameBatch.ts';
 import { holdChangesWith } from './heldChanges.ts';
 import { useOfficeStore } from './officeStore.ts';
+import { reloader } from './reloader.ts';
 import { socketProtocols } from './session.ts';
 
 const RETRY_MS = 1000;
@@ -26,9 +27,6 @@ export function useOfficeSync(): void {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let reloadRetry: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    // Messages that arrive while a snapshot is loading wait here. Those newer than the snapshot
-    // are applied after it, so nothing is lost or applied twice.
-    let waiting: ServerMessage[] | null = null;
     const { setSnapshot, applyAll } = useOfficeStore.getState();
     // Changes that arrive in the same frame are applied together, so a burst of them costs the
     // page one render, not one each.
@@ -37,19 +35,16 @@ export function useOfficeSync(): void {
     // Nothing a person does acts on an office that is a frame behind.
     const stopInputFlush = flushBeforeInput(arrived);
 
-    const reload = async () => {
+    // Messages that arrive while a snapshot is loading wait in the reloader. Those newer than the
+    // snapshot are applied after it, so nothing is lost or applied twice, even when reloads overlap.
+    const { reload, hold } = reloader({
+      snapshot: api.snapshot,
+      setSnapshot,
+      applyAll,
       // What came before the snapshot was asked for goes in first, in order.
-      arrived.flush();
-      waiting ??= [];
-      try {
-        const snapshot = await api.snapshot();
-        if (stopped) return;
-        setSnapshot(snapshot);
-        applyAll(waiting);
-      } finally {
-        waiting = null;
-      }
-    };
+      flush: arrived.flush,
+      stopped: () => stopped,
+    });
 
     const reloadUntilItWorks = () => {
       reload().catch(() => {
@@ -78,8 +73,7 @@ export function useOfficeSync(): void {
           reloadUntilItWorks();
           return;
         }
-        if (waiting) waiting.push(message);
-        else arrived.add(message);
+        if (!hold(message)) arrived.add(message);
       };
       socket.onclose = () => {
         // The next connection resumes from what the office holds, so hand over what is waiting.

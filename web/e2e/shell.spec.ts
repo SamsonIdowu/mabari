@@ -158,6 +158,32 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   await expect.poll(width).toBe(84);
 });
 
+test('the collapsed rail still shows the badge for what needs you, with the link named', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.goto('/#office');
+  const rail = page.getByRole('complementary', { name: 'Main' });
+  await expect(page.locator('.app')).toHaveClass(/collapsed/);
+  await expect(page.locator('.rail .lbl').first()).toBeHidden();
+
+  // The demo has an approval waiting, so the Agents link has its red count even collapsed.
+  const link = rail.getByRole('link', { name: /^Agents/ });
+  const badge = link.locator('.badge');
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveText(/^\d+$/);
+  // It sits on the link's top right corner, as the prototype positions it, not off to the side.
+  const [linkBox, badgeBox] = [await link.boundingBox(), await badge.boundingBox()];
+  expect(badgeBox!.x).toBeGreaterThan(linkBox!.x + linkBox!.width / 2);
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(linkBox!.x + linkBox!.width + 1);
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(linkBox!.y - 1);
+  expect(badgeBox!.y + badgeBox!.height).toBeLessThan(linkBox!.y + linkBox!.height / 2 + 6);
+  // With its label hidden, the link is still named for what it is, not "2".
+  await expect(link).toHaveAccessibleName(/^Agents \d+$/);
+});
+
 test('the app fills the window with no margins', async ({ page }) => {
   await page.goto('/');
   const box = await page.locator('.app').boundingBox();

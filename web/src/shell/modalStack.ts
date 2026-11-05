@@ -75,6 +75,9 @@ export function currentOpener(): HTMLElement | null {
 
 // Open dialogs, the newest last. Only the newest takes Tab and is not inert.
 const stack: HTMLElement[] = [];
+
+/** How many dialogs are open now. Escape closes the newest, so a layer asks this to see if one opened over it. */
+export const openDialogs = () => stack.length;
 // What this file made inert, so it never undoes an inert it did not set.
 const made = new Set<Element>();
 

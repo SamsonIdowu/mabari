@@ -275,6 +275,43 @@ test('a dialog opened over another is the only live one, and closing it wakes th
   expect(states.focusBack).toBe(true);
 });
 
+// Escape belongs to the dialog on top (NEW-9). It used to close every dialog that was open.
+test('Escape closes only the dialog on top when one is open over another', async ({
+  page,
+  request,
+}) => {
+  await loadDemo(page);
+  await page.getByRole('button', { name: 'New agent' }).click();
+  const first = page.getByRole('dialog', { name: /Create a new agent/ });
+  await expect(first).toBeVisible();
+  // A spoken "allow" can open an approval while another dialog is up. Nothing on the page does
+  // that, because the page behind a dialog is inert, so the same switch the voice flow turns is
+  // turned here.
+  const snapshot = (await (await request.get('/api/snapshot')).json()) as {
+    agents: { name: string; approval?: { id: string } }[];
+  };
+  const approval = snapshot.agents.find((agent) => agent.name === 'Atlas')!.approval!.id;
+  await page.evaluate(async (id) => {
+    const path = '/src/office/uiStore.ts';
+    const { useOfficeUi } = (await import(
+      /* @vite-ignore */ path
+    )) as typeof import('../src/office/uiStore.ts');
+    useOfficeUi.getState().set({ reviewing: id, spokenApproval: true });
+  }, approval);
+  const second = page.getByRole('dialog', { name: /Atlas/ });
+  await expect(second).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(2);
+
+  // The first Escape closes the approval, and the dialog under it is still there.
+  await page.keyboard.press('Escape');
+  await expect(second).toBeHidden();
+  await expect(first).toBeVisible();
+  // The second closes that one.
+  await page.keyboard.press('Escape');
+  await expect(first).toBeHidden();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 test('Close panel gives focus back to the agent in the list', async ({ page }) => {
   await loadDemo(page);
   const row = entry(page, 'Scout');

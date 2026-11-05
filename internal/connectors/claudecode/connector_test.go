@@ -69,7 +69,7 @@ func TestASessionTakesADesk(t *testing.T) {
 		t.Fatal("no agent")
 	}
 	if agent.Provider != models.ProviderClaude || agent.Model != "claude-sonnet-4-5" ||
-		agent.Folder != "/home/me/shop" || agent.Desk != 0 || agent.Name != "Juniper" ||
+		agent.Folder != "/home/me/shop" || agent.Desk != 0 || agent.Name != "Shop" ||
 		agent.Project != nil {
 		t.Errorf("agent = %+v", agent.Agent)
 	}
@@ -504,5 +504,34 @@ func TestTheFirstStreamedMessageAfterAnInstructionIsTheReply(t *testing.T) {
 	hook(t, c, "Stop", map[string]any{"last_assistant_message": "All done."})
 	if got := agentOf(t, engine).Asked[0].Reply; !strings.HasPrefix(got, "Sure") {
 		t.Errorf("replaced by %q", got)
+	}
+}
+
+// Sessions are named after their folder, never given a made up name, and none can take Mabari's.
+func TestSessionsAreNamedAfterTheirFolder(t *testing.T) {
+	c, engine := newConnector(t)
+	send := func(session, cwd string) *models.LiveAgent {
+		body, _ := json.Marshal(map[string]any{"session_id": session, "cwd": cwd, "hook_event_name": "SessionStart"})
+		c.Handle(context.Background(), body)
+		var agent *models.LiveAgent
+		_ = engine.Do(func() { agent = engine.Agent(agentID(session)) })
+		return agent
+	}
+	if got := send("s1", "/home/me/shop").Name; got != "Shop" {
+		t.Errorf("first = %q", got)
+	}
+	if got := send("s2", "/home/me/shop").Name; got != "Shop 2" {
+		t.Errorf("second = %q", got)
+	}
+	if got := send("s3", "/Users/me/Projects/mabari").Name; got != "Mabari 2" {
+		t.Errorf("mabari = %q", got)
+	}
+	if got := send("s4", "/home/me/docs-site").Name; got != "Docs Site" {
+		t.Errorf("docs-site = %q", got)
+	}
+	// A session that an earlier version called Juniper is renamed after its folder.
+	_ = engine.Do(func() { engine.Agent(agentID("s4")).Name = "Juniper" })
+	if got := send("s4", "/home/me/docs-site").Name; got != "Docs Site" {
+		t.Errorf("renamed = %q", got)
 	}
 }

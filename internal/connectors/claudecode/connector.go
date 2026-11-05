@@ -28,9 +28,12 @@ const Source = "claude"
 const StaleAfter = 5 * time.Minute
 
 // names are given to sessions in the order they arrive, skipping names already in the office.
-var names = []string{
-	"Juniper", "Pepper", "Hazel", "Wren", "Marlow", "Basil", "Clover", "Ember",
-	"Iris", "Juno", "Lark", "Moss", "Olive", "Quinn", "Sorrel", "Tansy",
+// legacyNames are the made up names earlier versions gave sessions. A session still carrying one
+// is renamed after its folder, so nothing looks like an agent that came with the app.
+var legacyNames = map[string]bool{
+	"Juniper": true, "Pepper": true, "Hazel": true, "Wren": true, "Marlow": true, "Basil": true,
+	"Clover": true, "Ember": true, "Iris": true, "Juno": true, "Lark": true, "Moss": true,
+	"Olive": true, "Quinn": true, "Sorrel": true, "Tansy": true,
 }
 
 // input is what Claude Code sends a hook on stdin. Fields depend on the event.
@@ -159,6 +162,10 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 func (c *Connector) agentFor(in input) *models.LiveAgent {
 	id := agentID(in.SessionID)
 	if agent := c.engine.Agent(id); agent != nil {
+		if agent.Lead == nil && legacyNames[agent.Name] {
+			agent.Name = c.nameFor(agent.Folder)
+			c.engine.Touch(agent)
+		}
 		return agent
 	}
 	desk := c.freeDesk()
@@ -169,7 +176,7 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	agents := c.engine.Agents()
 	agent := &models.LiveAgent{}
 	agent.ID = id
-	agent.Name = c.freshName()
+	agent.Name = c.nameFor(in.Cwd)
 	agent.Provider = models.ProviderClaude
 	agent.Account = models.AccountClaudeCode
 	agent.Source = Source
@@ -218,13 +225,27 @@ func (c *Connector) freeDesk() int {
 	return -1
 }
 
-func (c *Connector) freshName() string {
-	for _, name := range names {
-		if c.engine.AgentByName(name) == nil {
-			return name
+var notWord = regexp.MustCompile(`[^A-Za-z0-9]+`)
+
+// nameFor names a session after the folder it works in, such as "Shop" for ~/code/shop, so it is
+// clear where it came from. A second session in the same folder, or one in a folder called
+// mabari, gets a number, since Mabari is the office manager's name.
+func (c *Connector) nameFor(folder string) string {
+	var words []string
+	for _, word := range notWord.Split(filepath.Base(filepath.Clean(folder)), -1) {
+		if word != "" {
+			words = append(words, strings.ToUpper(word[:1])+word[1:])
 		}
 	}
-	return "Claude " + strconv.Itoa(len(c.engine.Agents())+1)
+	base := clip(strings.Join(words, " "), 20)
+	if base == "" || base == "." || base == "/" {
+		base = "Claude"
+	}
+	name := base
+	for number := 2; c.engine.AgentByName(name) != nil || strings.EqualFold(name, "Mabari"); number++ {
+		name = base + " " + strconv.Itoa(number)
+	}
+	return name
 }
 
 // projectFor picks the project whose repository folder holds the session, or the first project.

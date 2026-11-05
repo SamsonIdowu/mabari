@@ -26,6 +26,9 @@ import (
 // Source is the value of Agent.Source for simulated agents.
 const Source = "sim"
 
+// demoEmail is the pretend ChatGPT sign in the demo shows.
+const demoEmail = "you@example.com"
+
 // DemoLength is how long the demo office runs before it turns itself off, so simulated agents
 // never keep running in the background.
 const DemoLength = 10 * time.Minute
@@ -185,6 +188,16 @@ func (s *Simulator) Resume(active bool) error {
 		})
 		if active || leftover {
 			s.endDemo("The demo ended when Mabari restarted", "")
+			return
+		}
+		// An older version left the demo's pretend ChatGPT sign in behind after the demo stopped.
+		for _, account := range s.engine.Accounts() {
+			if account.Kind == models.AccountCodex && account.Email != nil && *account.Email == demoEmail {
+				s.engine.SetAccount(models.Account{
+					ID: string(account.Kind), Kind: account.Kind, Status: models.AccountOff,
+					Models: models.Models[account.Kind],
+				})
+			}
 		}
 	})
 }
@@ -938,7 +951,7 @@ func (s *Simulator) loadDemo() {
 	for _, project := range demoProjects(now) {
 		s.engine.SaveProject(project)
 	}
-	email := "you@example.com"
+	email := demoEmail
 	s.engine.SetAccount(models.Account{
 		ID: string(models.AccountCodex), Kind: models.AccountCodex,
 		Status: models.AccountConnected, Email: &email, Models: models.Models[models.AccountCodex],

@@ -151,20 +151,16 @@ func (e *Engine) load(ctx context.Context) error {
 }
 
 // dropPlaceholder removes the empty "My first project" earlier versions made on a fresh install
-// and after a wipe, as long as nobody has used it. Projects are only ever ones people made.
+// and after a wipe, unless someone gave it a folder, instructions or files. Sessions that were put
+// in it only because it was the first project are left with no project. Projects are only ever
+// ones people made.
 func (e *Engine) dropPlaceholder() {
 	for _, project := range e.projects {
-		if project.ID != placeholderID || project.Name != "My first project" || project.Repository != nil ||
-			project.Instructions != "" || len(project.Files) > 0 {
-			continue
+		if project.ID == placeholderID && project.Name == "My first project" && project.Repository == nil &&
+			project.Instructions == "" && len(project.Files) == 0 {
+			e.RemoveProject(placeholderID)
+			return
 		}
-		for _, agent := range e.agents {
-			if agent.Project != nil && *agent.Project == placeholderID {
-				return
-			}
-		}
-		e.RemoveProject(placeholderID)
-		return
 	}
 }
 

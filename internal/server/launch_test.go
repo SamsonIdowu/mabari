@@ -321,3 +321,17 @@ func TestMabariWithoutATerminal(t *testing.T) {
 		t.Errorf("opening = %+v", opening)
 	}
 }
+
+// A project's colour goes into the page's styles, so only a hex colour is taken.
+func TestAProjectsColourMustBeHex(t *testing.T) {
+	office := newOffice(t)
+	bad := office.do(t, http.MethodPost, "/api/projects", `{"name":"Shop","color":"red;background:url(x)"}`)
+	if bad.Code != http.StatusBadRequest {
+		t.Errorf("create = %d", bad.Code)
+	}
+	created := decode[models.Project](t, office.do(t, http.MethodPost, "/api/projects", `{"name":"Shop","color":"#48DBFB"}`))
+	bad = office.do(t, http.MethodPatch, "/api/projects/"+created.ID, `{"color":"url(x)"}`)
+	if bad.Code != http.StatusBadRequest {
+		t.Errorf("update = %d", bad.Code)
+	}
+}

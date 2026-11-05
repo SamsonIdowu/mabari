@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -146,6 +147,7 @@ func (e *Engine) load(ctx context.Context) error {
 	if err := e.loadAgents(ctx); err != nil {
 		return err
 	}
+	e.reseat()
 	e.dropPlaceholder()
 	return nil
 }
@@ -287,14 +289,39 @@ func (e *Engine) flush() {
 	e.refreshProjects(now, true)
 }
 
-// seatWorkflow keeps only workflow sub-agents on duty in the office, so the benches always show
-// how many are at work. One that stops gives up its seat, and one that starts again takes the
-// nearest free seat to its lead, or the lowest free one. Seats are given up first, so a seat
-// freed in this flush can be taken in it. Call inside Do, before agents are saved.
+// reseat checks every seat after a restart. Contractors (workflow sub-agents and subagents) give
+// theirs up and take one again in the first flush if they are on duty, and an agent sharing a desk with an earlier one,
+// as the workflow benches' seats could after they went, moves to a free desk. Call while loading.
+func (e *Engine) reseat() {
+	taken := map[int]bool{}
+	for _, agent := range e.agents {
+		if agent.Contractor() {
+			agent.Desk = models.OffFloor
+			e.dirty[agent.ID] = struct{}{}
+		}
+	}
+	for _, agent := range e.agents {
+		if agent.Contractor() {
+			continue
+		}
+		if agent.Desk < 0 || taken[agent.Desk] {
+			agent.Desk = models.FreeDesk(e.agents, -1)
+			e.dirty[agent.ID] = struct{}{}
+		}
+		taken[agent.Desk] = true
+	}
+}
+
+// seatWorkflow keeps only contractors on duty in the office, workflow sub-agents and subagents,
+// so it always shows how many are at work. One that stops gives up its desk and leaves the floor,
+// and
+// one that starts again takes the free desk nearest its lead, or the lowest free one. Desks are
+// given up first, so a desk freed in this flush can be taken in it. Call inside Do, before
+// agents are saved.
 func (e *Engine) seatWorkflow() {
 	var arriving []*models.LiveAgent
 	for _, agent := range e.agents {
-		if _, ok := e.dirty[agent.ID]; !ok || !agent.Workflow {
+		if _, ok := e.dirty[agent.ID]; !ok || !agent.Contractor() {
 			continue
 		}
 		if agent.Leaving {
@@ -311,12 +338,12 @@ func (e *Engine) seatWorkflow() {
 	for _, agent := range arriving {
 		near := -1
 		if agent.Lead != nil {
-			if lead := e.Agent(*agent.Lead); lead != nil && lead.Bench == agent.Bench {
+			if lead := e.Agent(*agent.Lead); lead != nil {
 				near = lead.Desk
 			}
 		}
-		// With every seat taken it stays off the floor, and tries again when it next changes.
-		agent.Desk = models.FreeDesk(e.agents, agent.Bench, near)
+		// With every desk taken it stays off the floor, and tries again when it next changes.
+		agent.Desk = models.FreeDesk(e.agents, near)
 	}
 }
 
@@ -1088,11 +1115,52 @@ func (e *Engine) Wipe() {
 	e.Reset()
 }
 
-// Sweep clears speech bubbles that have run out, on agents nothing else is changing, and prompts
-// that waited too long for a Claude Code session. Call inside Do.
+// Dismiss sends an agent out of the office: after `after` milliseconds it walks to the door,
+// and WalkOut later it is removed. An earlier dismissal stands. Call inside Do.
+func (e *Engine) Dismiss(agent *models.LiveAgent, after int64) {
+	if agent.LeavesAt != 0 || agent.Leaving {
+		return
+	}
+	agent.LeavesAt = e.now().UnixMilli() + after
+	e.Touch(agent)
+}
+
+// lastHeard is when an agent last did something: its newest step, or when it arrived.
+func lastHeard(agent *models.LiveAgent) int64 {
+	if len(agent.Feed) > 0 {
+		return max(agent.Feed[0].Time, agent.CreatedAt)
+	}
+	return agent.CreatedAt
+}
+
+// dismissals walks dismissed agents out and removes them once they're gone, and dismisses
+// subagents that went quiet without a word that they finished: subagents never stay for good.
+// One waiting on an approval stays until someone decides. Call inside Do.
+func (e *Engine) dismissals(now int64) {
+	for _, agent := range slices.Clone(e.agents) {
+		if agent.Lead != nil && agent.LeavesAt == 0 && agent.State != models.StateApproval &&
+			now-lastHeard(agent) > models.SubagentStale {
+			e.Dismiss(agent, 0)
+		}
+		if agent.LeavesAt == 0 || now < agent.LeavesAt {
+			continue
+		}
+		if agent.Leaving {
+			e.RemoveAgent(agent.ID)
+			continue
+		}
+		agent.Leaving, agent.LeavesAt = true, now+models.WalkOut
+		e.Touch(agent)
+	}
+}
+
+// Sweep clears speech bubbles that have run out, on agents nothing else is changing, prompts
+// that waited too long for a Claude Code session, and agents whose time to leave has come. Call
+// inside Do.
 func (e *Engine) Sweep() {
 	now := e.now().UnixMilli()
 	e.pruneOpenings(now)
+	e.dismissals(now)
 	for _, agent := range e.agents {
 		if agent.Reply != "" && agent.ReplyUntil <= now {
 			agent.Reply = ""

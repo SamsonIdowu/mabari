@@ -59,8 +59,9 @@ func agentOf(t *testing.T, engine *events.Engine) *models.LiveAgent {
 	return agent
 }
 
-// A session from no agent file is a workflow sub-agent: it waits off the floor, takes a bench
-// seat while it works, and gives the seat up when it stops, so the benches show who is working.
+// A session from no agent file is a workflow sub-agent, a contractor: it waits off the floor,
+// takes a desk while it works, and gives the desk up when it stops, so the office shows exactly
+// how many are working.
 func TestASessionTakesADesk(t *testing.T) {
 	c, engine := newConnector(t)
 	if reply := hook(t, c, "SessionStart", map[string]any{"source": "startup", "model": "claude-sonnet-4-5[1m]"}); reply != nil {
@@ -81,8 +82,8 @@ func TestASessionTakesADesk(t *testing.T) {
 		}
 	}
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	if agent := agentOf(t, engine); agent.Desk != 0 || !agent.Bench {
-		t.Errorf("working: desk %d, bench %v", agent.Desk, agent.Bench)
+	if agent := agentOf(t, engine); agent.Desk != 0 {
+		t.Errorf("working: desk %d", agent.Desk)
 	}
 	hook(t, c, "Stop", map[string]any{})
 	if agent := agentOf(t, engine); agent.Desk != models.OffFloor {
@@ -483,7 +484,7 @@ func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
 }
 
 // A session not started from an agent definition is a workflow sub-agent, seated at the
-// workflow benches, and so is a subagent whose type matches no loaded definition. A subagent
+// desk grid while it works, and so is a subagent whose type matches no loaded definition. A subagent
 // whose type names a Claude definition, the project's before the account's, is linked to it.
 func TestWorkflowSubAgentsAreToldApartFromDefinedAgents(t *testing.T) {
 	c, engine := newConnector(t)
@@ -497,7 +498,7 @@ func TestWorkflowSubAgentsAreToldApartFromDefinedAgents(t *testing.T) {
 	})
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Fix the build"})
 	lead := agentOf(t, engine)
-	if !lead.Workflow || !lead.Bench || lead.DefID != "" || lead.Desk != 0 {
+	if !lead.Workflow || lead.DefID != "" || lead.Desk != 0 {
 		t.Fatalf("lead = %+v", lead.Agent)
 	}
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "code-reviewer"})
@@ -507,18 +508,19 @@ func TestWorkflowSubAgentsAreToldApartFromDefinedAgents(t *testing.T) {
 	_ = engine.Do(func() {
 		reviewer, general, tester = engine.Agent("cc-abc-123-a1"), engine.Agent("cc-abc-123-a2"), engine.Agent("cc-abc-123-a3")
 	})
-	if reviewer.Workflow || reviewer.DefID != "project:p1:code-reviewer" || !reviewer.Bench {
+	// Every subagent sits at the free desk nearest its lead: here, just below it.
+	if reviewer.Workflow || reviewer.DefID != "project:p1:code-reviewer" || reviewer.Desk != 4 {
 		t.Errorf("reviewer = %+v", reviewer.Agent)
 	}
 	// A Codex file of the same name isn't what a Claude Code subagent runs.
 	for _, helper := range []*models.LiveAgent{general, tester} {
-		if !helper.Workflow || helper.DefID != "" || !helper.Bench {
+		if !helper.Workflow || helper.DefID != "" || helper.Desk < 0 {
 			t.Errorf("%s = %+v", helper.Name, helper.Agent)
 		}
 	}
-	// Subagents sit beside their lead at the benches.
-	if reviewer.Desk != 1 || general.Desk != 2 || tester.Desk != 3 {
-		t.Errorf("bench seats = %d, %d, %d", reviewer.Desk, general.Desk, tester.Desk)
+	// In the same grid as everyone, each at its own desk.
+	if general.Desk != 1 || tester.Desk != 8 {
+		t.Errorf("desks = %d, %d", general.Desk, tester.Desk)
 	}
 }
 
@@ -531,15 +533,82 @@ func TestASessionStartedWithAnAgentTakesADesk(t *testing.T) {
 	})
 	hook(t, c, "SessionStart", map[string]any{"agent_type": "planner"})
 	agent := agentOf(t, engine)
-	if agent.Workflow || agent.Bench || agent.DefID != "account:planner" {
+	if agent.Workflow || agent.DefID != "account:planner" || agent.Desk != 0 {
 		t.Errorf("agent = %+v", agent.Agent)
 	}
 	// Its general-purpose helper is a workflow sub-agent, at the desk just below it.
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "general-purpose"})
 	var helper *models.LiveAgent
 	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-a1") })
-	if !helper.Workflow || helper.Bench || helper.Desk != 4 {
+	if !helper.Workflow || helper.Desk != 4 {
 		t.Errorf("helper = %+v", helper.Agent)
+	}
+	// A planner helper of its own sits at the next desk along.
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a2", "agent_type": "planner"})
+	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-a2") })
+	if helper.Workflow || helper.Desk != 1 {
+		t.Errorf("planner helper = %+v", helper.Agent)
+	}
+}
+
+// A skill with `context: fork` runs as a subagent of its agent file's type, and Claude Code may
+// send no SubagentStart for it. Its first tool call seats it at a desk, linked to the project's
+// file, and its tool calls show on it rather than on the lead waiting for it.
+func TestAForkedSkillsSubagentTakesADeskFromItsFirstToolCall(t *testing.T) {
+	c, engine := newConnector(t)
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "p1", Name: "Shop", Repository: &models.Repository{Path: "/home/me/shop"}})
+		engine.SetDefs([]models.AgentDef{
+			{ID: "project:p1:ux-auditor", Kind: models.DefClaude, Name: "ux-auditor", Scope: models.DefProject, ProjectID: "p1"},
+		})
+	})
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "/ux-audit https://example.com/issues/1"})
+	fork := map[string]any{"agent_id": "f1", "agent_type": "ux-auditor", "tool_name": "Read",
+		"tool_input": map[string]any{"file_path": "/home/me/shop/README.md"}}
+	hook(t, c, "PreToolUse", fork)
+	var lead, auditor *models.LiveAgent
+	_ = engine.Do(func() { lead, auditor = engine.Agent("cc-abc-123"), engine.Agent("cc-abc-123-f1") })
+	if auditor == nil {
+		t.Fatal("the forked skill's subagent isn't in the office")
+	}
+	if auditor.DefID != "project:p1:ux-auditor" || auditor.Workflow || auditor.Desk != 4 ||
+		auditor.State != models.StateReading {
+		t.Errorf("auditor = %+v %s", auditor.Agent, auditor.State)
+	}
+	if lead.State == models.StateReading {
+		t.Error("the lead took on its subagent's tool call")
+	}
+	fork["tool_name"] = "Bash"
+	hook(t, c, "PostToolUse", fork)
+	_ = engine.Do(func() {
+		if auditor.State != models.StateThinking || len(engine.Agents()) != 2 {
+			t.Errorf("after the tool: %s, %d agents", auditor.State, len(engine.Agents()))
+		}
+	})
+	hook(t, c, "SubagentStop", map[string]any{"agent_id": "f1", "agent_type": "ux-auditor", "last_assistant_message": "Audit done."})
+	_ = engine.Do(func() {
+		// A subagent is a contractor: finished, it leaves the floor at once and is soon gone.
+		if auditor.State != models.StateDone || auditor.Desk != models.OffFloor || auditor.LeavesAt == 0 {
+			t.Errorf("after it stopped: %s at %d, leaves at %d", auditor.State, auditor.Desk, auditor.LeavesAt)
+		}
+	})
+}
+
+// A session first seen without its agent, such as one that was already running when the hooks
+// were added, moves to a desk once an event says which agent file it runs.
+func TestASessionMovesToADeskWhenItSaysWhichAgentItRuns(t *testing.T) {
+	c, engine := newConnector(t)
+	_ = engine.Do(func() {
+		engine.SetDefs([]models.AgentDef{{ID: "account:planner", Kind: models.DefClaude, Name: "planner", Scope: models.DefAccount}})
+	})
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Plan it"})
+	if agent := agentOf(t, engine); !agent.Workflow || agent.Desk != 0 {
+		t.Fatalf("first = %+v", agent.Agent)
+	}
+	hook(t, c, "PreToolUse", map[string]any{"agent_type": "planner", "tool_name": "Read", "tool_input": map[string]any{}})
+	agent := agentOf(t, engine)
+	if agent.Workflow || agent.DefID != "account:planner" || agent.Desk != 0 {
+		t.Errorf("after = %+v", agent.Agent)
 	}
 }
 
@@ -565,15 +634,16 @@ func TestEverySessionAndSubagentIsShown(t *testing.T) {
 	}
 	seats := map[int]bool{}
 	for _, agent := range agents {
-		if !agent.Bench || seats[agent.Desk] {
-			t.Errorf("%s at bench %v seat %d", agent.Name, agent.Bench, agent.Desk)
+		if agent.Desk < 0 || seats[agent.Desk] {
+			t.Errorf("%s at desk %d", agent.Name, agent.Desk)
 		}
 		seats[agent.Desk] = true
 	}
 }
 
-// A session saved by an earlier version moves to the workflow benches, with its subagents.
-func TestTidyNamesSeatsOldSessionsAtTheBenches(t *testing.T) {
+// A session saved by an earlier version becomes a workflow sub-agent, with its subagents, and
+// keeps a desk while it works.
+func TestTidyNamesMakesOldSessionsWorkflowSubAgents(t *testing.T) {
 	c, engine := newConnector(t)
 	_ = engine.Do(func() {
 		lead := &models.LiveAgent{}
@@ -588,10 +658,10 @@ func TestTidyNamesSeatsOldSessionsAtTheBenches(t *testing.T) {
 	})
 	var lead, helper *models.LiveAgent
 	_ = engine.Do(func() { lead, helper = engine.Agent("cc-old"), engine.Agent("cc-old-a1") })
-	if !lead.Workflow || !lead.Bench || lead.Desk != 0 {
+	if !lead.Workflow || lead.Desk != 0 {
 		t.Errorf("lead = %+v", lead.Agent)
 	}
-	if !helper.Workflow || !helper.Bench || helper.Desk != 1 {
+	if !helper.Workflow || helper.Desk != 5 {
 		t.Errorf("helper = %+v", helper.Agent)
 	}
 }
@@ -697,4 +767,32 @@ func TestAnOpenedSessionTakesItsPrompt(t *testing.T) {
 	if len(agent.Asked) != 1 || agent.Asked[0].ID != opening.ID || agent.Asked[0].Reply != "Audit done: 3 findings." {
 		t.Errorf("asked = %+v", agent.Asked)
 	}
+}
+
+// A subagent's checkpoints carry what Mabari sends while it runs, and a pause stops it there,
+// showing both it and its lead as paused.
+func TestASubagentsStepsDeliverInstructionsAndPause(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Look around"})
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "Explore"})
+	var lead, helper *models.LiveAgent
+	_ = engine.Do(func() {
+		lead, helper = engine.Agent("cc-abc-123"), engine.Agent("cc-abc-123-a1")
+		c.Instruct(helper, "Check the tests too")
+	})
+	step := map[string]any{"agent_id": "a1", "agent_type": "Explore", "tool_name": "Read", "tool_input": map[string]any{}}
+	reply := hook(t, c, "PostToolUse", step)
+	if !strings.Contains(string(reply), "Check the tests too") {
+		t.Errorf("reply = %s", reply)
+	}
+	_ = engine.Do(func() { c.Interrupt(helper) })
+	reply = hook(t, c, "PreToolUse", step)
+	if !strings.Contains(string(reply), `"continue":false`) {
+		t.Errorf("pause reply = %s", reply)
+	}
+	_ = engine.Do(func() {
+		if helper.State != models.StatePaused || lead.State != models.StatePaused {
+			t.Errorf("helper %s, lead %s", helper.State, lead.State)
+		}
+	})
 }

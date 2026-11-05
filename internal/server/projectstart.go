@@ -388,7 +388,7 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 		// The desk grid grows with the team, up to MaxDesks.
 		free := models.MaxDesks
 		for _, agent := range a.engine.Agents() {
-			if !agent.Bench {
+			if agent.Desk >= 0 {
 				free--
 			}
 		}

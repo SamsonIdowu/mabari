@@ -86,7 +86,7 @@ func (c *Connector) Report(event Event) bool {
 		return true
 	}
 	if agent == nil {
-		desk := models.FreeDesk(c.engine.Agents(), false, -1)
+		desk := models.FreeDesk(c.engine.Agents(), -1)
 		if desk < 0 {
 			return false
 		}

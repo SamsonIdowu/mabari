@@ -3,13 +3,16 @@
 package events
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 func workflowAgent(id string, state models.AgentState) *models.LiveAgent {
-	agent := &models.LiveAgent{Agent: models.Agent{ID: id, Name: id, Workflow: true, Bench: true, Desk: models.OffFloor}}
+	agent := &models.LiveAgent{Agent: models.Agent{ID: id, Name: id, Workflow: true, Desk: models.OffFloor}}
 	agent.State = state
 	return agent
 }
@@ -84,9 +87,72 @@ func TestAWorkflowHelperSitsBesideItsLead(t *testing.T) {
 		engine.Touch(helper)
 	})
 	_ = engine.Do(func() {
-		// Seat 1 is the filler's, so the nearest free seat to the lead's (0) is below it, 2.
-		if lead.Desk != 0 || helper.Desk != 2 {
+		// Desk 1 is the filler's, so the nearest free desk to the lead's (0) is below it, 4.
+		if lead.Desk != 0 || helper.Desk != 4 {
 			t.Errorf("lead %d, helper %d", lead.Desk, helper.Desk)
 		}
 	})
+}
+
+func clockedEngine(t *testing.T, now *time.Time) *Engine {
+	t.Helper()
+	s, err := store.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	engine, err := New(context.Background(), s, func() time.Time { return *now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return engine
+}
+
+// Subagents are ephemeral: a dismissed one walks out, then is gone, and one nothing has been
+// heard from in a long time is dismissed, unless it waits on an approval.
+func TestSubagentsLeaveTheOffice(t *testing.T) {
+	now := time.UnixMilli(1_000_000)
+	engine := clockedEngine(t, &now)
+	lead := &models.LiveAgent{Agent: models.Agent{ID: "lead", Name: "lead", Desk: 0}}
+	done := &models.LiveAgent{Agent: models.Agent{ID: "done", Name: "done", Desk: 1, Lead: &lead.ID}}
+	quiet := &models.LiveAgent{Agent: models.Agent{ID: "quiet", Name: "quiet", Desk: 2, Lead: &lead.ID}}
+	asking := &models.LiveAgent{Agent: models.Agent{ID: "asking", Name: "asking", Desk: 3, Lead: &lead.ID}}
+	done.State, quiet.State, asking.State = models.StateDone, models.StateThinking, models.StateApproval
+	for _, agent := range []*models.LiveAgent{lead, done, quiet, asking} {
+		agent.CreatedAt = now.UnixMilli()
+	}
+	_ = engine.Do(func() {
+		for _, agent := range []*models.LiveAgent{lead, done, quiet, asking} {
+			engine.AddAgent(agent)
+		}
+		engine.Dismiss(done, 1000)
+	})
+	ids := func() []string {
+		var got []string
+		_ = engine.Do(func() {
+			for _, agent := range engine.Agents() {
+				got = append(got, agent.ID)
+			}
+		})
+		return got
+	}
+	step := func(ms int64) {
+		now = now.Add(time.Duration(ms) * time.Millisecond)
+		_ = engine.Do(engine.Sweep)
+	}
+	step(1000)
+	_ = engine.Do(func() {
+		if !done.Leaving {
+			t.Error("the finished subagent didn't start walking out")
+		}
+	})
+	step(models.WalkOut)
+	if got := ids(); len(got) != 3 || got[1] != "quiet" {
+		t.Fatalf("after the walk out: %v", got)
+	}
+	step(models.SubagentStale + 1)
+	step(models.WalkOut)
+	if got := ids(); len(got) != 2 || got[0] != "lead" || got[1] != "asking" {
+		t.Errorf("after going quiet: %v", got)
+	}
 }

@@ -156,6 +156,9 @@ type projectBody struct {
 	Folder *string `json:"folder"`
 }
 
+// projectColor is the only form a project's colour may take: it is put into the page's styles.
+var projectColor = regexp.MustCompile(`^#[0-9A-Fa-f]{3,8}$`)
+
 func validProjectName(name string) bool {
 	trimmed := strings.TrimSpace(name)
 	return trimmed != "" && len([]rune(trimmed)) <= maxProjectName
@@ -166,8 +169,8 @@ func (a *api) createProject(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
-	if body.Name == nil || !validProjectName(*body.Name) || body.Color == nil {
-		writeError(w, http.StatusBadRequest, "a project needs a name of up to 28 characters and a colour")
+	if body.Name == nil || !validProjectName(*body.Name) || body.Color == nil || !projectColor.MatchString(*body.Color) {
+		writeError(w, http.StatusBadRequest, "a project needs a name of up to 28 characters and a colour such as #48DBFB")
 		return
 	}
 	project := models.Project{Name: strings.TrimSpace(*body.Name), Color: *body.Color}
@@ -189,6 +192,10 @@ func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Name != nil && !validProjectName(*body.Name) {
 		writeError(w, http.StatusBadRequest, "a project name can be up to 28 characters")
+		return
+	}
+	if body.Color != nil && !projectColor.MatchString(*body.Color) {
+		writeError(w, http.StatusBadRequest, "a project's colour is a hex colour such as #48DBFB")
 		return
 	}
 	var saved *models.Project

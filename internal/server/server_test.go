@@ -977,7 +977,7 @@ func TestCreateAgentAtAGrownDesk(t *testing.T) {
 		t.Fatalf("status %d: %s", response.Code, response.Body)
 	}
 	juniper := agentNamed(t, office, "Juniper")
-	if juniper.Desk != 30 || !juniper.Working || juniper.Bench || juniper.Workflow {
+	if juniper.Desk != 30 || !juniper.Working || juniper.Workflow {
 		t.Errorf("got %+v", juniper)
 	}
 }

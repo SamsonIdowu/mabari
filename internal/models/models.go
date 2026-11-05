@@ -42,11 +42,23 @@ func (s AgentState) Active() bool {
 	}
 }
 
-// OnDuty reports whether a workflow sub-agent belongs in the office: while it works, and while it
+// Contractor reports whether an agent is in the office only while it is on duty: a workflow
+// sub-agent, or any subagent. Permanent agents, from agent files, stay when they rest.
+func (a *LiveAgent) Contractor() bool { return a.Workflow || a.Lead != nil }
+
+// OnDuty reports whether a contractor belongs in the office: while it works, and while it
 // waits on you with an approval or an error. Idle, finished and paused ones leave the floor.
 func (s AgentState) OnDuty() bool {
 	return s.Active() || s == StateApproval || s == StateError
 }
+
+// Subagents are ephemeral. A finished one leaves the floor at once and is removed WalkOut
+// later. One that nothing has been heard from for SubagentStale has finished unseen, so it goes
+// too. Both are milliseconds.
+const (
+	WalkOut       = 6000
+	SubagentStale = 10 * 60 * 1000
+)
 
 // OffFloor is the Desk of a workflow sub-agent that isn't on duty: it has no seat, and the office
 // doesn't show it.
@@ -162,12 +174,10 @@ type Agent struct {
 	DefID string `json:"defId"`
 	// Workflow marks a workflow sub-agent: one not started from an agent definition file, such
 	// as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
-	// or a subagent whose type matches no loaded definition. It is in the office only while it
-	// is on duty (AgentState.OnDuty); otherwise its Desk is OffFloor.
+	// or a subagent whose type matches no loaded definition. It is a contractor: it works at a
+	// desk in the grid like everyone else, but only while it is on duty (AgentState.OnDuty).
+	// Otherwise its Desk is OffFloor and the office doesn't show it.
 	Workflow bool `json:"workflow"`
-	// Bench seats the agent in the workflow sub-agents' area, where Desk counts bench seats. A
-	// workflow lead sits there, and its subagents sit with it.
-	Bench bool `json:"bench"`
 }
 
 // SessionState is what an agent is doing and how far along it is.
@@ -201,6 +211,9 @@ type SessionState struct {
 	TalkUntil  int64  `json:"talkUntil"`
 	TalkColor  string `json:"talkColor"`
 	Leaving    bool   `json:"leaving"`
+	// LeavesAt is when a dismissed agent starts walking out, or, once Leaving, when it is gone,
+	// in Unix milliseconds. Zero means it stays. See Engine.Dismiss.
+	LeavesAt int64 `json:"leavesAt"`
 	// PausedFrom is the state an interrupted agent was in, so Continue can return to it.
 	PausedFrom AgentState `json:"pausedFrom"`
 	// Asked are the latest instructions sent from Mabari that reached the agent, oldest first,

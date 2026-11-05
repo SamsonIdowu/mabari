@@ -559,6 +559,14 @@ func TestMatchesThePrototype(t *testing.T) {
 			if len(agent.Feed) > 0 {
 				got.Top = agent.Feed[0].Tool + "|" + agent.Feed[0].Summary
 			}
+			// Subagents are contractors, unlike in the prototype: off duty they leave the floor,
+			// and back on duty they take the free desk nearest their lead.
+			if agent.Lead != nil {
+				if (agent.Desk == models.OffFloor) == agent.State.OnDuty() {
+					t.Fatalf("tick %d, %s: %s at desk %d", tick, want.Name, agent.State, agent.Desk)
+				}
+				got.Desk = want.Desk
+			}
 			if got != want {
 				t.Fatalf("tick %d, %s:\n got  %+v\n want %+v", tick, want.Name, got, want)
 			}

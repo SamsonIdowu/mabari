@@ -10,22 +10,13 @@
  */
 export const BaseGrid = 4;
 /**
- * MaxDesks caps the seats in each area, desks and benches, only to bound memory.
+ * DeskX is the desk grid's first column, in 32 pixel tiles from the left wall.
+ */
+export const DeskX = 2;
+/**
+ * MaxDesks caps the desks, only to bound memory.
  */
 export const MaxDesks = 96;
-/**
- * BenchRows is how many rows of benches the workflow sub-agents' area has. It grows a
- * column of seats at a time, to the right.
- */
-export const BenchRows = 4;
-/**
- * BenchPitchX is the space between bench seats in a row, in world pixels.
- */
-export const BenchPitchX = 160;
-/**
- * BenchPitchY is the space between rows of benches, in world pixels: the desk grid's.
- */
-export const BenchPitchY = 128;
 
 //////////
 // source: estimate.go
@@ -132,6 +123,18 @@ export const StateError: AgentState = "error";
  * Agent states.
  */
 export const StatePaused: AgentState = "paused";
+/**
+ * Subagents are ephemeral. A finished one leaves the floor at once and is removed WalkOut
+ * later. One that nothing has been heard from for SubagentStale has finished unseen, so it goes
+ * too. Both are milliseconds.
+ */
+export const WalkOut = 6000;
+/**
+ * Subagents are ephemeral. A finished one leaves the floor at once and is removed WalkOut
+ * later. One that nothing has been heard from for SubagentStale has finished unseen, so it goes
+ * too. Both are milliseconds.
+ */
+export const SubagentStale = 10 * 60 * 1000;
 /**
  * OffFloor is the Desk of a workflow sub-agent that isn't on duty: it has no seat, and the office
  * doesn't show it.
@@ -309,15 +312,11 @@ export interface Agent {
   /**
    * Workflow marks a workflow sub-agent: one not started from an agent definition file, such
    * as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
-   * or a subagent whose type matches no loaded definition. It is in the office only while it
-   * is on duty (AgentState.OnDuty); otherwise its Desk is OffFloor.
+   * or a subagent whose type matches no loaded definition. It is a contractor: it works at a
+   * desk in the grid like everyone else, but only while it is on duty (AgentState.OnDuty).
+   * Otherwise its Desk is OffFloor and the office doesn't show it.
    */
   workflow: boolean;
-  /**
-   * Bench seats the agent in the workflow sub-agents' area, where Desk counts bench seats. A
-   * workflow lead sits there, and its subagents sit with it.
-   */
-  bench: boolean;
 }
 /**
  * SessionState is what an agent is doing and how far along it is.
@@ -366,6 +365,11 @@ export interface SessionState {
   talkUntil: number /* int64 */;
   talkColor: string;
   leaving: boolean;
+  /**
+   * LeavesAt is when a dismissed agent starts walking out, or, once Leaving, when it is gone,
+   * in Unix milliseconds. Zero means it stays. See Engine.Dismiss.
+   */
+  leavesAt: number /* int64 */;
   /**
    * PausedFrom is the state an interrupted agent was in, so Continue can return to it.
    */

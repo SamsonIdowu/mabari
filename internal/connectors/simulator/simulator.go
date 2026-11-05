@@ -245,7 +245,7 @@ var ErrDeskTaken = errors.New("that desk has just been taken")
 func (s *Simulator) CreateAgent(spec NewAgent) (*models.LiveAgent, error) {
 	if spec.Desk != nil {
 		for _, agent := range s.engine.Agents() {
-			if !agent.Bench && agent.Desk == *spec.Desk {
+			if agent.Desk == *spec.Desk {
 				return nil, ErrDeskTaken
 			}
 		}
@@ -280,7 +280,7 @@ func (s *Simulator) freeDesk(near *int) int {
 	if near != nil {
 		from = *near
 	}
-	return models.FreeDesk(s.engine.Agents(), false, from)
+	return models.FreeDesk(s.engine.Agents(), from)
 }
 
 // orElse matches the prototype's `value||fallback()`: zero means unset, and the fallback only

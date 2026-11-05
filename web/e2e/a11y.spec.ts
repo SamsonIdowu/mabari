@@ -129,3 +129,86 @@ test('a waiting approval is said aloud on every page, and the board is a named r
   await expect(page.getByRole('region', { name: 'Approvals' })).toHaveCount(0);
   await expect(live).toHaveText(/waiting: Atlas, \S/);
 });
+
+// The small attention badges, which axe does not always reach, and the ticks on project cards:
+// text 9 to 11 px high that has to pass 4.5:1 against what it sits on.
+const BADGES = '.badge, .bcount, .pws b, .pwin.done .pws, .fbubble.red';
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`the small badges and ticks have 4.5:1 contrast in the ${theme} theme`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript((name) => window.localStorage.setItem('mabari.theme', name), theme);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Explore a demo office' }).click();
+    await expect(page.locator('h1')).toHaveText('Agents');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    // The demo starts with an approval waiting and a finished project, so there are red badges
+    // on the rail and the board and a tick on a card.
+    await expect(page.locator('.rail .badge').first()).toBeVisible();
+    await expect(page.locator('#board .badge')).toBeVisible();
+    await expect(page.locator('.pwin.done .pws')).toBeVisible();
+
+    const measured = await page.evaluate((selector) => {
+      type Colour = { r: number; g: number; b: number; a: number };
+      const parse = (css: string): Colour => {
+        const [r = 0, g = 0, b = 0, a = 1] = (css.match(/[\d.]+/g) ?? []).map(Number);
+        return { r, g, b, a };
+      };
+      const mix = (top: Colour, below: Colour): Colour => ({
+        r: top.r * top.a + below.r * (1 - top.a),
+        g: top.g * top.a + below.g * (1 - top.a),
+        b: top.b * top.a + below.b * (1 - top.a),
+        a: 1,
+      });
+      const light = (c: Colour) => {
+        const channel = (v: number) => {
+          const s = v / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+      };
+      // What is painted behind an element: its own background over its ancestors', up to one that
+      // is solid.
+      const behind = (element: Element): Colour => {
+        const layers: Colour[] = [];
+        for (let at: Element | null = element; at; at = at.parentElement) {
+          const colour = parse(getComputedStyle(at).backgroundColor);
+          if (colour.a > 0) layers.push(colour);
+          if (colour.a === 1) break;
+        }
+        return layers.reduceRight((below, top) => mix(top, below), {
+          r: 255,
+          g: 255,
+          b: 255,
+          a: 1,
+        });
+      };
+      return [...document.querySelectorAll(selector)]
+        .filter((element) => {
+          const box = element.getBoundingClientRect();
+          return (
+            box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden'
+          );
+        })
+        .map((element) => {
+          const style = getComputedStyle(element);
+          const back = behind(element);
+          const text = mix(parse(style.color), back);
+          const [high, low] = [light(text), light(back)].sort((a, b) => b - a);
+          return {
+            what: `${element.className} "${(element.textContent ?? '').trim()}"`,
+            ratio: ((high ?? 0) + 0.05) / ((low ?? 0) + 0.05),
+          };
+        });
+    }, BADGES);
+
+    // An instrument that measures nothing is no check: the badges and the tick must be in it.
+    expect(measured.length).toBeGreaterThanOrEqual(5);
+    expect(measured.some((item) => item.what.includes('pws'))).toBe(true);
+    const failing = measured.filter((item) => item.ratio < 4.5);
+    expect(
+      failing.map((item) => `${item.what} is ${item.ratio.toFixed(2)}:1`),
+      'under 4.5:1',
+    ).toEqual([]);
+  });
+}

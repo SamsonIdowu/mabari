@@ -519,7 +519,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
@@ -2335,7 +2335,7 @@ tr:last-child td {
   width: max-content;
 }
 .fbubble.red {
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
 }
 .fhname {
@@ -3488,14 +3488,15 @@ section[data-screen='home'] {
   color: #555;
 }
 .pws b {
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
   border-radius: 6px;
   padding: 0 0.35em;
   font-size: 0.9em;
 }
 .pwin.done .pws {
-  color: #1b8a4b;
+  /* Decision 36's green: the old #1b8a4b measured 4.39:1 at this size. */
+  color: #1a784a;
 }
 [data-theme='dark'] .pwin {
   color: #f4f4f4;

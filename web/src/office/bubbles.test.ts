@@ -156,6 +156,59 @@ describe('placing bubbles', () => {
     expect(left.shift).toBe(24);
   });
 
+  it('keeps a crowded floor clear and cheap: no showing quiet bubble covers a tag or another bubble', () => {
+    // 96 agents in a grid, as many as the office holds, each with a tag and a two line bubble.
+    // The numbers come from a small generator, so the floor is the same on every run.
+    let seed = 7;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const tags: Box[] = [];
+    const items: BubbleItem[] = [];
+    for (let index = 0; index < 96; index++) {
+      // `y` is where the agent stands: its tag hangs from there, and its bubble sits 48 above.
+      const x = 100 + (index % 12) * 150;
+      const y = 140 + Math.floor(index / 12) * 124;
+      tags.push(tagBox(x, y, 100, 44, 1));
+      const rank = next() < 0.1 ? 2 : 0;
+      const wide = 90 + Math.floor(next() * 60);
+      items.push(
+        bubble(
+          `b${index}`,
+          rank,
+          bubbleBox(x, y - 48, wide, 38, 1),
+          bubbleBox(x, y - 48, wide, 24, 1),
+        ),
+      );
+    }
+    const started = performance.now();
+    const placed = placeBubbles(items, tags, 1900);
+    const took = performance.now() - started;
+    // Far inside what a frame can spare: it runs for every bubble, every frame.
+    expect(took).toBeLessThan(50);
+
+    const shown = items.filter((item) => !placed.get(item.id)!.hidden && item.rank < 2);
+    const boxOf = (item: BubbleItem) => {
+      const at = placed.get(item.id)!;
+      const base = at.short && item.short ? item.short : item.box;
+      return {
+        ...base,
+        left: base.left + at.shift,
+        right: base.right + at.shift,
+        top: base.top - at.lift,
+        bottom: base.bottom - at.lift,
+      };
+    };
+    for (const item of shown) {
+      for (const tag of tags) expect(overlaps(boxOf(item), tag)).toBe(false);
+    }
+    for (let first = 0; first < shown.length; first++) {
+      for (let second = first + 1; second < shown.length; second++) {
+        expect(overlaps(boxOf(shown[first]!), boxOf(shown[second]!))).toBe(false);
+      }
+    }
+    // Some are still shown, so the rule thins a crowd and does not empty it.
+    expect(shown.length).toBeGreaterThan(10);
+  });
+
   it('reads the same every time for the same floor, so bubbles do not flicker', () => {
     const items = [
       bubble('a', 0, box(100, 100, 80, 34)),

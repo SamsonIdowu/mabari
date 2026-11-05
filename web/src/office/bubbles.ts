@@ -124,11 +124,22 @@ export function placeBubbles(
       top: box.top - lift,
       bottom: box.bottom - lift,
     });
-    const clear = (box: Box) =>
-      !tags.some((tag) => overlaps(box, tag, CLEARANCE)) &&
-      !placed.some((other) => overlaps(box, other, CLEARANCE));
-    // In order: as it is, a little nearer its agent, one line, then up.
+    // Only what reaches where the bubble may go can stop it, which keeps a crowded floor cheap:
+    // this runs for every bubble, every frame.
     const down = settles(bubble.settle ?? MAX_SETTLE);
+    const reach: Box = {
+      left: bubble.box.left + shift,
+      right: bubble.box.right + shift,
+      top: bubble.box.top - MAX_LIFT,
+      // The lowest it may settle is the last, most negative, lift.
+      bottom: bubble.box.bottom - down[down.length - 1]!,
+    };
+    const nearTags = tags.filter((tag) => overlaps(reach, tag, CLEARANCE));
+    const nearPlaced = placed.filter((other) => overlaps(reach, other, CLEARANCE));
+    const clear = (box: Box) =>
+      !nearTags.some((tag) => overlaps(box, tag, CLEARANCE)) &&
+      !nearPlaced.some((other) => overlaps(box, other, CLEARANCE));
+    // In order: as it is, a little nearer its agent, one line, then up.
     const tries: { box: Box; lift: number; short: boolean }[] = [
       ...down.map((lift) => ({ box: bubble.box, lift, short: false })),
       ...(bubble.short ? down.map((lift) => ({ box: bubble.short!, lift, short: true })) : []),

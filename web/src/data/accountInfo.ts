@@ -59,3 +59,21 @@ export function modelOptions(
   }
   return options;
 }
+
+const isKey = (account: Pick<Account, 'kind'>) =>
+  account.kind === 'anthropic_key' || account.kind === 'openai_key';
+
+/**
+ * Whether an account that can run agents is on: any account that is not off, other than an API key,
+ * which can't run agents yet (decision 6 of the first UX round). Saving only a key leaves this
+ * false, so the pages say what to connect instead of treating the office as ready.
+ */
+export function agentsCanRun(accounts: Pick<Account, 'kind' | 'status'>[]): boolean {
+  return accounts.some((account) => account.status !== 'off' && !isKey(account));
+}
+
+/** Whether something is saved, but only API keys, which can't run agents. */
+export function onlyApiKeys(accounts: Pick<Account, 'kind' | 'status'>[]): boolean {
+  const live = accounts.filter((account) => account.status !== 'off');
+  return live.length > 0 && live.every(isKey);
+}

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { agentsCanRun, onlyApiKeys } from '../data/accountInfo.ts';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
@@ -520,12 +521,9 @@ function AccountBanners({ office }: { office: Snapshot }) {
 }
 
 function FloorMessage({ office }: { office: Snapshot }) {
-  const live = office.accounts.filter((account) => account.status !== 'off');
   // An API key alone can't run an agent yet, so it doesn't make the office connected.
-  const keysOnly =
-    live.length > 0 &&
-    live.every((account) => account.kind === 'anthropic_key' || account.kind === 'openai_key');
-  const connected = live.length > 0 && !keysOnly;
+  const keysOnly = onlyApiKeys(office.accounts);
+  const connected = agentsCanRun(office.accounts);
   if (office.agents.length) return null;
   const loadDemo = () => void api.loadDemo();
   return (

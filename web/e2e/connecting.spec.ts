@@ -296,6 +296,19 @@ test('Home on a fresh install offers to connect an account', async ({ page }) =>
   await expect(page.locator('main h1')).toHaveText('Accounts');
 });
 
+// RT-4: a saved API key can't run agents, so Home still offers the way to an account that can.
+test('Home with only an API key saved still offers to connect an account', async ({
+  page,
+  request,
+}) => {
+  await request.put('/api/accounts/anthropic_key/key', { data: { key: aKey } });
+  await page.goto('/#home');
+  await expect(page.locator('#homeSum')).toHaveText('No agents yet');
+  await expect(
+    page.locator('#homeConnect').getByRole('link', { name: 'Connect an account' }),
+  ).toBeVisible();
+});
+
 // SETUP-10
 test('a key that does not fit is told off beside the field, with the shape it should have', async ({
   page,

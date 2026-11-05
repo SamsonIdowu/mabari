@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { Account, AccountKind } from '../gen/models.ts';
 import {
   ACCOUNT_LABEL,
+  agentsCanRun,
   DEFAULTS_KEY,
   chooseableModels,
   connectedModels,
   defaultModel,
   modelOptions,
+  onlyApiKeys,
 } from './accountInfo.ts';
 
 const account = (kind: AccountKind, status: Account['status'], models: string[]) =>
@@ -93,5 +95,36 @@ describe('the options of a model select', () => {
 
   it('are empty, and add nothing, with nothing stored and nothing offered', () => {
     expect(modelOptions([], '')).toEqual([]);
+  });
+});
+
+describe('whether agents can run', () => {
+  const live = [account('claude_code', 'connected', []), account('anthropic_key', 'connected', [])];
+
+  it('is false with nothing connected, and with only API keys, which cannot run agents yet', () => {
+    expect(agentsCanRun([])).toBe(false);
+    expect(agentsCanRun([account('claude_code', 'off', []), account('codex', 'off', [])])).toBe(
+      false,
+    );
+    expect(agentsCanRun([account('anthropic_key', 'connected', [])])).toBe(false);
+    expect(
+      agentsCanRun([
+        account('anthropic_key', 'connected', []),
+        account('openai_key', 'connected', []),
+      ]),
+    ).toBe(false);
+  });
+
+  it('is true once Claude Code or ChatGPT is on, with or without a key beside it', () => {
+    expect(agentsCanRun([account('codex', 'connected', [])])).toBe(true);
+    expect(agentsCanRun([account('claude_code', 'connecting', [])])).toBe(true);
+    expect(agentsCanRun(live)).toBe(true);
+  });
+
+  it('says when a key is all there is', () => {
+    expect(onlyApiKeys([account('openai_key', 'connected', [])])).toBe(true);
+    expect(onlyApiKeys([])).toBe(false);
+    expect(onlyApiKeys([account('openai_key', 'off', [])])).toBe(false);
+    expect(onlyApiKeys(live)).toBe(false);
   });
 });

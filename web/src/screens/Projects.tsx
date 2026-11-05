@@ -17,6 +17,7 @@ import type { LiveAgent, Project } from '../gen/models.ts';
 import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
+import { ProjectDialog } from './ProjectDialog.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 
@@ -98,14 +99,10 @@ function Counters(props: { values: [string, string][] }) {
 
 function CardMeta({ project }: { project: Project }) {
   const files = project.files?.length ?? 0;
-  if (!project.repository && !files && !project.instructions) return null;
+  // The folder has its own line, with Claude Code next to it.
+  if (!files && !project.instructions) return null;
   return (
     <p className="help" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {project.repository ? (
-        <span>
-          Repo <b className="mono">{project.repository.path}</b> · {project.repository.branch}
-        </span>
-      ) : null}
       {files ? (
         <span>
           {files} file{files === 1 ? '' : 's'}
@@ -138,7 +135,7 @@ function CompletedBody({ project }: { project: Project }) {
         ]}
       />
       <CardMeta project={project} />
-      <div className="scroll" style={{ gap: 8 }}>
+      <div className="scroll" style={{ gap: 8 }} tabIndex={0} aria-label="What got done">
         <span className="flabel">What got done</span>
         {done.tasks.length ? (
           done.tasks.map((task) => (
@@ -194,14 +191,61 @@ function OpenBody({ project, agents }: { project: Project; agents: LiveAgent[] }
           )}
         </p>
       )}
-      <div className="scroll" style={{ gap: 6 }}>
+      <div className="scroll" style={{ gap: 6 }} tabIndex={0} aria-label="Agents on this project">
         <AgentRows agents={agents} />
       </div>
     </>
   );
 }
 
+const toast = (text: string) => useOfficeStore.getState().toast(text);
+
+/** The project's folder, and Claude Code opened there, or a way to attach one. */
+function FolderLine({ project, edit }: { project: Project; edit: () => void }) {
+  const folder = project.repository?.path;
+  const open = () =>
+    api
+      .openProjectClaude(project.id)
+      .then(({ notice }) => toast(notice))
+      .catch((error: Error) => toast(error.message));
+  return folder ? (
+    <p className="help pfolder" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span
+        className="mono"
+        title={folder}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {folder}
+        {project.repository?.branch ? ` · ${project.repository.branch}` : ''}
+      </span>
+      <button type="button" className="btn sm" onClick={() => void open()}>
+        Open Claude Code here
+      </button>
+    </p>
+  ) : (
+    <p className="help pfolder" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span style={{ flex: 1 }}>No folder yet.</span>
+      <button type="button" className="btn sm" onClick={edit}>
+        Attach a folder
+      </button>
+    </p>
+  );
+}
+
 function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[] }) {
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const remove = () =>
+    api
+      .deleteProject(project.id)
+      .then(() => toast(`${project.name} is deleted. Its agents stay, with no project.`))
+      .catch((error: Error) => toast(error.message));
   const done = !isOpen(project);
   const status = projectStatus(project.status);
   const percent = Math.round(project.progress * 100);
@@ -222,11 +266,49 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
             {project.name}
           </span>
         </h2>
-        <span className={`chip ${status.chip}`}>
-          {done || project.status === 'ready' ? <Check /> : <i />}
-          {status.label}
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span className={`chip ${status.chip}`}>
+            {done || project.status === 'ready' ? <Check /> : <i />}
+            {status.label}
+          </span>
+          <button
+            type="button"
+            className="btn ghost sm"
+            aria-label={`Edit ${project.name}`}
+            title="Edit the project"
+            onClick={() => setEditing(true)}
+          >
+            <Icon>
+              <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />
+            </Icon>
+          </button>
+          <button
+            type="button"
+            className="btn ghost sm"
+            aria-label={`Delete ${project.name}`}
+            title="Delete the project"
+            onClick={() => setDeleting(true)}
+          >
+            <Icon>
+              <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+            </Icon>
+          </button>
         </span>
       </div>
+      {deleting ? (
+        <div className="banner red" style={{ padding: '8px 10px' }}>
+          <span className="grow">
+            Delete {project.name}? Its agents and files stay; only the project goes.
+          </span>
+          <button type="button" className="btn sm" onClick={() => setDeleting(false)}>
+            Keep
+          </button>
+          <button type="button" className="btn sm danger" onClick={() => void remove()}>
+            Delete
+          </button>
+        </div>
+      ) : null}
+      <FolderLine project={project} edit={() => setEditing(true)} />
       <div className="pbarwrap">
         <div
           className="pbar"
@@ -281,6 +363,7 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
           </button>
         )}
       </div>
+      {editing ? <ProjectDialog project={project} close={() => setEditing(false)} /> : null}
     </article>
   );
 }
@@ -318,7 +401,7 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
           'Nothing in progress'
         )}
       </p>
-      <div className="scroll" style={{ gap: 6 }}>
+      <div className="scroll" style={{ gap: 6 }} tabIndex={0} aria-label="Agents on every project">
         <AgentRows agents={agents} />
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

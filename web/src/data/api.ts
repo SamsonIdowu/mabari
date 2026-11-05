@@ -54,6 +54,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(body?.error ?? `Request failed: ${response.status}`);
   }
+  // A delete answers with no content.
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -300,6 +302,14 @@ export const api = {
   updateSettings: (patch: Partial<Settings>) => send<Settings>('PATCH', '/api/settings', patch),
   completeProject: (id: string) => send<Project>('POST', `/api/projects/${id}/complete`),
   reopenProject: (id: string) => send<Project>('POST', `/api/projects/${id}/reopen`),
+  updateProject: (
+    id: string,
+    patch: { name?: string; color?: string; instructions?: string; folder?: string },
+  ) => send<Project>('PATCH', `/api/projects/${id}`, patch),
+  deleteProject: (id: string) => send<unknown>('DELETE', `/api/projects/${id}`),
+  /** Opens Claude Code in the project's folder, in a terminal on this computer. */
+  openProjectClaude: (id: string, prompt = '') =>
+    send<{ notice: string }>('POST', `/api/projects/${id}/claude`, { prompt }),
   previewDispatch: (text: string, scope: Scope) =>
     send<{ decision: Decision | null }>('POST', '/api/dispatch/preview', { text, ...scope }),
   sendMessage: (text: string, mode: MessageMode, target: string, scope: Scope) =>

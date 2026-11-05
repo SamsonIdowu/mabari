@@ -78,3 +78,38 @@ test('the project can start right away, and a bad folder is explained', async ({
     .click();
   await expect(page.locator('.tag .nt:visible')).toHaveCount(3, { timeout: 15_000 });
 });
+
+test('a project can be edited, given a folder, opened in Claude Code and deleted', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/projects', { data: { name: 'Side shop', color: '#48DBFB' } });
+  await page.goto('/#projects');
+  const card = page.locator('article', { hasText: 'Side shop' });
+  await expect(card).toContainText('No folder yet.');
+
+  // Attach a folder and rename it in the edit dialog.
+  await card.getByRole('button', { name: 'Attach a folder' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Side shop' });
+  await dialog.locator('#pjName').fill('Corner shop');
+  await dialog.locator('#pjFolder').fill('/no/such/folder');
+  await dialog.getByRole('button', { name: 'Save project' }).click();
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  await dialog.locator('#pjFolder').fill(resolve('.'));
+  await dialog.getByRole('button', { name: 'Save project' }).click();
+  await expect(dialog).toBeHidden();
+  const renamed = page.locator('article', { hasText: 'Corner shop' });
+  await expect(renamed).toContainText(resolve('.'));
+
+  // The tests open no terminals, so Mabari says what to run.
+  await renamed.getByRole('button', { name: 'Open Claude Code here' }).click();
+  await expect(page.locator('.toast').last()).toContainText(`Run claude in ${resolve('.')}`);
+
+  // Deleting asks first.
+  await renamed.getByRole('button', { name: 'Delete Corner shop' }).click();
+  await renamed.getByRole('button', { name: 'Keep' }).click();
+  await expect(renamed).toBeVisible();
+  await renamed.getByRole('button', { name: 'Delete Corner shop' }).click();
+  await renamed.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.locator('article', { hasText: 'Corner shop' })).toHaveCount(0);
+});

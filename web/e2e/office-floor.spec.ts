@@ -273,3 +273,43 @@ for (const [width, height] of [
     }
   });
 }
+
+test('starting a project leaves the office filters alone and still says it started', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  await expect(page.locator('.tag .nt').first()).toBeVisible();
+  // Looking at one project, with the Needs me filter on.
+  await page.getByRole('button', { name: /^Project/ }).click();
+  await page.getByRole('menuitemradio', { name: /Docs site/ }).click();
+  await page.getByRole('button', { name: /^Needs me/ }).click();
+  // Only Mori, stopped by an error, in Docs site.
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New project' });
+  await dialog.getByRole('button', { name: 'Start right away' }).click();
+  await dialog
+    .locator('#briefText')
+    .fill('Build an internal dashboard that shows weekly sales by region');
+  await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+  await dialog
+    .locator('.plancard')
+    .getByRole('button', { name: /Start project with 3 agents/ })
+    .click();
+  await expect(dialog).toBeHidden();
+
+  // The server's toast still says it started.
+  await expect(
+    page.locator('.toast').filter({ hasText: ' created. ' }).filter({ hasText: 'is walking in' }),
+  ).toBeVisible();
+  // The filters are as they were.
+  await expect(page.locator('.dd').first()).toContainText('Docs site');
+  await expect(page.getByRole('button', { name: /^Needs me/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(1);
+});

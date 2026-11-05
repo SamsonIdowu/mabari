@@ -47,11 +47,15 @@ test('a brief, a file and a folder become a team that waits for its plan', async
 
   await card.getByRole('button', { name: /Start project with/ }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator('.dd').first()).toContainText('Bean counter');
+  // Starting a project leaves the office's filters alone: nobody else is hidden.
+  await expect(page.locator('.dd').first()).toContainText('All projects');
   // Plan first: the lead posts its plan before anyone else joins.
   await expect(page.locator('.board')).toContainText('Approve the plan for Bean counter', {
     timeout: 15_000,
   });
+  // Follow the new project by choosing it: only its lead is on the floor so far.
+  await page.getByRole('button', { name: /^Project/ }).click();
+  await page.getByRole('menuitemradio', { name: /Bean counter/ }).click();
   await expect(page.locator('.tag .nt:visible')).toHaveCount(1);
   await page.locator('.board').getByText('Approve the plan for Bean counter').click();
   const approval = page.getByRole('dialog');
@@ -76,7 +80,10 @@ test('the project can start right away, and a bad folder is explained', async ({
     .locator('.plancard')
     .getByRole('button', { name: /Start project with 3 agents/ })
     .click();
-  await expect(page.locator('.tag .nt:visible')).toHaveCount(3, { timeout: 15_000 });
+  await expect(dialog).toBeHidden();
+  // The filters stay as they were, so the whole office shows: the 10 demo agents and the team.
+  await expect(page.locator('.dd').first()).toContainText('All projects');
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(13, { timeout: 15_000 });
 });
 
 test('a project can be edited, given a folder, opened in Claude Code and deleted', async ({

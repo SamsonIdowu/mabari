@@ -325,7 +325,9 @@ function Brief() {
     api
       .startProject(body)
       .then((started) => {
-        set({ newProject: false, project: started.project.id, team: null });
+        // The office keeps the filters it had: starting a project must not hide everyone else, or
+        // an approval waiting on another agent. The server's toast says the project has started.
+        set({ newProject: false });
         window.location.hash = '#office';
         if (started.notice) toast(started.notice);
       })

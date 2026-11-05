@@ -135,7 +135,7 @@ Agent files load on their own: `~/.claude/agents` and `~/.codex/agents` for your
 
 Mabari keeps a map of every project: where each one lives, who works there and on what, what waits to be delivered and what finished lately. It answers from it on Home ("what projects do we have?", "what's being done in Shop?") and keeps it in `~/.mabari/map.md` for any AI to read.
 
-Under **Accounts → Claude Code → Default agent**, make Mabari the agent every new Claude Code session runs as. Mabari shows the one line it sets in `~/.claude/settings.json` and saves a backup first. Those sessions start with the map, so they know every project, and show in the office as the Mabari mascot, named after their folder.
+Under **Accounts → Claude Code → Default agent**, make Mabari the agent every new Claude Code session runs as. Mabari shows the one line it sets in `~/.claude/settings.json` and saves a backup first. **Wipe all data** in Settings takes that line out again, but only when it is Mabari's own: an agent you chose yourself stays. Those sessions start with the map, so they know every project, and show in the office as the Mabari mascot, named after their folder.
 
 ## Projects
 

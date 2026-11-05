@@ -519,11 +519,14 @@ func (s *Simulator) talk(from, to *models.LiveAgent, text string, kind models.Me
 	s.engine.AddEvent(from, "message", "To "+to.Name+": "+text, nil)
 }
 
-func baseName(path string) string { return path[strings.LastIndex(path, "/")+1:] }
-
+// firstFile names the agent's first file for a line of chat, or fallback when it has none to name.
+// A folder in the list, such as "test/", is named with its slash, so no line is left with a
+// blank where the file goes.
 func firstFile(agent *models.LiveAgent, fallback string) string {
-	if len(agent.Files) > 0 {
-		return baseName(agent.Files[0])
+	for _, file := range agent.Files {
+		if name := models.BaseName(file); name != "" {
+			return name
+		}
 	}
 	return fallback
 }
@@ -576,17 +579,22 @@ func (s *Simulator) conversationTick() {
 	} else {
 		template = pick(s, peerTalk)
 	}
-	values := map[string]string{
+	values := chatValues(first, second)
+	s.talk(first, second, fill(template.say, values), template.kind)
+	s.after(3200, func() {
+		s.talk(second, first, fill(template.answer, values), models.MessageAnswer)
+	})
+}
+
+// chatValues fills the blanks in a line of chat between two agents. None is ever empty.
+func chatValues(first, second *models.LiveAgent) map[string]string {
+	return map[string]string{
 		"fileA": firstFile(first, "app.ts"),
 		"fileB": firstFile(second, "index.ts"),
 		"fileL": firstFile(second, "index.ts"),
 		"etaB":  models.ETAWords(second),
 		"pct":   strconv.Itoa(int(math.Round(first.Progress * 100))),
 	}
-	s.talk(first, second, fill(template.say, values), template.kind)
-	s.after(3200, func() {
-		s.talk(second, first, fill(template.answer, values), models.MessageAnswer)
-	})
 }
 
 func sameProject(a, b *models.LiveAgent) bool {

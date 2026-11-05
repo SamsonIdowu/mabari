@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -525,6 +526,14 @@ type goldenFrame struct {
 	Log      int           `json:"log"`
 }
 
+// folderNames are the demo's folders. The prototype names a folder as nothing, which makes lines
+// like "touches . Over to you" (FIRST-7); the port names it, "touches test/.", and that is the
+// one way it knowingly differs. The folders are taken out of what the port said before it is
+// compared, so everything else is still checked against the prototype.
+var folderNames = regexp.MustCompile(`\b(?:test|docs)/`)
+
+func withoutFolders(text string) string { return folderNames.ReplaceAllString(text, "") }
+
 func TestMatchesThePrototype(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "golden.json"))
 	if err != nil {
@@ -558,6 +567,9 @@ func TestMatchesThePrototype(t *testing.T) {
 			}
 			if len(agent.Feed) > 0 {
 				got.Top = agent.Feed[0].Tool + "|" + agent.Feed[0].Summary
+				if agent.Feed[0].Tool == "message" {
+					got.Top = withoutFolders(got.Top)
+				}
 			}
 			// Subagents are contractors, unlike in the prototype: off duty they leave the floor,
 			// and back on duty they take the free desk nearest their lead.
@@ -574,7 +586,7 @@ func TestMatchesThePrototype(t *testing.T) {
 		if got := len(snapshot.Messages); got != frame.Messages {
 			t.Fatalf("tick %d: %d messages, prototype has %d", tick, got, frame.Messages)
 		}
-		if got := snapshot.Messages[len(snapshot.Messages)-1].Text; got != frame.LastText {
+		if got := withoutFolders(snapshot.Messages[len(snapshot.Messages)-1].Text); got != frame.LastText {
 			t.Fatalf("tick %d: last message %q, prototype has %q", tick, got, frame.LastText)
 		}
 		if got := len(snapshot.Log); got != frame.Log {

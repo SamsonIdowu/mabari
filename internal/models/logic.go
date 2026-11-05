@@ -146,11 +146,14 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 	}
 	from := func(tool, fallback string, pick func(string) string) string {
 		if lastTool == tool {
-			return pick(lastSummary)
+			// Never a sentence around nothing: "Reading " with no file says less than "Reading files".
+			if picked := strings.TrimSpace(pick(lastSummary)); picked != "" {
+				return picked
+			}
 		}
 		return fallback
 	}
-	baseName := func(s string) string { return s[strings.LastIndex(s, "/")+1:] }
+	baseName := BaseName
 	head := func(s string) string { return strings.SplitN(s, "  ", 2)[0] }
 	same := func(s string) string { return s }
 
@@ -335,6 +338,18 @@ func LowerFirst(text string) string {
 		return text
 	}
 	return string(unicode.ToLower(first)) + text[size:]
+}
+
+// BaseName is the last part of a path, as a sentence names it: "src/app.ts" is "app.ts", and a
+// folder keeps its slash so it reads as one: "test/" is "test/", not nothing. It is empty only
+// for an empty path, or one with nothing in it but slashes, and callers use a fallback then.
+func BaseName(path string) string {
+	trimmed := strings.TrimRight(path, "/")
+	name := trimmed[strings.LastIndex(trimmed, "/")+1:]
+	if name != "" && len(trimmed) < len(path) {
+		name += "/"
+	}
+	return name
 }
 
 // ETAWords is the prototype's phrase for when an agent will be free, used in agent chat.

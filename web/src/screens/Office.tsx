@@ -777,15 +777,24 @@ function Stage({ office }: { office: Snapshot }) {
       set({ selected: null, follow: false });
       // An agent file resting in the lounge opens in the builder.
       const def = scene.current.restingAt(pointIn(event));
-      if (def) openDef(def.id);
+      if (def) {
+        openDef(def.id);
+        return;
+      }
+      // The free desk starts a new agent there, with what it should do.
+      const desk = scene.current.deskAt(pointIn(event));
+      if (desk !== null) set({ newAgent: { desk } });
     }
   };
 
   const hover = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!scene.current) return;
     const point = pointIn(event);
-    const clickable = scene.current.hit(point) || scene.current.restingAt(point);
+    const desk = scene.current.deskAt(point);
+    scene.current.hoverDesk = desk;
+    const clickable = scene.current.hit(point) || scene.current.restingAt(point) || desk !== null;
     event.currentTarget.style.cursor = clickable ? 'pointer' : '';
+    event.currentTarget.title = desk !== null ? 'Put a new agent at this free desk' : '';
   };
 
   return (
@@ -799,6 +808,9 @@ function Stage({ office }: { office: Snapshot }) {
           aria-label="Office floor. Click an agent to inspect it."
           onClick={select}
           onMouseMove={hover}
+          onMouseLeave={() => {
+            if (scene.current) scene.current.hoverDesk = null;
+          }}
           onMouseDown={(event) => {
             if (event.button === 0) {
               drag.current = { x: event.clientX, y: event.clientY, moved: false };

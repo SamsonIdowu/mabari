@@ -4,11 +4,11 @@ import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import {
   BASE_FLOOR,
   BASE_H,
-  benchSeat,
-  benchWidth,
   deskSeat,
   deskTile,
+  desksUpTo,
   floorFor,
+  loungeArea,
   gridColumns,
   LOUNGE_PITCH,
   LOUNGE_ROWS,
@@ -26,7 +26,6 @@ const agent = (overrides: Partial<LiveAgent> = {}) =>
     id: 'a',
     state: 'editing',
     desk: 0,
-    bench: false,
     leaving: false,
     defId: '',
     createdAt: 0,
@@ -47,14 +46,14 @@ const def = (overrides: Partial<AgentDef> = {}) =>
 describe('desks', () => {
   // The same positions are pinned in internal/models/desks_test.go, so the two can't drift.
   it.each([
-    [0, 8, 4],
-    [5, 13, 8],
-    [15, 23, 16],
-    [16, 28, 4],
-    [19, 28, 16],
-    [20, 33, 4],
-    [23, 33, 16],
-    [95, 123, 16],
+    [0, 2, 4],
+    [5, 7, 8],
+    [15, 17, 16],
+    [16, 22, 4],
+    [19, 22, 16],
+    [20, 27, 4],
+    [23, 27, 16],
+    [95, 117, 16],
   ])('puts desk %i at tile %i, %i, as the server does', (index, x, y) => {
     expect(deskTile(index)).toEqual({ x, y });
   });
@@ -64,32 +63,14 @@ describe('desks', () => {
     for (let index = 0; index < 96; index++) expect(deskTile(index).y).toBeLessThanOrEqual(16);
   });
 
-  it('puts bench seats where the server does', () => {
-    expect([0, 3, 4, 9].map(benchSeat)).toEqual([
-      { x: 0, y: 0 },
-      { x: 0, y: 384 },
-      { x: 160, y: 0 },
-      { x: 320, y: 128 },
-    ]);
-  });
-
   it('seats an agent in front of its desk', () => {
-    expect(deskSeat(agent({ desk: 0 }), BASE_FLOOR)).toEqual({ x: 288, y: 182 });
-  });
-
-  it('seats a workflow sub-agent at the benches, in line with the desk rows', () => {
-    const floor = floorFor(0, 5, 0);
-    const first = deskSeat(agent({ desk: 0, bench: true }), floor);
-    const fifth = deskSeat(agent({ desk: 4, bench: true }), floor);
-    expect(first.y).toBe(deskSeat(agent({ desk: 0 }), floor).y);
-    expect(first.x).toBeGreaterThan(deskSeat(agent({ desk: 3 }), floor).x);
-    expect(fifth).toEqual({ x: first.x + 160, y: first.y });
+    expect(deskSeat(agent({ desk: 0 }))).toEqual({ x: 96, y: 182 });
   });
 });
 
 describe('onFloor', () => {
   it('leaves out workflow sub-agents that are off duty, and keeps the list when none are', () => {
-    const all = [agent({ id: 'a' }), agent({ id: 'b', desk: -1, bench: true })];
+    const all = [agent({ id: 'a' }), agent({ id: 'b', desk: -1, workflow: true })];
     expect(onFloor(all).map((item) => item.id)).toEqual(['a']);
     expect(onFloor(all)).toBe(onFloor(all));
     const seated = [agent({ id: 'a' })];
@@ -97,56 +78,104 @@ describe('onFloor', () => {
   });
 
   it("gives an off duty agent no part in the floor's size", () => {
-    const seating = seatingFor([agent({ desk: -1, bench: true, state: 'idle' })], []);
-    expect(seating.floor.bench).toBeNull();
+    const seating = seatingFor([agent({ desk: -1, workflow: true, state: 'idle' })], []);
+    expect(seating.floor).toEqual(BASE_FLOOR);
   });
 });
 
 describe('floorFor', () => {
-  it('is the prototype office when nothing makes it grow', () => {
-    expect(BASE_FLOOR).toMatchObject({ width: 1216, height: 704, columns: 4, shift: 0 });
-    expect(BASE_FLOOR.door).toBe(608);
-    expect(floorFor(16, 0, 0)).toEqual(BASE_FLOOR);
+  it('shows one free desk and nothing else when nobody is in: no empty rooms', () => {
+    expect(BASE_FLOOR).toMatchObject({
+      height: 704,
+      columns: 1,
+      desks: [0],
+      free: 0,
+      wall: null,
+      rooms: [],
+      lounge: null,
+    });
+    expect(floorFor(desksUpTo(0), 0)).toEqual(BASE_FLOOR);
   });
 
-  it('widens for a seventeenth desk, moving the rooms along, and keeps its height', () => {
-    const floor = floorFor(17, 0, 0);
-    expect(floor.columns).toBe(5);
-    expect(floor.shift).toBe(160);
-    expect(floor.width).toBe(1216 + 160);
-    expect(floor.height).toBe(BASE_H);
+  it('draws the desks in use and exactly one free desk, the next one taken', () => {
+    const three = floorFor(desksUpTo(3));
+    expect(three.desks).toEqual([0, 1, 2, 3]);
+    expect(three.free).toBe(3);
+    // Once the free desk is taken, another appears.
+    expect(floorFor(desksUpTo(4)).desks).toEqual([0, 1, 2, 3, 4]);
+    // A gap left by an agent that went is the free desk, and no other empty desk shows.
+    const gap = floorFor({ taken: [0, 2, 3], working: [0, 2, 3] });
+    expect(gap.desks).toEqual([0, 1, 2, 3]);
+    expect(gap.free).toBe(1);
+  });
+
+  it("doesn't draw the desk of an agent resting in the lounge, but keeps it for them", () => {
+    const floor = floorFor({ taken: [0, 1, 2], working: [0, 2] }, 1);
+    expect(floor.desks).toEqual([0, 2, 3]);
+    expect(floor.free).toBe(3);
+  });
+
+  it('is as wide as the desks held and the free one, and keeps its height', () => {
+    expect(floorFor(desksUpTo(1)).columns).toBe(2);
+    expect(floorFor(desksUpTo(16)).columns).toBe(5);
+    const wide = floorFor(desksUpTo(17));
+    expect(wide.columns).toBe(5);
+    expect(floorFor(desksUpTo(20)).width).toBe(wide.width + 160);
+    expect(wide.height).toBe(BASE_H);
     // The door stays below the middle of the desks.
-    expect(floor.door).toBe(608 + 80);
+    const gridEnd = deskTile(16).x * 32 + 68;
+    expect(wide.door).toBe(Math.round((64 + gridEnd) / 2));
+  });
+
+  it('opens a room only while someone is in it, at the right end of the office', () => {
+    const empty = floorFor(desksUpTo(16), 3);
+    const meeting = floorFor(desksUpTo(16), 3, ['meeting']);
+    expect(meeting.rooms).toEqual(['meeting']);
+    expect(meeting.wall).toBeGreaterThan(meeting.lounge!.x + LOUNGE_PITCH.x);
+    expect(meeting.width).toBe(meeting.wall! + 288);
+    expect(meeting.width).toBeGreaterThan(empty.width);
+    // Opening it moves nothing else.
+    expect(meeting.lounge).toEqual(empty.lounge);
+    expect(meeting.key).not.toBe(empty.key);
   });
 
   it('never grows taller, however many sit or rest', () => {
-    for (const [desks, benches, residents] of [
-      [96, 96, 200],
-      [40, 9, 12],
-      [0, 0, 7],
+    for (const [desks, residents] of [
+      [96, 200],
+      [40, 12],
+      [0, 7],
     ] as const) {
-      expect(floorFor(desks, benches, residents).height).toBe(BASE_H);
+      expect(floorFor(desksUpTo(desks), residents, ['meeting']).height).toBe(BASE_H);
     }
   });
 
-  it('puts the benches, then the lounge, between the desks and the rooms', () => {
-    const floor = floorFor(30, 9, 12);
-    const gridEnd = deskTile(28).x * 32 + 68;
-    expect(floor.bench!.columns).toBe(3);
-    expect(floor.bench!.left).toBeGreaterThan(gridEnd);
-    // The lounge sits beside the benches, not over them.
-    expect(floor.lounge!.x).toBeGreaterThan(floor.bench!.x + benchWidth(3));
+  it('puts the lounge between the desks and the rooms', () => {
+    const floor = floorFor(desksUpTo(30), 12, ['meeting']);
+    const gridEnd = deskTile(30).x * 32 + 68;
+    expect(floor.lounge!.x).toBeGreaterThan(gridEnd);
     expect(floor.lounge!.columns).toBe(3);
     expect(floor.lounge!.rows).toBe(LOUNGE_ROWS);
     // The glass wall comes after the lounge.
-    expect(928 + floor.shift).toBeGreaterThan(floor.lounge!.x + 3 * LOUNGE_PITCH.x);
+    expect(floor.wall!).toBeGreaterThan(floor.lounge!.x + 3 * LOUNGE_PITCH.x);
     expect(floor.shift % 32).toBe(0);
   });
 
-  it('grows the lounge a column at a time', () => {
-    expect(floorFor(0, 0, 3).lounge).toMatchObject({ columns: 1, rows: 3 });
-    expect(floorFor(0, 0, LOUNGE_ROWS + 1).lounge).toMatchObject({ columns: 2, rows: LOUNGE_ROWS });
-    expect(floorFor(0, 0, 40).width).toBeGreaterThan(floorFor(0, 0, 10).width);
+  it('sizes the lounge to the number resting in it', () => {
+    expect(floorFor(desksUpTo(0), 1).lounge).toMatchObject({ columns: 1, rows: 1, seats: 1 });
+    expect(floorFor(desksUpTo(0), 3).lounge).toMatchObject({ columns: 1, rows: 3, seats: 3 });
+    expect(floorFor(desksUpTo(0), LOUNGE_ROWS + 1).lounge).toMatchObject({
+      columns: 2,
+      rows: LOUNGE_ROWS,
+    });
+    expect(floorFor(desksUpTo(0), 40).width).toBeGreaterThan(floorFor(desksUpTo(0), 10).width);
+    expect(floorFor(desksUpTo(0), 1).width).toBeLessThan(floorFor(desksUpTo(0), 6).width);
+    // Its open floor, where residents stroll, is inside it.
+    const floor = floorFor(desksUpTo(4), 7);
+    const area = loungeArea(floor)!;
+    expect(area.x0).toBeGreaterThan(floor.lounge!.x);
+    expect(area.x1).toBeLessThan(floor.lounge!.x + 2 * LOUNGE_PITCH.x);
+    expect(area.y1).toBeGreaterThan(area.y0);
+    expect(loungeArea(BASE_FLOOR)).toBeNull();
   });
 });
 
@@ -164,12 +193,12 @@ describe('the lounge', () => {
   };
 
   it.each([1, 5, 11, 40, 97])('never seats two of %i residents together', (residents) => {
-    for (const benches of [0, 6]) {
-      const floor = floorFor(16, benches, residents);
+    for (const rooms of [[], ['meeting']] as const) {
+      const floor = floorFor(desksUpTo(16), residents, [...rooms]);
       const seats = Array.from({ length: residents }, (_, index) => loungeSeat(floor, index));
       expect(distinct(seats)).toBe(true);
       for (const seat of seats) {
-        expect(seat.x).toBeLessThan(928 + floor.shift - 24);
+        expect(seat.x).toBeLessThan((floor.wall ?? floor.width) - 24);
         expect(seat.y).toBeLessThan(floor.height - 80);
         expect(seat.y).toBeGreaterThan(100);
       }
@@ -219,10 +248,12 @@ describe('the lounge', () => {
     expect(new Set(spots.map((spot) => `${spot.x},${spot.y}`)).size).toBe(5);
   });
 
-  it('sizes the desk grid and benches from where agents sit', () => {
-    const seating = seatingFor([agent({ desk: 20 }), agent({ id: 'b', desk: 6, bench: true })], []);
+  it('sizes the desk grid from where agents sit', () => {
+    const seating = seatingFor(
+      [agent({ desk: 20 }), agent({ id: 'b', desk: 6, workflow: true })],
+      [],
+    );
     expect(seating.floor.columns).toBe(6);
-    expect(seating.floor.bench!.columns).toBe(2);
   });
 });
 
@@ -240,16 +271,23 @@ describe('spotFor', () => {
       'error',
       'paused',
     ] as const) {
-      expect(spotFor(agent({ state, desk: 3 }), 1, seating)).toEqual(
-        deskSeat(agent({ desk: 3 }), seating.floor),
-      );
+      expect(spotFor(agent({ state, desk: 3 }), 1, seating)).toEqual(deskSeat(agent({ desk: 3 })));
     }
   });
 
-  it('briefs subagents in the meeting room, which moves with the rooms', () => {
-    expect(spotFor(agent({ state: 'spawning' }), 1, seating)).toEqual({ x: 1078, y: 362 });
-    const wide = seatingFor([agent({ desk: 16 })], []);
-    expect(spotFor(agent({ state: 'spawning' }), 1, wide)).toEqual({ x: 1078 + 160, y: 362 });
+  it('briefs subagents in the meeting room, which opens for it at the right end', () => {
+    const lead = agent({ state: 'spawning', desk: 3 });
+    const busy = seatingFor([lead], []);
+    expect(busy.floor.rooms).toEqual(['meeting']);
+    expect(spotFor(lead, 1, busy)).toEqual({ x: 1078 + busy.floor.shift, y: 362 });
+    expect(spotFor(lead, 1, busy).x).toBeGreaterThan(busy.floor.wall!);
+    const wide = seatingFor([lead, agent({ id: 'b', desk: 16 })], []);
+    expect(spotFor(lead, 1, wide).x).toBe(spotFor(lead, 1, busy).x + 160);
+  });
+
+  it('closes the meeting room once nobody is in it', () => {
+    expect(seatingFor([agent({ state: 'editing' })], []).floor.rooms).toEqual([]);
+    expect(seatingFor([agent({ state: 'spawning', leaving: true })], []).floor.rooms).toEqual([]);
   });
 });
 
@@ -266,24 +304,21 @@ describe('pathTo', () => {
     ]);
   });
 
-  it('uses the gap in the wall to reach the rooms on the right', () => {
-    expect(pathTo({ x: 300, y: 200 }, { x: 1046, y: 520 })[0]).toEqual({ x: 912, y: 200 });
-  });
-
-  it('stays on the right side when moving between right hand rooms', () => {
-    expect(pathTo({ x: 1000, y: 136 }, { x: 1046, y: 520 })).toEqual([
-      { x: 1000, y: 520 },
-      { x: 1046, y: 520 },
+  it('uses the gap in the glass wall to reach a room', () => {
+    const floor = floorFor(desksUpTo(16), 0, ['meeting']);
+    const wall = floor.wall!;
+    expect(pathTo({ x: 300, y: 200 }, { x: wall + 120, y: 362 }, floor)[0]).toEqual({
+      x: wall - 16,
+      y: 200,
+    });
+    // Between rooms it stays on their side of the wall.
+    expect(pathTo({ x: wall + 70, y: 136 }, { x: wall + 120, y: 520 }, floor)).toEqual([
+      { x: wall + 70, y: 520 },
+      { x: wall + 120, y: 520 },
     ]);
   });
 
-  it('reaches the rooms through the gap in the glass wall, however far it moved', () => {
-    const floor = floorFor(16, 0, 20);
-    const wall = 928 + floor.shift;
-    const pantry = { x: 1046 + floor.shift, y: 520 };
-    expect(pathTo(loungeSeat(floor, 0), pantry, floor)[0]).toEqual({
-      x: wall - 16,
-      y: loungeSeat(floor, 0).y,
-    });
+  it('has no wall to go round when no room is open', () => {
+    expect(pathTo({ x: 300, y: 200 }, { x: 600, y: 400 })[0]).toEqual({ x: 300, y: 200 });
   });
 });

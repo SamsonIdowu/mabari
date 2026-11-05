@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Converted mechanically from design/mabari-prototype.html, so the pixels match exactly.
-import { BaseGrid, BenchPitchX, BenchPitchY, BenchRows } from '../gen/models.ts';
 import {
   BASE_FLOOR,
-  benchWidth,
   deskTile,
   doorOf,
   LABEL_Y,
   LOUNGE_PITCH,
   type Floor,
+  type Room,
 } from './layout.ts';
 
 export const PAL = {
@@ -164,7 +163,7 @@ export const WALL = 44;
 /** Where the server racks stand, in world pixels, before the rooms move along. */
 export const RACKS = [966, 996, 1026, 1080, 1110, 1140];
 
-/** The fabric of the lounge's armchairs: the library sofa's, so the rooms match. */
+/** The fabric of the lounge's armchairs: the prototype's library sofa's. */
 export function sofaColours(theme: 'dark' | 'light') {
   return theme === 'dark'
     ? { top: '#2E2E33', front: '#1A1A1D', cushion: '#3A3A40' }
@@ -192,81 +191,96 @@ function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette,
   blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
 }
 
-/** The workflow sub-agents' hot desks: long benches in four rows, a seat per column. */
-function drawBenches(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
-  const bench = floor.bench!;
-  const width = benchWidth(bench.columns);
-  const bottom = bench.y + (BenchRows - 1) * BenchPitchY + 74;
-  const top = LABEL_Y + 12;
-  R(c, bench.x - 24, top, width + 48, bottom - top, P.carpet);
-  R(c, bench.x - 18, top + 6, width + 36, bottom - top - 12, P.carpetB);
-  floorLabel(c, 'Workflow sub-agents', bench.left, LABEL_Y, P);
-  for (let row = 0; row < BenchRows; row++) {
-    const y = bench.y + row * BenchPitchY;
-    blk(c, bench.x + 4, y + 2, width - 8, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
-    for (let seat = 0; seat < bench.columns; seat++) {
-      desk(c, bench.x + seat * BenchPitchX, y, theme, P, false);
-    }
-  }
-}
-
-/** One armchair's back and arms. The seat front is drawn over the sitter, in the scene. */
-function armchair(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette) {
-  const sofa = sofaColours(theme);
-  blk(c, x - 20, y - 38, 40, 12, 14, sofa.top, sofa.front, P);
-  blk(c, x - 25, y - 24, 7, 10, 12, sofa.top, sofa.front, P);
-  blk(c, x + 18, y - 24, 7, 10, 12, sofa.top, sofa.front, P);
-  R(c, x - 18, y - 14, 36, 8, sofa.cushion);
-}
-
-/** The lounge: soft rugs with a row of armchairs each, side tables and plants. */
+/**
+ * The lounge: an open rug with a coffee bar and a sofa, as big as the number resting in it. Its
+ * residents wander about it with their coffee (scene.ts), rather than sitting in rows.
+ */
 function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
   const lounge = floor.lounge!;
   const width = lounge.columns * LOUNGE_PITCH.x;
+  const top = LABEL_Y + 12;
+  const bottom = lounge.first.y + (lounge.rows - 1) * LOUNGE_PITCH.y + 34;
   floorLabel(c, 'Lounge', lounge.x, LABEL_Y, P);
-  for (let row = 0; row < lounge.rows; row++) {
-    const y = lounge.first.y + row * LOUNGE_PITCH.y;
-    R(c, lounge.x - 4, y - 50, width + 8, 64, P.rug);
-    R(c, lounge.x + 2, y - 44, width - 4, 52, P.rugB);
-    for (let column = 0; column < lounge.columns; column++) {
-      const x = lounge.first.x + column * LOUNGE_PITCH.x;
-      armchair(c, x, y, theme, P);
-      if (column < lounge.columns - 1) {
-        blk(c, x + LOUNGE_PITCH.x / 2 - 9, y - 22, 18, 10, 8, P.wood, P.woodD, P);
-        if ((row + column) % 3 === 0) R(c, x + LOUNGE_PITCH.x / 2 - 3, y - 26, 6, 5, P.paper);
-      }
-    }
+  R(c, lounge.x - 4, top, width + 8, bottom - top, P.rug);
+  R(c, lounge.x + 2, top + 6, width - 4, bottom - top - 12, P.rugB);
+  /* the coffee bar: a counter with the machine and a few cups */
+  blk(c, lounge.x + 10, top + 14, 60, 10, 14, P.desk, P.deskFront, P, P.deskEdge);
+  blk(
+    c,
+    lounge.x + 16,
+    top + 2,
+    18,
+    8,
+    16,
+    theme === 'dark' ? '#2A2A2F' : '#1E1E21',
+    theme === 'dark' ? '#151518' : '#0E0E10',
+    P,
+  );
+  R(c, lounge.x + 22, top + 10, 6, 4, '#E8894A');
+  R(c, lounge.x + 42, top + 16, 5, 5, P.paper);
+  R(c, lounge.x + 52, top + 16, 5, 5, P.paper);
+  /* a sofa along the bottom, and a low table */
+  const sofa = sofaColours(theme);
+  const sofaWidth = Math.min(width - 24, 96);
+  blk(
+    c,
+    lounge.x + width - sofaWidth - 10,
+    bottom - 30,
+    sofaWidth,
+    12,
+    14,
+    sofa.top,
+    sofa.front,
+    P,
+  );
+  if (lounge.rows > 1) {
+    blk(c, lounge.x + width / 2 - 14, (top + bottom) / 2, 28, 12, 8, P.wood, P.woodD, P);
+    R(c, lounge.x + width / 2 - 3, (top + bottom) / 2 - 2, 6, 5, P.paper);
   }
   plant(c, lounge.x + width - 4, LABEL_Y - 24, P);
 }
+
+/** Where each room's floor runs, in tiles down from the back wall, and its walls in pixels. */
+const ROOM_ROWS: Record<Room, { from: number; to: number; top: number; bottom: number }> = {
+  server: { from: 1, to: 6, top: WALL, bottom: 7 * 32 + 6 },
+  meeting: { from: 8, to: 11, top: 7 * 32 + 6, bottom: 12 * 32 + 6 },
+  pantry: { from: 13, to: Infinity, top: 12 * 32 + 6, bottom: Infinity },
+};
 
 export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTMLCanvasElement {
   const W = floor.width;
   const H = floor.height;
   const shift = floor.shift;
   const cs = shift / 32;
-  const roomsEnd = H;
+  const roomAt = (rx: number, ty: number): Room | null => {
+    if (rx < 30) return null;
+    for (const room of floor.rooms) {
+      const rows = ROOM_ROWS[room];
+      if (ty >= rows.from && ty <= rows.to) return room;
+    }
+    return null;
+  };
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;
   const c = cv.getContext('2d')!;
   const P: Palette = PAL[theme];
   /* floor: large calm tiles, darker server room, soft carpet in meeting room, pale pantry. The
-     floor starts under the back wall, so it shows from the wall's foot at y 44. */
+     floor starts under the back wall, so it shows from the wall's foot at y 44. A room's floor
+     is drawn only while the room is in use. */
   for (let ty = 1; ty < Math.ceil(H / 32); ty++)
     for (let tx = 0; tx < Math.ceil(W / 32); tx++) {
       const n = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
       const v = (n % 4) / 250;
-      const rx = tx - cs;
-      const rooms = rx >= 30;
+      const room = roomAt(tx - cs, ty);
       let col: string = P.floorA;
-      if (rooms && ty >= 1 && ty <= 6) col = P.server;
-      else if (rooms && ty >= 8 && ty <= 11) col = P.carpet;
-      else if (rooms && ty >= 13) col = (tx + ty) % 2 ? P.pantA : P.pantB;
+      if (room === 'server') col = P.server;
+      else if (room === 'meeting') col = P.carpet;
+      else if (room === 'pantry') col = (tx + ty) % 2 ? P.pantA : P.pantB;
       R(c, tx * 32, ty * 32, 32, 32, col);
       c.fillStyle = 'rgba(0,0,0,' + v + ')';
       c.fillRect(tx * 32, ty * 32, 32, 32);
-      if (rx < 29) {
+      if (!room) {
         if (ty % 2 === 0) R(c, tx * 32, ty * 32, 32, 1, P.plank);
         if (tx % 2 === 0) R(c, tx * 32, ty * 32, 1, 32, P.plank);
       }
@@ -275,116 +289,100 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
      the projects and the clock now */
   R(c, 0, 0, W, WALL, P.wall);
   R(c, 0, 0, W, 4, P.wallTop);
-  /* storage cabinets, standing below the wall */
-  for (let fx = 1; fx < 6; fx++) {
-    const x = fx * 32;
-    blk(c, x + 2, 68, 28, 8, 40, P.cab, P.cabD, P);
-    for (let d = 0; d < 3; d++) {
-      R(c, x + 4, 78 + d * 13, 24, 1, 'rgba(0,0,0,.18)');
-      R(c, x + 12, 82 + d * 13, 8, 2, P.metal);
-    }
-  }
   plant(c, 6, 104, P);
-  /* the rooms on the right, moved along by the grid's extra columns */
+  plant(c, 6, 19 * 32 + 4, P);
+  if (floor.rooms.length) drawRooms(c, floor, theme, P);
+  /* the work area: a desk for each agent working at one, and one free desk for the next */
+  floorLabel(c, 'Work area', 2 * 32, LABEL_Y, P);
+  for (const index of floor.desks) {
+    const dk = deskTile(index);
+    desk(c, dk.x * 32, dk.y * 32, theme, P);
+  }
+  /* plants by the right hand wall, or by the glass wall in front of the rooms */
+  const edge = (floor.wall ?? W) - 58;
+  plant(c, edge, 3 * 32 + 4, P);
+  plant(c, edge, 19 * 32 + 4, P);
+  if (floor.lounge) drawLounge(c, floor, theme, P);
+  const door = doorOf(floor).x;
+  R(c, door - 32, H - 8, 64, 8, P.base);
+  R(c, door - 28, H - 20, 56, 12, P.wallLow);
+  return cv;
+}
+
+/** The rooms along the right wall that are in use, each behind its stretch of glass wall. */
+function drawRooms(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
+  const H = floor.height;
+  const has = (room: Room) => floor.rooms.includes(room);
   c.save();
-  c.translate(shift, 0);
-  /* glass partition between the work floor and the rooms */
-  R(c, 29 * 32 + 12, WALL, 8, roomsEnd - WALL, P.glass);
-  R(c, 29 * 32 + 12, WALL, 1, roomsEnd - WALL, P.wallLow);
-  R(c, 29 * 32 + 19, WALL, 1, roomsEnd - WALL, P.wallLow);
-  [5, 10, 15, 19].forEach(function (gy) {
-    if (gy * 32 + 48 < roomsEnd) R(c, 29 * 32 + 10, gy * 32 - 10, 12, 58, P.floorA);
-  });
+  c.translate(floor.shift, 0);
+  /* glass partition between the work floor and each room in use, with a gap to walk through */
+  for (const room of floor.rooms) {
+    const top = ROOM_ROWS[room].top;
+    const bottom = Math.min(H, ROOM_ROWS[room].bottom);
+    R(c, 29 * 32 + 12, top, 8, bottom - top, P.glass);
+    R(c, 29 * 32 + 12, top, 1, bottom - top, P.wallLow);
+    R(c, 29 * 32 + 19, top, 1, bottom - top, P.wallLow);
+    [5, 10, 15, 19].forEach(function (gy) {
+      const y = gy * 32 - 10;
+      if (y > top && y + 58 < bottom) R(c, 29 * 32 + 10, y, 12, 58, P.floorA);
+    });
+  }
   const divider = (Y: number, gap: string) => {
     R(c, 30 * 32, Y, 8 * 32, 4, P.wallTop);
     R(c, 30 * 32, Y + 4, 8 * 32, 10, P.wallLow);
     R(c, 30 * 32, Y + 14, 8 * 32, 2, 'rgba(0,0,0,.12)');
     R(c, 32 * 32, Y, 48, 16, gap);
   };
-  [7, 12].forEach(function (ry) {
-    divider(ry * 32 + 6, ry === 7 ? P.carpet : P.pantA);
-  });
-  /* server racks: six, in two groups of three, inside the walls */
-  for (const x2 of RACKS) {
-    blk(
-      c,
-      x2,
-      70,
-      26,
-      6,
-      52,
-      theme === 'dark' ? '#202024' : '#2A2A2D',
-      theme === 'dark' ? '#0C0C0E' : '#141416',
-      P,
-    );
-    for (let s2 = 0; s2 < 5; s2++)
-      R(c, x2 + 3, 80 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
-  }
-  /* meeting room */
-  for (let mx = 0; mx < 4; mx++)
-    blk(c, 32 * 32 + mx * 32 - 6, 8 * 32 + 10, 20, 8, 8, P.chairTop, P.chair, P);
-  blk(c, 31 * 32 + 12, 9 * 32 + 2, 4 * 32 + 8, 34, 10, P.desk, P.deskFront, P, P.deskEdge);
-  R(c, 31 * 32 + 40, 9 * 32 + 10, 22, 14, P.paper);
-  R(c, 31 * 32 + 40, 9 * 32 + 10, 22, 1, P.wallLow);
-  R(c, 33 * 32 + 24, 9 * 32 + 12, 14, 10, P.paper);
-  R(c, 34 * 32 + 20, 9 * 32 + 14, 10, 6, P.ink);
-  for (let mx2 = 0; mx2 < 4; mx2++)
-    blk(c, 32 * 32 + mx2 * 32 - 6, 10 * 32 + 20, 20, 8, 8, P.chairTop, P.chair, P);
-  /* pantry */
-  blk(c, 30 * 32, 13 * 32 + 4, 8 * 32, 14, 20, P.desk, P.deskFront, P, P.deskEdge);
-  blk(
-    c,
-    31 * 32,
-    13 * 32 - 18,
-    24,
-    10,
-    22,
-    theme === 'dark' ? '#2A2A2F' : '#1E1E21',
-    theme === 'dark' ? '#151518' : '#0E0E10',
-    P,
-  );
-  R(c, 31 * 32 + 7, 13 * 32 - 4, 10, 6, '#E8894A');
-  blk(c, 36 * 32 + 4, 12 * 32 + 10, 26, 10, 46, P.paper, P.deskFront, P);
-  R(c, 36 * 32 + 26, 12 * 32 + 30, 2, 10, P.metal);
-  blk(c, 33 * 32, 15 * 32, 40, 18, 10, P.wood, P.woodD, P);
-  blk(c, 33 * 32, 18 * 32, 40, 18, 10, P.wood, P.woodD, P);
-  c.restore();
-  /* library corner: soft rug, shelves with muted spines, sofa */
-  R(c, 1 * 32, 16 * 32 + 14, 5 * 32, 4 * 32, P.rug);
-  R(c, 1 * 32 + 6, 16 * 32 + 20, 5 * 32 - 12, 4 * 32 - 12, P.rugB);
-  const spines =
-    theme === 'dark'
-      ? ['#3A3A40', '#5B5B63', '#2A2A2F', '#E8E8EA', '#7A7A82', '#4A4A52']
-      : ['#1A1A1A', '#9A9A9E', '#E4E4E1', '#4A4A4E', '#C9C9C6', '#2B2B2D'];
-  for (let bx = 1; bx < 6; bx++) {
-    const x3 = bx * 32;
-    blk(c, x3, 15 * 32 - 16, 32, 6, 40, P.wood, P.woodD, P);
-    for (let bk = 0; bk < 6; bk++) {
-      R(c, x3 + 3 + bk * 5, 15 * 32 - 6, 4, 13, spines[(bk + bx) % 6]!);
-      R(c, x3 + 3 + bk * 5, 15 * 32 + 10, 4, 12, spines[(bk + bx + 3) % 6]!);
+  /* a wall closes each room in use at the top and the bottom */
+  if (has('server') || has('meeting')) divider(7 * 32 + 6, has('meeting') ? P.carpet : P.floorA);
+  if (has('meeting') || has('pantry')) divider(12 * 32 + 6, has('pantry') ? P.pantA : P.floorA);
+  if (has('server')) {
+    /* server racks: six, in two groups of three, inside the walls */
+    for (const x2 of RACKS) {
+      blk(
+        c,
+        x2,
+        70,
+        26,
+        6,
+        52,
+        theme === 'dark' ? '#202024' : '#2A2A2D',
+        theme === 'dark' ? '#0C0C0E' : '#141416',
+        P,
+      );
+      for (let s2 = 0; s2 < 5; s2++)
+        R(c, x2 + 3, 80 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
     }
   }
-  R(c, 0, 17 * 32 + 6, 10, 48, P.frame);
-  const sofa = sofaColours(theme);
-  blk(c, 4 * 32 + 8, 18 * 32 + 6, 36, 14, 16, sofa.top, sofa.front, P);
-  plant(c, 24, 19 * 32 + 6, P);
-  /* desks: white tops, black chairs, dark monitors, as many as the grid has */
-  for (let index = 0; index < floor.columns * BaseGrid; index++) {
-    const dk = deskTile(index);
-    desk(c, dk.x * 32, dk.y * 32, theme, P);
+  if (has('meeting')) {
+    for (let mx = 0; mx < 4; mx++)
+      blk(c, 32 * 32 + mx * 32 - 6, 8 * 32 + 10, 20, 8, 8, P.chairTop, P.chair, P);
+    blk(c, 31 * 32 + 12, 9 * 32 + 2, 4 * 32 + 8, 34, 10, P.desk, P.deskFront, P, P.deskEdge);
+    R(c, 31 * 32 + 40, 9 * 32 + 10, 22, 14, P.paper);
+    R(c, 31 * 32 + 40, 9 * 32 + 10, 22, 1, P.wallLow);
+    R(c, 33 * 32 + 24, 9 * 32 + 12, 14, 10, P.paper);
+    R(c, 34 * 32 + 20, 9 * 32 + 14, 10, 6, P.ink);
+    for (let mx2 = 0; mx2 < 4; mx2++)
+      blk(c, 32 * 32 + mx2 * 32 - 6, 10 * 32 + 20, 20, 8, 8, P.chairTop, P.chair, P);
   }
-  [
-    [27 + cs, 3],
-    [27 + cs, 19],
-    [5, 9],
-    [5, 12],
-  ].forEach(function (p) {
-    plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
-  });
-  if (floor.bench) drawBenches(c, floor, theme, P);
-  if (floor.lounge) drawLounge(c, floor, theme, P);
-  const door = doorOf(floor).x;
-  R(c, door - 32, H - 8, 64, 8, P.base);
-  R(c, door - 28, H - 20, 56, 12, P.wallLow);
-  return cv;
+  if (has('pantry')) {
+    blk(c, 30 * 32, 13 * 32 + 4, 8 * 32, 14, 20, P.desk, P.deskFront, P, P.deskEdge);
+    blk(
+      c,
+      31 * 32,
+      13 * 32 - 18,
+      24,
+      10,
+      22,
+      theme === 'dark' ? '#2A2A2F' : '#1E1E21',
+      theme === 'dark' ? '#151518' : '#0E0E10',
+      P,
+    );
+    R(c, 31 * 32 + 7, 13 * 32 - 4, 10, 6, '#E8894A');
+    blk(c, 36 * 32 + 4, 12 * 32 + 10, 26, 10, 46, P.paper, P.deskFront, P);
+    R(c, 36 * 32 + 26, 12 * 32 + 30, 2, 10, P.metal);
+    blk(c, 33 * 32, 15 * 32, 40, 18, 10, P.wood, P.woodD, P);
+    blk(c, 33 * 32, 18 * 32, 40, 18, 10, P.wood, P.woodD, P);
+  }
+  c.restore();
 }

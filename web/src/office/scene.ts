@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useOfficeStore } from '../data/officeStore.ts';
-import { BaseGrid, type AgentDef, type LiveAgent } from '../gen/models.ts';
+import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { blk, buildBg, ell, PAL, R, RACKS, rrect, sofaColours } from './background.ts';
+import { blk, buildBg, ell, PAL, R, RACKS, rrect } from './background.ts';
 import {
   clampView,
   homeView,
@@ -26,7 +26,9 @@ import {
   deskCorner,
   deskSeat,
   deskTile,
+  floorFor,
   doorOf,
+  loungeArea,
   loungeSeat,
   pathTo,
   onFloor,
@@ -39,6 +41,8 @@ import {
   type Point,
   type Seating,
 } from './layout.ts';
+import { useLayers } from './layers.ts';
+import { teamLinks } from './links.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 
 /** An agent as the floor sees it: the server's agent plus where it is walking. */
@@ -55,6 +59,8 @@ export type Walker = LiveAgent & {
   front?: boolean;
   /** Where it is heading, so it can walk again when the floor changes shape. */
   goal?: Point;
+  /** When a resting agent next strolls to another spot in the lounge. */
+  strollAt?: number;
 };
 
 /** An agent definition resting in the lounge: drawn like an agent, but not one. */
@@ -78,20 +84,28 @@ export function officeBackground(
   return canvas;
 }
 
+/** The welcome screen's office: five desks in use and the free one, the lounge and the meeting room. */
+const HERO_FLOOR = floorFor({ taken: [0, 1, 2, 5, 6], working: [0, 1, 2, 5, 6] }, 1, ['meeting']);
 const HERO_AGENTS = [
-  { x: 288, y: 182, provider: 'claude', state: 'editing' },
-  { x: 448, y: 182, provider: 'openai', state: 'thinking' },
-  { x: 90, y: 588, provider: 'custom', state: 'browsing' },
-  { x: 1046, y: 520, provider: 'claude', state: 'idle' },
-  { x: 608, y: 310, provider: 'openai', state: 'approval' },
+  { ...deskSeat({ desk: 0 }), provider: 'claude', state: 'editing' },
+  { ...deskSeat({ desk: 1 }), provider: 'openai', state: 'thinking' },
+  { ...deskSeat({ desk: 5 }), provider: 'custom', state: 'browsing' },
+  { ...loungeSeat(HERO_FLOOR, 0), provider: 'claude', state: 'idle' },
+  { ...deskSeat({ desk: 6 }), provider: 'openai', state: 'approval' },
 ];
 const HERO_SKINS = ['#F2C9A0', '#D9A27A', '#B07850', '#8C5A3A', '#6B4128'];
 const HERO_HAIR = ['#2A1B12', '#5A3A22', '#101010', '#B5651D', '#D9C27A'];
 
 /** The still picture on the welcome screen: the office with five agents at work. */
 export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
+  const canvas = c.canvas;
+  if (canvas.width !== HERO_FLOOR.width || canvas.height !== HERO_FLOOR.height) {
+    canvas.width = HERO_FLOOR.width;
+    canvas.height = HERO_FLOOR.height;
+    canvas.style.aspectRatio = `${HERO_FLOOR.width}/${HERO_FLOOR.height}`;
+  }
   c.imageSmoothingEnabled = false;
-  c.drawImage(officeBackground(theme), 0, 0);
+  c.drawImage(officeBackground(theme, HERO_FLOOR), 0, 0);
   HERO_AGENTS.forEach((agent, index) => {
     const walker = {
       ...agent,
@@ -115,9 +129,12 @@ interface Mote {
   v: number;
 }
 
+/** Dust in a shaft of light over the desks, from the middle of the work area. */
+const moteX = (floor: Floor) => floor.door - 110 + Math.random() * 220;
+
 function makeMotes(): Mote[] {
   return Array.from({ length: 30 }, () => ({
-    x: 608 + Math.random() * 220,
+    x: moteX(BASE_FLOOR),
     y: 70 + Math.random() * 180,
     s: Math.random() * 1.6 + 1,
     v: Math.random() * 0.2 + 0.05,
@@ -135,7 +152,11 @@ export class OfficeScene {
   /** Agent definitions resting in the lounge, in seat order. */
   resting: Resting[] = [];
   seating: Seating = seatingFor([], []);
-  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[] } = { agents: [], defs: [] };
+  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[]; inRooms: boolean } = {
+    agents: [],
+    defs: [],
+    inRooms: false,
+  };
   view: View = { cx: BASE_W / 2, cy: BASE_H / 2, s: 1 };
   size = { width: BASE_W, height: BASE_H };
   /** The floor's size last frame, to notice it changing. */
@@ -179,7 +200,7 @@ export class OfficeScene {
 
   /** How much of the office shows at 100%, in world pixels. */
   visible(): Size {
-    return visibleWorld(this.size, sizeOf(this.floor));
+    return visibleWorld(this.size);
   }
 
   /** Whether the office reaches past the view, so dragging moves along it. */
@@ -222,23 +243,22 @@ export class OfficeScene {
     return fromScreen(point, this.matrix());
   }
 
-  /** The empty desk at a point, or null. An agent's desk never counts, even if it's filtered out. */
+  /**
+   * The free desk, if it is at this point: the one empty desk on the floor. Clicking it starts a
+   * new agent there, with what it should do.
+   */
   deskAt(point: Point): number | null {
     const office = useOfficeStore.getState().office;
     if (!office || office.firstRun || useOfficeUi.getState().team || this.hit(point)) return null;
     const world = this.worldOf(point);
-    const count = this.floor.columns * BaseGrid;
-    for (let desk = 0; desk < count; desk++) {
-      const position = deskTile(desk);
-      const over =
-        world.x > position.x * 32 &&
-        world.x < position.x * 32 + 68 &&
-        world.y > position.y * 32 - 14 &&
-        world.y < position.y * 32 + 52;
-      if (!over) continue;
-      return office.agents.some((agent) => !agent.bench && agent.desk === desk) ? null : desk;
-    }
-    return null;
+    const desk = this.floor.free;
+    const position = deskTile(desk);
+    const over =
+      world.x > position.x * 32 &&
+      world.x < position.x * 32 + 68 &&
+      world.y > position.y * 32 - 14 &&
+      world.y < position.y * 32 + 52;
+    return over && !office.agents.some((agent) => agent.desk === desk) ? desk : null;
   }
 
   private drawDeskHint(theme: 'dark' | 'light'): void {
@@ -313,10 +333,17 @@ export class OfficeScene {
     const office = useOfficeStore.getState().office;
     const agents = onFloor(office?.agents ?? []);
     const defs = office?.defs ?? [];
-    // The store replaces these lists when they change, so the seating is worked out only then.
-    if (agents !== this.seatedFrom.agents || defs !== this.seatedFrom.defs) {
-      this.seating = seatingFor(agents, defs);
-      this.seatedFrom = { agents, defs };
+    // The store replaces these lists when they change, so the seating is worked out only then,
+    // and when the last agent walks out of a room, which stays open until then.
+    const wall = this.floor.wall;
+    const inRooms = wall !== null && [...this.walkers.values()].some((walker) => walker.x > wall);
+    if (
+      agents !== this.seatedFrom.agents ||
+      defs !== this.seatedFrom.defs ||
+      inRooms !== this.seatedFrom.inRooms
+    ) {
+      this.seating = seatingFor(agents, defs, inRooms ? this.floor.rooms : []);
+      this.seatedFrom = { agents, defs, inRooms };
     }
     const floor = this.floor;
     const present = new Set(agents.map((agent) => agent.id));
@@ -329,7 +356,7 @@ export class OfficeScene {
       const target = spotFor(agent, index + 1, this.seating);
       if (!existing) {
         const isNewHelper = this.walkers.size > 0 && agent.leadId !== null;
-        const start = isNewHelper ? deskSeat(agent, floor) : target;
+        const start = isNewHelper ? deskSeat(agent) : target;
         this.walkers.set(agent.id, {
           ...agent,
           n: index + 1,
@@ -350,7 +377,6 @@ export class OfficeScene {
         !agent.leaving &&
         (existing.state !== agent.state ||
           existing.desk !== agent.desk ||
-          existing.bench !== agent.bench ||
           !goal ||
           Math.abs(goal.x - target.x) > 0.5 ||
           Math.abs(goal.y - target.y) > 0.5);
@@ -393,8 +419,17 @@ export class OfficeScene {
         } as unknown as Walker;
         this.restingById.set(def.id, walker);
       }
-      walker.x = seat.x;
-      walker.y = seat.y;
+      // A new resident starts at its own spot, and goes back to it when the lounge moves.
+      const goal = walker.goal;
+      if (!goal || Math.abs(goal.x - seat.x) > 0.5 || Math.abs(goal.y - seat.y) > 0.5) {
+        if (!goal) {
+          walker.x = seat.x;
+          walker.y = seat.y;
+        } else {
+          walker.path = [{ x: seat.x, y: seat.y }];
+        }
+        walker.goal = seat;
+      }
       return { def, walker };
     });
     for (const id of this.restingById.keys()) {
@@ -402,8 +437,38 @@ export class OfficeScene {
     }
   }
 
+  /**
+   * Agents resting in the lounge don't sit still: now and then each strolls to another spot on
+   * the lounge's rug, and stops there with its coffee. Not with reduced motion.
+   */
+  private wander(now: number): void {
+    const area = loungeArea(this.floor);
+    if (!area || reducedMotion()) return;
+    const lounging = [
+      ...[...this.walkers.values()].filter(
+        (walker) => STATE_LOCATIONS[walker.state] === 'lounge' && !walker.leaving,
+      ),
+      ...this.resting.map((item) => item.walker),
+    ];
+    for (const walker of lounging) {
+      if (walker.path.length) continue;
+      if (!walker.strollAt) {
+        walker.strollAt = now + 2500 + ((walker.n * 977) % 6000);
+        continue;
+      }
+      if (now < walker.strollAt) continue;
+      const spot = {
+        x: area.x0 + Math.random() * (area.x1 - area.x0),
+        y: area.y0 + Math.random() * (area.y1 - area.y0),
+      };
+      walker.path = [spot];
+      walker.strollAt = now + 5000 + Math.random() * 7000;
+    }
+  }
+
   private moveAgents(dt: number): void {
-    for (const walker of this.walkers.values()) {
+    this.wander(Date.now());
+    for (const walker of [...this.walkers.values(), ...this.resting.map((item) => item.walker)]) {
       const target = walker.path[0];
       if (!target) {
         walker.spd = 0;
@@ -435,7 +500,7 @@ export class OfficeScene {
       if (lead) {
         const subs = [...this.walkers.values()].filter((item) => item.leadId === lead.id);
         return teamView(
-          [lead, ...subs].map((item) => deskCorner(item, floor)),
+          [lead, ...subs].map((item) => deskCorner(item)),
           this.visible(),
         );
       }
@@ -457,9 +522,12 @@ export class OfficeScene {
       canvas.height = height;
     }
     this.size = { width: canvas.width, height: canvas.height };
-    // Tests read the floor's size to find things on it.
+    // Tests read the floor's size, and where the free desk is, to find things on it.
     const world = `${this.floor.width}x${this.floor.height}`;
     if (canvas.dataset.world !== world) canvas.dataset.world = world;
+    const tile = deskTile(this.floor.free);
+    const free = `${tile.x * 32 + 34},${tile.y * 32 + 20}`;
+    if (canvas.dataset.freeDesk !== free) canvas.dataset.freeDesk = free;
   }
 
   private drawSurroundings(theme: 'dark' | 'light'): void {
@@ -500,7 +568,7 @@ export class OfficeScene {
       mote.x += Math.sin(t / 1000 + mote.s * 3) * 0.1;
       if (mote.y > 250) {
         mote.y = 70;
-        mote.x = 608 + Math.random() * 220;
+        mote.x = moteX(this.floor);
       }
       c.fillRect(mote.x + (mote.y - 64) * 0.2, mote.y, mote.s, mote.s);
     }
@@ -516,7 +584,7 @@ export class OfficeScene {
       let x1 = -Infinity;
       let y1 = -Infinity;
       for (const member of [lead, ...subs]) {
-        const position = deskCorner(member, this.floor);
+        const position = deskCorner(member);
         x0 = Math.min(x0, position.x - 8);
         y0 = Math.min(y0, position.y - 20);
         x1 = Math.max(x1, position.x + 72);
@@ -545,9 +613,58 @@ export class OfficeScene {
     }
   }
 
+  /** Colours for the links, read from the theme's tokens once per theme. */
+  private linkInk: { theme: string; line: string; live: string; node: string } | null = null;
+
+  /**
+   * The "Connections between agents" layer: a line from each lead to each of its subagents, as
+   * the spotlight draws them, so a subagent seated far from its lead still shows whose it is.
+   * Quiet when the subagent waits, moving in the accent colour while it works.
+   */
+  private drawLinks(walkers: Walker[], theme: 'dark' | 'light', t: number): void {
+    if (!useLayers.getState().layers.link) return;
+    const links = teamLinks(walkers);
+    if (!links.length) return;
+    if (this.linkInk?.theme !== theme) {
+      const style = getComputedStyle(document.documentElement);
+      const token = (name: string, fallback: string) =>
+        style.getPropertyValue(name).trim() || fallback;
+      this.linkInk = {
+        theme,
+        line: token('--fg2', '#8E8E93'),
+        live: token('--accent', '#5B9BF0'),
+        node: token('--surface', '#FFFFFF'),
+      };
+    }
+    const ink = this.linkInk;
+    const c = this.context;
+    c.lineWidth = 1.5;
+    for (const link of links) {
+      c.globalAlpha = link.live ? 0.95 : 0.55;
+      c.strokeStyle = link.live ? ink.live : ink.line;
+      c.setLineDash(link.live ? [5, 4] : [2, 4]);
+      c.lineDashOffset = link.live ? -((t / 55) % 18) : 0;
+      c.beginPath();
+      c.moveTo(link.from.x, link.from.y);
+      c.quadraticCurveTo(link.bend.x, link.bend.y, link.to.x, link.to.y);
+      c.stroke();
+      c.setLineDash([]);
+      for (const end of [link.from, link.to]) {
+        c.beginPath();
+        c.arc(end.x, end.y, 3, 0, Math.PI * 2);
+        c.fillStyle = link.live ? ink.live : ink.node;
+        c.fill();
+        c.stroke();
+      }
+    }
+    c.globalAlpha = 1;
+    c.lineDashOffset = 0;
+  }
+
   private drawServerRoom(walkers: Walker[], t: number): void {
     const c = this.context;
     const running = walkers.some((item) => item.state === 'running' && !item.path.length);
+    if (!this.floor.rooms.includes('server')) return;
     const shift = this.floor.shift;
     RACKS.forEach((at, ri) => {
       const rx = at + shift;
@@ -564,16 +681,11 @@ export class OfficeScene {
         c.globalAlpha = 1;
       }
     });
-    R(c, 2, 17 * 32 + 10, 6, 40, Math.sin(t / 300) > 0 ? '#6CC7D9' : '#5AB3C4');
-    c.globalAlpha = 0.12;
-    c.fillStyle = '#6CC7D9';
-    ell(c, 14, 17 * 32 + 30, 22, 28);
-    c.globalAlpha = 1;
   }
 
   private drawDesk(walker: Walker, t: number): void {
     const c = this.context;
-    const position = deskCorner(walker, this.floor);
+    const position = deskCorner(walker);
     const x = position.x;
     const y = position.y;
     const here = STATE_LOCATIONS[walker.state] === 'desk' && !walker.path.length;
@@ -647,12 +759,6 @@ export class OfficeScene {
     }
   }
 
-  /** The front of a lounge armchair, drawn over whoever sits in it so they look seated. */
-  private drawSeatFront(x: number, y: number, theme: 'dark' | 'light'): void {
-    const sofa = sofaColours(theme);
-    blk(this.context, x - 21, y - 9, 42, 3, 9, sofa.top, sofa.front, PAL[theme]);
-  }
-
   private draw(t: number, dt: number): void {
     const ui = useOfficeUi.getState();
     const agents = onFloor(useOfficeStore.getState().office?.agents ?? []);
@@ -693,29 +799,21 @@ export class OfficeScene {
     this.drawTeamOffices(walkers, t, inView);
     this.drawServerRoom(walkers, t);
     const scoped = walkers.filter(inView);
-    for (const walker of scoped) this.drawDesk(walker, t);
+    // A desk's screen shows only on a desk that is on the floor.
+    for (const walker of scoped) {
+      if (floor.desks.includes(walker.desk)) this.drawDesk(walker, t);
+    }
     this.drawDeskHint(theme);
-    // Everyone is drawn from back to front. Whoever has sat down in the lounge gets the chair's
-    // front drawn over their legs.
+    this.drawLinks(scoped, theme, t);
+    // Everyone is drawn from back to front.
     const restingShown = this.restingShown();
     const figures: { y: number; paint: () => void }[] = scoped.map((walker) => ({
       y: walker.y,
-      paint: () => {
-        drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id);
-        const seated =
-          STATE_LOCATIONS[walker.state] === 'lounge' && !walker.path.length && !walker.leaving;
-        if (seated) this.drawSeatFront(walker.x, walker.y, theme);
-      },
+      paint: () => drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
     }));
     if (restingShown) {
       for (const { walker } of this.resting) {
-        figures.push({
-          y: walker.y,
-          paint: () => {
-            drawChar(c, walker, t, false, false);
-            this.drawSeatFront(walker.x, walker.y, theme);
-          },
-        });
+        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, false) });
       }
     }
     figures.sort((a, b) => a.y - b.y);

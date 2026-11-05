@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
 
-const EMPTY_DESK = { x: 23 * 32 + 30, y: 16 * 32 + 20 };
-
 test.beforeEach(async ({ request }) => {
   await request.post('/api/wipe', { data: { confirm: true } });
 });
@@ -13,29 +11,27 @@ async function loadDemo(page: Page) {
   await expect(page.locator('.tag .nt').first()).toBeVisible();
 }
 
-/** Where a point in the office is on screen at 100% zoom. The floor grows with the office. */
+/** Where a point in the office is on screen at 100% zoom, with the view at rest. */
 async function onScreen(page: Page, point: { x: number; y: number }) {
   const box = (await page.locator('#floor').boundingBox())!;
-  const world = await page.locator('#floor').getAttribute('data-world');
-  const [width, height] = (world ?? '').split('x').map(Number);
-  const WORLD = { width: width || 1216, height: height || 704 };
-  // The office covers the view when the shapes are within 10%, and fits inside otherwise. A
-  // wider office keeps that scale, fits its floor under the 58 px wall bar with the 44 px back
-  // wall beneath it, and starts at its left end.
+  // The office is drawn at the prototype office's scale, its floor under the 58 px wall bar with
+  // the 44 px back wall beneath it, and from its left end.
   const across = box.width / 1216;
   const down = box.height / 704;
   const base =
     Math.max(across, down) / Math.min(across, down) <= 1.1
       ? Math.max(across, down)
       : Math.min(across, down);
-  const grown = WORLD.width > 1216 || WORLD.height > 704;
-  const scale = grown ? Math.min(base, (box.height - 58) / (WORLD.height - 44)) : base;
-  const top = (box.height - WORLD.height * scale) / 2;
-  const left = (box.width - WORLD.width * scale) / 2;
-  return {
-    x: box.x + (grown ? Math.max(0, left) : left) + point.x * scale,
-    y: box.y + (grown ? Math.max(top, 58 - 44 * scale) : top) + point.y * scale,
-  };
+  const scale = Math.min(base, (box.height - 58) / (704 - 44));
+  const top = Math.max((box.height - 704 * scale) / 2, 58 - 44 * scale);
+  return { x: box.x + point.x * scale, y: box.y + top + point.y * scale };
+}
+
+/** The one free desk on the floor, in the office's own pixels. */
+async function freeDesk(page: Page) {
+  const value = (await page.locator('#floor').getAttribute('data-free-desk')) ?? '';
+  const [x, y] = value.split(',').map(Number);
+  return { x: x!, y: y! };
 }
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Create a new agent' });
@@ -130,15 +126,25 @@ test('the server turns down a name already in use', async ({ page }) => {
   await expect(form.getByRole('alert')).toContainText('There is already an agent called Ledger.');
 });
 
-test('clicking an empty desk does nothing: the builder is where agents are made', async ({
-  page,
-}) => {
+test('clicking the free desk starts an agent there, with what it should do', async ({ page }) => {
   await loadDemo(page);
-  const desk = await onScreen(page, EMPTY_DESK);
-  await page.mouse.move(desk.x, desk.y);
-  await expect(page.locator('#floor')).not.toHaveCSS('cursor', 'pointer');
+  await expect(page.locator('.tag .nt')).toHaveCount(10);
+  // Once everyone has sat down and the view has settled, the free desk takes a click.
+  let desk = { x: 0, y: 0 };
+  await expect
+    .poll(async () => {
+      desk = await onScreen(page, await freeDesk(page));
+      await page.mouse.move(desk.x, desk.y);
+      return page.locator('#floor').evaluate((element) => element.style.cursor);
+    })
+    .toBe('pointer');
   await page.mouse.click(desk.x, desk.y);
-  await expect(dialog(page)).toBeHidden();
+  const form = dialog(page);
+  await expect(form).toBeVisible();
+  await form.getByLabel('Name').fill('Deskmate');
+  await form.getByLabel('Instructions').fill('Tidy the README.');
+  await form.getByRole('button', { name: 'Create agent' }).click();
+  await expect(page.locator('.tag .nt', { hasText: 'Deskmate' })).toBeVisible();
 });
 
 test('the model starts on the agent settings and follows a lead', async ({ page }) => {

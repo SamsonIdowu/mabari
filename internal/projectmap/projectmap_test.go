@@ -76,3 +76,12 @@ func TestTheMapsBrief(t *testing.T) {
 		t.Error("a short map was cut")
 	}
 }
+
+// Tags some tools wrap around a prompt stay out of the map, which AI sessions read.
+func TestTheMapLeavesOutMarkup(t *testing.T) {
+	a := agent("Web", "", models.StateRunning, `<agent-message from="x">Run the tests</agent-message>`)
+	m := Build(nil, []*models.LiveAgent{a}, nil, nil, time.UnixMilli(0))
+	if got := m.Elsewhere[0].Task; got != "Run the tests" {
+		t.Errorf("task = %q", got)
+	}
+}

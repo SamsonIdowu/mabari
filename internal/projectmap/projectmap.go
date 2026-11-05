@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -154,8 +155,12 @@ func busiestFirst(agents []Agent) {
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].Working && !agents[j].Working })
 }
 
+// markup is a tag some tools wrap around a prompt, such as <agent-message from="…">. The map is
+// read by AI sessions, so tags are left out and only the words go in.
+var markup = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9_-]*(\s[^<>]{0,200})?/?>`)
+
 func clip(text string, limit int) string {
-	text = strings.Join(strings.Fields(text), " ")
+	text = strings.Join(strings.Fields(markup.ReplaceAllString(text, " ")), " ")
 	runes := []rune(text)
 	if len(runes) <= limit {
 		return text

@@ -233,7 +233,8 @@ function ClaudeCard({ account }: { account: Account }) {
           // Past tense: the change is made, so the lines to add are no longer shown.
           <p className="help" data-testid="hooksAdded">
             Mabari&apos;s hooks were added to <code>{path}</code>. The original is saved as{' '}
-            <code>{backup}</code>. Detaching takes Mabari&apos;s lines out again and puts it back.
+            <code>{backup}</code>. Detaching takes Mabari&apos;s lines out again and puts the
+            original back.
           </p>
         ) : (
           <div className="field">

@@ -18,8 +18,8 @@ if (!agentBinding || !chatBinding) throw new Error('the bindings changed');
 const office = {
   projects: [{ id: 'shop' }, { id: 'docs' }],
   agents: [
-    { id: 'a1', model: 'claude-sonnet-4-5' },
-    { id: 'a2', model: 'gpt-5' },
+    { id: 'a1', model: 'claude-sonnet-4-5', provider: 'claude' },
+    { id: 'a2', model: 'gpt-5', provider: 'openai' },
   ],
   defs: [{ id: 'reader' }],
 } as unknown as Snapshot;
@@ -64,6 +64,23 @@ describe('the saved view', () => {
       status: 'active',
       projectsTab: 'done',
     });
+  });
+
+  it('drops a provider no agent has, as it drops a project or a model no one has (RT-6)', () => {
+    const stale: SavedView = { ...DEFAULT_VIEW, provider: 'claude', model: 'claude-opus-4-1' };
+    // The office is empty, as after the demo is turned off: nothing matches, so nothing is kept.
+    const empty = { projects: [], agents: [] } as unknown as Snapshot;
+    expect(cleanView(stale, empty)).toEqual(DEFAULT_VIEW);
+    expect(cleanView({ ...DEFAULT_VIEW, project: 'shop' }, empty)).toEqual(DEFAULT_VIEW);
+    // Only Codex agents are left, so "All Claude" matches nothing and goes, and Codex stays.
+    const codexOnly = {
+      projects: [],
+      agents: [{ id: 'c1', model: 'gpt-5', provider: 'openai' }],
+    } as unknown as Snapshot;
+    expect(cleanView({ ...DEFAULT_VIEW, provider: 'claude' }, codexOnly).provider).toBe('all');
+    expect(cleanView({ ...DEFAULT_VIEW, provider: 'openai' }, codexOnly).provider).toBe('openai');
+    // A name that is no provider at all goes too.
+    expect(cleanView({ ...DEFAULT_VIEW, provider: 'nobody' }, office).provider).toBe('all');
   });
 
   it('keeps choices the office still has', () => {

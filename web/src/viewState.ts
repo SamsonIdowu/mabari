@@ -7,7 +7,6 @@ import { useOfficeStore } from './data/officeStore.ts';
 import type { Snapshot } from './gen/models.ts';
 import { restKey } from './office/layout.ts';
 import { useOfficeUi, type ProjectsTab, type StatusFilter } from './office/uiStore.ts';
-import { providers } from './shared/tokens.ts';
 import { hashParam, hashWith, routeOf } from './routes.ts';
 
 /** The choices on the Agents and Projects pages and Conversations that are remembered. */
@@ -65,8 +64,10 @@ export function viewOf(state: SavedView): SavedView {
 }
 
 /**
- * Drops choices the office no longer has, such as a project deleted since, so a reload never
- * lands on a floor with nobody on it and no sign of why.
+ * Drops choices that no longer match anything in the office, such as a project deleted since or a
+ * provider whose agents have all left, so a reload never lands on a floor with nobody on it and no
+ * sign of why. Project, provider and model are judged the same way: a saved value stays only while
+ * something in the office has it.
  */
 export function cleanView(
   view: SavedView,
@@ -74,10 +75,11 @@ export function cleanView(
 ): SavedView {
   const projects = new Set(office.projects.map((project) => project.id));
   const models = new Set(office.agents.map((agent) => agent.model));
+  const providersHere = new Set<string>(office.agents.map((agent) => agent.provider));
   return {
     ...view,
     project: view.project === 'all' || projects.has(view.project) ? view.project : 'all',
-    provider: view.provider === 'all' || view.provider in providers ? view.provider : 'all',
+    provider: view.provider === 'all' || providersHere.has(view.provider) ? view.provider : 'all',
     model: view.model === 'all' || models.has(view.model) ? view.model : 'all',
     threadProject:
       view.threadProject === 'all' || projects.has(view.threadProject) ? view.threadProject : 'all',

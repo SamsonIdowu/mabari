@@ -66,6 +66,32 @@ test('a remembered project or model the office no longer has is dropped', async 
   ).toHaveAttribute('aria-pressed', 'true');
 });
 
+// RT-6: with the demo off the office is empty, so a saved project and a saved model filter match
+// nothing. Both used to be treated differently: the project reset, and "All Claude" stayed over an
+// empty floor with a Clear filters link.
+test('a remembered provider and model no agent has are dropped like a project, with the demo off', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/stop');
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'mabari.view',
+      JSON.stringify({
+        project: 'checkout',
+        provider: 'claude',
+        model: 'claude-opus-4-1',
+        status: 'all',
+      }),
+    );
+  });
+  await page.goto('/#office');
+  await expect(projectMenu(page)).toContainText('All projects');
+  await expect(page.locator('.obar2 .dd', { hasText: 'Models' })).toContainText('All models');
+  await expect(page.locator('.obar2 .dd', { hasText: 'Models' })).not.toContainText('All Claude');
+  await expect(page.getByRole('button', { name: 'Clear filters' })).toHaveCount(0);
+});
+
 test('the Projects and Conversations tabs come back after a reload', async ({ page }) => {
   await page.goto('/#projects');
   const shown = page.getByRole('group', { name: 'Show projects' });

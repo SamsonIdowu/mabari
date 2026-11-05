@@ -307,7 +307,9 @@ test('a key that does not fit is told off beside the field, with the shape it sh
   await card.getByLabel('Key').fill('hello');
   await card.getByRole('button', { name: 'Save' }).click();
   const error = card.getByTestId('keyError');
-  await expect(error).toContainText("that doesn't look like an Anthropic API key");
+  await expect(error).toContainText("That doesn't look like an Anthropic API key.");
+  // The server's refusal says the shape to paste.
+  await expect(error).toContainText('It starts with sk-ant- and has at least 20 more');
   await expect(card.getByLabel('Key')).toHaveAttribute('aria-invalid', 'true');
   // Still there after the time a toast would have gone.
   await page.waitForTimeout(4500);

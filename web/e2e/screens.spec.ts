@@ -141,9 +141,12 @@ test('Attach Claude Code shows the real change first, and never runs from go run
     .toContainText('"onFailure"', { timeout: 100 })
     .catch(() => undefined);
   await expect(diff).not.toContainText('onFailure');
-  await expect(page.locator('.card', { hasText: 'Attach Claude Code' })).toContainText(
-    '.mabari-backup',
-  );
+  // The key cards say "Attach Claude Code" too, so the card is found by its own heading.
+  await expect(
+    page.locator('article.card', {
+      has: page.getByRole('heading', { name: 'Attach Claude Code' }),
+    }),
+  ).toContainText('.mabari-backup');
   // The test server runs under go run, so there is no binary for the hook to call.
   await page.getByRole('button', { name: 'Attach Claude Code', exact: true }).click();
   await expect(page.getByText('start Mabari from its built binary')).toBeVisible();

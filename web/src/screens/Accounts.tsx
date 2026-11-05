@@ -444,6 +444,9 @@ const KEYS: KeySpec[] = [
   },
 ];
 
+/** A server message starts in lower case, as it can follow other words; on its own it is a sentence. */
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 /** Said wherever a key is offered, because an agent can't run on one yet. */
 const KEY_AGENTS_NOTE =
   "Agents can't run on an API key yet. Attach Claude Code or sign in with ChatGPT to run agents.";
@@ -464,7 +467,7 @@ function KeyCard({ spec, account }: { spec: KeySpec; account: Account | undefine
         toast(done);
       })
       .catch((failure: unknown) =>
-        setError(failure instanceof Error ? failure.message : 'Try again'),
+        setError(failure instanceof Error ? sentence(failure.message) : 'Try again'),
       )
       .finally(() => setBusy(false));
   };

@@ -143,3 +143,34 @@ test('a quick tap only shows how the mic works', async ({ page }) => {
   await page.waitForTimeout(300);
   expect(sent).toEqual([]);
 });
+
+test('a right click on the mic does nothing', async ({ page }) => {
+  await mic(page).click({ button: 'right' });
+  await page.waitForTimeout(2300);
+  await expect(mic(page)).not.toHaveClass(/on/);
+});
+
+test('leaving the window stops an unlocked mic without sending', async ({ page }) => {
+  await page.keyboard.down('Space');
+  await expect(mic(page)).toHaveClass(/on/);
+  await page.evaluate(() => window.fakeSpeech.say('Tell Ledger to ship it'));
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(mic(page)).not.toHaveClass(/on/);
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(300);
+  expect(sent).toEqual([]);
+});
+
+test('after the padlock, Space is still push to talk', async ({ page }) => {
+  const lock = page.locator('#hcLock');
+  await lock.click();
+  await page.evaluate(() => window.fakeSpeech.say('first'));
+  await lock.click();
+  await expect.poll(() => sent).toEqual(['first']);
+  await page.keyboard.down('Space');
+  await expect(label(page)).toHaveText('Listening…');
+  await page.evaluate(() => window.fakeSpeech.say('second'));
+  await page.keyboard.up('Space');
+  await expect.poll(() => sent).toEqual(['first', 'second']);
+  await expect(label(page)).toHaveText('Hold to talk');
+});

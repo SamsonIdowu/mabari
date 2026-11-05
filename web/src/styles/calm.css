@@ -619,6 +619,9 @@ section[data-screen]:not([data-screen='office']) .acc {
 }
 
 /* Home's dock: round buttons with labels under Mabari, as in the prototype */
+.h2type[hidden] {
+  display: none;
+}
 .h2type {
   display: flex;
   align-items: center;
@@ -776,7 +779,14 @@ section[data-screen]:not([data-screen='office']) .acc {
   color: var(--fg);
 }
 /* While the mic is held: the padlock rises above it with an up arrow, and a ring fills round it
-   over the 2 s it takes to lock. Not in the prototype; sized to sit inside its 22px gap. */
+   over the 2 s it takes to lock. Not in the prototype. What shows above the dock moves up out of
+   the padlock's way while it rises. */
+#hcMic {
+  position: relative;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
 .micup {
   position: absolute;
   top: -14px;
@@ -792,17 +802,26 @@ section[data-screen]:not([data-screen='office']) .acc {
   height: 14px;
 }
 .micwrap.pressing .miclock {
-  transform: translate(-22px, -46px);
+  transform: translate(-22px, -40px);
 }
 .micwrap.pressing .micup {
   opacity: 1;
 }
+.h2bottom > .yousaid,
+.h2bottom > .h2type {
+  transition: transform 0.2s ease;
+}
+.h2bottom.pressing > .yousaid,
+.h2bottom.pressing > .h2type {
+  transform: translateY(-44px);
+}
 .micring {
   position: absolute;
-  inset: -6px;
-  width: calc(100% + 12px);
-  height: calc(100% + 12px);
-  transform: rotate(-90deg);
+  top: -6px;
+  left: 50%;
+  width: 80px;
+  height: 80px;
+  transform: translateX(-50%) rotate(-90deg);
   pointer-events: none;
 }
 .micring circle {
@@ -817,6 +836,18 @@ section[data-screen]:not([data-screen='office']) .acc {
 @keyframes micfill {
   to {
     stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No fill to watch: the ring shows whole, faint, while the hold lasts. */
+  .micring circle {
+    stroke-dashoffset: 0 !important;
+    opacity: 0.45;
+  }
+  .miclock,
+  .h2bottom > .yousaid,
+  .h2bottom > .h2type {
+    transition: none;
   }
 }
 #homeProjDot .ico {
@@ -835,13 +866,4 @@ section[data-screen]:not([data-screen='office']) .acc {
 .h2dock .menu.up {
   left: 50%;
   transform: translateX(-50%);
-}
-@media (prefers-reduced-motion: reduce) {
-  .micring circle {
-    animation-duration: 0.01s;
-    animation-delay: 1.99s;
-  }
-  .miclock {
-    transition: none;
-  }
 }

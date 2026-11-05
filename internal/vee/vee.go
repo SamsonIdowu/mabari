@@ -159,8 +159,9 @@ func hasWord(text, word string) bool {
 }
 
 type view struct {
-	// scope names the project the view covers, or is empty for the whole office.
+	// scope and scopeID name the project the view covers, or are empty for the whole office.
 	scope   string
+	scopeID string
 	agents  []*models.LiveAgent
 	working []*models.LiveAgent
 	need    []*models.LiveAgent
@@ -189,10 +190,15 @@ func look(agents []*models.LiveAgent, now time.Time) view {
 }
 
 func (o view) reply(text, gesture string, kind Kind) Reply {
-	return Reply{
+	reply := Reply{
 		Text: text, Gesture: gesture, Kind: kind, Estimate: o.finish,
 		Working: len(o.working), Total: len(o.agents), Need: len(o.need),
 	}
+	// A reply about one project names it, so the page can say the counts are for it.
+	if o.scope != "" {
+		reply.Project = &ProjectChoice{ID: o.scopeID, Name: o.scope}
+	}
+	return reply
 }
 
 // IsQuestion reports whether a message is phrased as a question: it ends with "?" or starts the
@@ -247,7 +253,8 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	if ok {
 		return office.unknown(q, in.Projects)
 	}
-	// Questions about how things stand answer for the project picked on Home, if there is one.
+	// Questions about how things stand (status, what needs you, when) answer for the project picked
+	// on Home, if there is one. Greetings and replies stay office wide.
 	asked := office.scoped(in, now)
 	isQ, small := IsQuestion(q), short(q)
 	if small {
@@ -261,7 +268,7 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	named := office.named(q)
 	switch {
 	case chat && greeting.MatchString(q):
-		return asked.greet()
+		return office.greet()
 	case chat && has(q, "thank"):
 		return office.reply("Any time. Keeping an eye on things is my favourite job.", "bow", KindPlain)
 	case isQ && has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"),
@@ -293,7 +300,7 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 		return asked.status()
 	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
 		"responses", "answers"):
-		return asked.replies()
+		return office.replies()
 	}
 	if route, ask := office.forProject(text, in); ask != nil {
 		return *ask
@@ -323,7 +330,7 @@ func (o view) scoped(in Office, now time.Time) view {
 			}
 		}
 		scoped := look(agents, now)
-		scoped.scope = project.Name
+		scoped.scope, scoped.scopeID = project.Name, project.ID
 		return scoped
 	}
 	return o

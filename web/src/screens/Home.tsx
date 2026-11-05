@@ -242,6 +242,13 @@ function useVeeStage(
   bubble: React.RefObject<HTMLDivElement | null>,
 ) {
   const dark = useThemeStore((state) => state.theme) === 'dark';
+  // The theme is read each frame, so changing it doesn't restart the stage and its detector,
+  // which keeps the 8 s wave and 1.8 s gap as they were.
+  const darkNow = useRef(dark);
+  useEffect(() => {
+    darkNow.current = dark;
+  }, [dark]);
+  const gestureState = useRef<MouseGestures | null>(null);
   useEffect(() => {
     const view = canvas.current;
     const context = view?.getContext('2d');
@@ -251,7 +258,8 @@ function useVeeStage(
     const lookAt = { x: 0, y: 0 };
     let nextIdle = 0;
     let frame = 0;
-    const gestures = new MouseGestures(Date.now());
+    gestureState.current ??= new MouseGestures(Date.now());
+    const gestures = gestureState.current;
 
     const onMove = (event: MouseEvent) => {
       const box = view.getBoundingClientRect();
@@ -276,7 +284,13 @@ function useVeeStage(
       const vee = useVee.getState();
       vee.settle(t);
       // Random idle gestures wait while the pointer moves, so they don't talk over its own.
-      if (vee.state === 'idle' && !vee.gesture && t > nextIdle && !gestures.moving(Date.now())) {
+      if (
+        vee.state === 'idle' &&
+        !vee.listening &&
+        !vee.gesture &&
+        t > nextIdle &&
+        !gestures.moving(Date.now())
+      ) {
         if (nextIdle && !still) vee.play(anyOf(IDLE_GESTURES));
         nextIdle = t + IDLE_MIN_MS + Math.random() * IDLE_SPREAD_MS;
       }
@@ -299,7 +313,12 @@ function useVeeStage(
       const ox = (w - 32 * scale) / 2;
       const oy = (h - 42 * scale) / 2;
       context.setTransform(scale, 0, 0, scale, ox, oy);
-      drawMascot(context, t, { ...pose, scarf: '#F4F4F4', laptop: '#8E8E93', dark });
+      drawMascot(context, t, {
+        ...pose,
+        scarf: '#F4F4F4',
+        laptop: '#8E8E93',
+        dark: darkNow.current,
+      });
 
       const say = bubble.current;
       if (!say) return;
@@ -328,7 +347,7 @@ function useVeeStage(
       document.removeEventListener('mousemove', onMove);
       document.documentElement.removeEventListener('mouseleave', onLeave);
     };
-  }, [canvas, bubble, dark]);
+  }, [canvas, bubble]);
 }
 
 /** Waits for the office, because the stage needs its canvas on the page when it starts. */

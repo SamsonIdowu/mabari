@@ -203,7 +203,7 @@ test('the dock has the project, Type, the mic, Voice and Gestures, with no messa
 }) => {
   await home(page, request);
   await expect(page.locator('.h2under')).toHaveCount(0);
-  await expect(page.locator('#hcForm')).toHaveCount(0);
+  await expect(page.locator('#hcForm')).toBeHidden();
   const labels = await page.locator('.h2dock .dklbl').allTextContents();
   expect(labels).toEqual(['All projects', 'Type', 'Hold to talk', 'Voice off', 'Gestures']);
   const mic = (await page.locator('#hcMic .dkic').boundingBox())!;
@@ -233,9 +233,13 @@ test('Type shows a field above the dock that sends on Enter and hides on Esc', a
   await expect(page.locator('#youSaid')).toHaveText('what is happening');
   // Sending keeps the field; Esc hides it.
   await expect(box).toHaveValue('');
+  // A draft survives hiding the field.
+  await box.fill('half a thought');
   await box.press('Escape');
-  await expect(page.locator('#hcForm')).toHaveCount(0);
+  await expect(page.locator('#hcForm')).toBeHidden();
   await expect(type).toHaveAttribute('aria-pressed', 'false');
+  await type.click();
+  await expect(box).toHaveValue('half a thought');
 });
 
 test('the top bar shows the wordmark only and links home', async ({ page, request }) => {

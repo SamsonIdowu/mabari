@@ -40,42 +40,52 @@ export interface Mic {
   locked: boolean;
   /** The press is held and the ring is filling. */
   pressing: boolean;
+  /** Released, and waiting for the engine's final text, as Local Whisper takes a moment. */
+  sending: boolean;
   heard: string;
 }
+
+const IDLE: Mic = { listening: false, locked: false, pressing: false, sending: false, heard: '' };
 
 /**
  * Hold the mic, or Space when not typing, to talk to Mabari. Speech stays on this computer.
  * Releasing sends what was heard, unless the mic was locked on: then tapping it sends, and Esc
- * cancels without sending.
+ * cancels without sending. Each session has its own number, so a late event from one that was
+ * cancelled can't end the next.
  */
 function useHomeMic() {
-  const [mic, setMic] = useState<Mic>({
-    listening: false,
-    locked: false,
-    pressing: false,
-    heard: '',
-  });
+  const [mic, setMic] = useState<Mic>(IDLE);
   const listener = useRef<Listener | null>(null);
   const heard = useRef('');
+  const session = useRef(0);
   const active = useRef(false);
   const locked = useRef(false);
-  const press = useRef<{ at: number; y: number; timer: number } | null>(null);
+  const sending = useRef(false);
+  const press = useRef<{ at: number; y: number; timer: number; started: boolean } | null>(null);
   const limit = useRef(0);
   const update = (patch: Partial<Mic>) => setMic((current) => ({ ...current, ...patch }));
 
-  const finish = useRef(() => {});
+  /** Ends the session, everywhere it shows. */
+  const reset = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+    window.clearTimeout(limit.current);
+    active.current = false;
+    locked.current = false;
+    sending.current = false;
+    listener.current = null;
+    heard.current = '';
+    useVee.getState().setListening(false);
+    setMic(IDLE);
+  };
+
+  const finish = useRef<(id: number) => void>(() => {});
   // Set after each render, as it reads state through refs only.
   useEffect(() => {
-    finish.current = () => {
-      if (!active.current) return;
-      window.clearTimeout(limit.current);
-      active.current = false;
-      locked.current = false;
-      listener.current = null;
-      useVee.getState().setListening(false);
+    finish.current = (id) => {
+      if (!active.current || id !== session.current) return;
       const text = heard.current.trim();
-      heard.current = '';
-      update({ listening: false, locked: false, pressing: false, heard: '' });
+      reset();
       if (!text) {
         useVee.getState().say({
           ...VEE_HELLO,
@@ -88,51 +98,57 @@ function useHomeMic() {
     };
   });
 
-  const start = () => {
-    if (active.current) return;
+  /** Starts a session, and reports whether one is running: the engine may refuse at once. */
+  const start = (): boolean => {
+    if (active.current) return !sending.current;
+    session.current += 1;
+    const id = session.current;
     active.current = true;
     heard.current = '';
     useVee.getState().setListening(true);
     update({ listening: true, heard: '' });
-    listener.current = listen(
+    const current = listen(
       {
         onText: (text) => {
+          if (id !== session.current) return;
           heard.current = text;
           update({ heard: text });
         },
         onError: (message) => {
+          if (id !== session.current) return;
           toast(message);
           cancel();
         },
-        onEnd: () => finish.current(),
+        onEnd: () => finish.current(id),
       },
       useOfficeStore.getState().office?.settings.voiceEngine,
     );
+    if (id === session.current && active.current) listener.current = current;
+    return id === session.current && active.current;
   };
   /** Stops listening and sends. The text is final once the engine ends, which for Local Whisper
    * is after it has turned the recording into text. */
   const send = () => {
-    if (!active.current) return;
-    if (listener.current) listener.current.stop();
-    else finish.current();
-  };
-  /** Stops listening and sends nothing. */
-  const cancel = () => {
+    if (!active.current || sending.current) return;
     if (press.current) window.clearTimeout(press.current.timer);
     press.current = null;
     window.clearTimeout(limit.current);
-    if (!active.current) return;
-    active.current = false;
     locked.current = false;
+    sending.current = true;
+    update({ locked: false, pressing: false, sending: true });
+    if (listener.current) listener.current.stop();
+    else finish.current(session.current);
+  };
+  /** Stops listening and sends nothing. */
+  const cancel = () => {
     const current = listener.current;
-    listener.current = null;
-    current?.abort();
-    heard.current = '';
-    useVee.getState().setListening(false);
-    update({ listening: false, locked: false, pressing: false, heard: '' });
+    const was = active.current;
+    session.current += 1;
+    reset();
+    if (was) current?.abort();
   };
   const lock = () => {
-    if (!active.current || locked.current) return;
+    if (!active.current || locked.current || sending.current) return;
     locked.current = true;
     if (press.current) window.clearTimeout(press.current.timer);
     window.clearTimeout(limit.current);
@@ -145,29 +161,32 @@ function useHomeMic() {
   };
 
   const down = (event: PointerEvent) => {
+    // Only the main button: a right click opens the menu, which takes the release.
+    if (event.button !== 0 || !event.isPrimary) return;
     event.preventDefault();
+    if (sending.current) return;
     if (locked.current && active.current) {
-      locked.current = false;
       send();
       return;
     }
-    start();
+    const started = !active.current;
+    if (!start()) return;
     press.current = {
       at: Date.now(),
       y: event.clientY,
       timer: window.setTimeout(lock, LOCK_HOLD_MS),
+      started,
     };
     update({ pressing: true });
   };
   /** The padlock locks the mic on directly, or unlocks it and sends. */
   const toggleLock = () => {
+    if (sending.current) return;
     if (locked.current && active.current) {
-      locked.current = false;
       send();
       return;
     }
-    start();
-    lock();
+    if (start()) lock();
   };
 
   useEffect(() => {
@@ -179,24 +198,43 @@ function useHomeMic() {
       if (!held) return;
       window.clearTimeout(held.timer);
       press.current = null;
+      update({ pressing: false });
       if (locked.current) return;
       if (Date.now() - held.at < TAP_MS) {
-        cancel();
+        // A tap only explains; it never throws away a session it didn't start.
+        if (held.started) cancel();
         toast('Hold the mic to talk, or swipe up to lock it on.');
         return;
       }
       send();
     };
+    /** The browser took the pointer, say to scroll: nothing is sent unless the mic is locked. */
+    const lost = () => {
+      if (!press.current) return;
+      if (!locked.current) cancel();
+      else {
+        window.clearTimeout(press.current.timer);
+        press.current = null;
+        update({ pressing: false });
+      }
+    };
+    /** Leaving the page loses the Space or pointer release, so an unlocked mic stops unsent. */
+    const away = (event: Event) => {
+      if (event.type === 'visibilitychange' && document.visibilityState !== 'hidden') return;
+      if (active.current && !locked.current && !sending.current) cancel();
+    };
     const keyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && active.current) {
+      if (event.key === 'Escape' && active.current && !sending.current) {
         cancel();
         return;
       }
       if (event.code !== 'Space' || event.repeat || active.current) return;
       const focused = document.activeElement as HTMLElement | null;
       if (focused?.id === 'hcText' && (focused as HTMLTextAreaElement).value) return;
+      const dock = focused?.id === 'hcMic' || focused?.id === 'hcLock';
       if (
         focused &&
+        !dock &&
         focused.id !== 'hcText' &&
         /INPUT|TEXTAREA|SELECT|BUTTON/.test(focused.tagName)
       )
@@ -205,17 +243,23 @@ function useHomeMic() {
       start();
     };
     const keyUp = (event: globalThis.KeyboardEvent) => {
-      if (event.code === 'Space' && active.current && !locked.current && !press.current) send();
+      if (event.code !== 'Space' || !active.current) return;
+      event.preventDefault();
+      if (!locked.current && !press.current) send();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    window.addEventListener('pointercancel', lost);
+    window.addEventListener('blur', away);
+    document.addEventListener('visibilitychange', away);
     window.addEventListener('keydown', keyDown, true);
     window.addEventListener('keyup', keyUp, true);
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
+      window.removeEventListener('pointercancel', lost);
+      window.removeEventListener('blur', away);
+      document.removeEventListener('visibilitychange', away);
       window.removeEventListener('keydown', keyDown, true);
       window.removeEventListener('keyup', keyUp, true);
     };
@@ -223,10 +267,12 @@ function useHomeMic() {
   // Leaving Home stops listening, and sends nothing.
   useEffect(
     () => () => {
+      const current = listener.current;
+      session.current += 1;
       if (press.current) window.clearTimeout(press.current.timer);
       window.clearTimeout(limit.current);
       active.current = false;
-      listener.current?.abort();
+      current?.abort();
       useVee.getState().setListening(false);
     },
     [],
@@ -309,18 +355,23 @@ function ProjectMenu({ close }: { close: () => void }) {
   );
 }
 
-/** The compact field Type shows above the dock. Enter sends; Esc hides it. */
-function TypeField({ hide }: { hide: () => void }) {
+/**
+ * The compact field Type shows above the dock. Enter sends; Esc hides it. It stays on the page
+ * while hidden, as in the prototype, so a draft survives hiding it.
+ */
+function TypeField({ shown, hide }: { shown: boolean; hide: () => void }) {
   const hear = useVee((state) => state.hear);
   const [text, setText] = useState('');
   const box = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const field = box.current;
-    if (!field) return;
+    if (!field || !shown) return;
     field.style.height = 'auto';
     field.style.height = `${Math.min(field.scrollHeight, BOX_MAX_PX)}px`;
-  }, [text]);
-  useEffect(() => box.current?.focus(), []);
+  }, [text, shown]);
+  useEffect(() => {
+    if (shown) box.current?.focus();
+  }, [shown]);
   const send = () => {
     const message = text.trim();
     if (!message) return;
@@ -331,7 +382,7 @@ function TypeField({ hide }: { hide: () => void }) {
     if (event.key === 'Escape') {
       event.stopPropagation();
       hide();
-    } else if (event.key === 'Enter' && !event.shiftKey) {
+    } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
     }
@@ -341,7 +392,7 @@ function TypeField({ hide }: { hide: () => void }) {
     send();
   };
   return (
-    <form className="h2type" id="hcForm" autoComplete="off" onSubmit={submit}>
+    <form className="h2type" id="hcForm" autoComplete="off" onSubmit={submit} hidden={!shown}>
       <label className="sr" htmlFor="hcText">
         Message Mabari
       </label>
@@ -363,7 +414,10 @@ function TypeField({ hide }: { hide: () => void }) {
   );
 }
 
-/** The ring that fills round the mic while it is held, 2 s to lock. */
+/**
+ * The ring that fills round the mic while it is held, 2 s to lock. It sits beside the mic's
+ * circle, not in it, so the listening pulse doesn't fade it.
+ */
 function MicRing() {
   return (
     <svg className="micring" viewBox="0 0 80 80" aria-hidden="true">
@@ -385,16 +439,24 @@ export function HomeDock({ spoken }: { spoken: boolean }) {
     if (spoken) window.speechSynthesis?.cancel();
     void api.updateSettings({ spokenReplies: !spoken });
   };
-  const micLabel = mic.listening ? (mic.locked ? 'Tap to send' : 'Listening…') : 'Hold to talk';
+  const micLabel = mic.sending
+    ? 'Sending…'
+    : mic.listening
+      ? mic.locked
+        ? 'Tap to send'
+        : 'Listening…'
+      : 'Hold to talk';
+  // Buttons the mic uses keep focus off, so Space stays push to talk and never clicks them.
+  const keepFocus = (event: React.MouseEvent) => event.preventDefault();
   const said = mic.listening ? mic.heard || 'Listening…' : heardLast;
   return (
-    <div className="h2bottom">
+    <div className={mic.pressing ? 'h2bottom pressing' : 'h2bottom'}>
       {said ? (
         <div className="yousaid" id="youSaid">
           {said}
         </div>
       ) : null}
-      {typing ? <TypeField hide={() => setTyping(false)} /> : null}
+      <TypeField shown={typing} hide={() => setTyping(false)} />
       <div className="h2dock" role="toolbar" aria-label="Talk to Mabari">
         <div className="ddwrap">
           <button
@@ -443,6 +505,7 @@ export function HomeDock({ spoken }: { spoken: boolean }) {
             aria-pressed={mic.locked}
             aria-label={mic.locked ? 'Unlock and send' : 'Lock the mic on'}
             title={mic.locked ? 'Unlock and send' : 'Lock the mic on'}
+            onMouseDown={keepFocus}
             onClick={toggleLock}
           >
             <Icon>
@@ -462,9 +525,11 @@ export function HomeDock({ spoken }: { spoken: boolean }) {
             aria-pressed={mic.listening}
             title="Hold to talk, or swipe up to lock it on (Space works too)"
             onPointerDown={down}
+            onMouseDown={keepFocus}
+            onContextMenu={keepFocus}
           >
+            {mic.pressing ? <MicRing /> : null}
             <span className="dkic">
-              {mic.pressing ? <MicRing /> : null}
               <Icon>
                 <rect x="9" y="3" width="6" height="11" rx="3" />
                 <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />

@@ -6,9 +6,12 @@ export function ThemeButton() {
   const theme = useThemeStore((state) => state.theme);
   const toggle = useThemeStore((state) => state.toggle);
   const isDark = theme === 'dark';
+  // Named for what it does, not for the theme it shows. The visible word, Dark or Light, is in
+  // the name too, for people who speak to their computer.
+  const name = isDark ? 'Switch to light theme' : 'Switch to dark theme';
 
   return (
-    <button type="button" className="tbtn" title="Switch theme" onClick={toggle}>
+    <button type="button" className="tbtn" aria-label={name} title={name} onClick={toggle}>
       <Icon>
         <path
           d={

@@ -80,7 +80,7 @@ async function behavesAsModal(page: Page, opener: Locator | null) {
   });
   expect(behind).toEqual({ inert: true, tookFocus: false });
   // The live regions stay outside what is inert, so a toast or a new approval is still heard.
-  for (const live of ['.toasts']) {
+  for (const live of ['.toasts', '#approvalLive']) {
     expect(
       await page.evaluate((selector) => {
         const element = document.querySelector(selector);

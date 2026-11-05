@@ -17,7 +17,9 @@ import { Settings } from '../screens/Settings.tsx';
 import { Library } from '../screens/Library.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
+import { routeTitle } from '../routeTitles.ts';
 import { useHashRoute } from '../useHashRoute.ts';
+import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
 import { Toasts } from './Toasts.tsx';
@@ -60,6 +62,11 @@ export function Shell() {
     screenRef.current?.scrollTo({ top: 0 });
   }, [route]);
 
+  // The title is what a screen reader reads when the page changes.
+  useEffect(() => {
+    document.title = routeTitle(route);
+  }, [route]);
+
   useEffect(listenForApprovals, []);
 
   return (
@@ -72,6 +79,7 @@ export function Shell() {
       <NewAgentDialog />
       <DeskDialog />
       <NewProjectDialog />
+      <ApprovalAnnouncer />
       <Toasts />
     </div>
   );

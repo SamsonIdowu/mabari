@@ -3,7 +3,8 @@
 // left; project panels, a live clock and the approval bell on the right. Also the Mabari updates
 // button and panel that full screen adds to the header.
 import { useEffect, useState } from 'react';
-import type { LiveAgent, Snapshot } from '../gen/models.ts';
+import type { Snapshot } from '../gen/models.ts';
+import { approvalSummary } from '../office/approvalText.ts';
 import { isQuiet, LAYERS, useLayers } from '../office/layers.ts';
 import { inScope, useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
@@ -161,14 +162,6 @@ export function WallBar({ office }: { office: Snapshot }) {
   );
 }
 
-/** The prototype's apSum: the command, the plan's project, or the file. */
-function approvalSummary(agent: LiveAgent): string {
-  const { detail, type } = agent.approval ?? { detail: { cmd: '', path: '' }, type: '' };
-  if (type === 'command') return detail.cmd ?? '';
-  if (type === 'plan') return `Approve the plan for ${detail.project ?? ''}`;
-  return `Edit ${detail.path ?? ''}`;
-}
-
 const BELL = (
   <Icon>
     <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
@@ -200,6 +193,7 @@ export function ApprovalBell({ office }: { office: Snapshot }) {
     <div
       className={mini ? 'board is-mini' : 'board'}
       id="board"
+      role="region"
       aria-label="Approvals"
       style={mini ? undefined : { width: 'min(280px, calc(100% - 28px))' }}
     >

@@ -107,3 +107,25 @@ for (const width of [1440, 1024]) {
     expect(wide).toEqual([]);
   });
 }
+
+test('a waiting approval is said aloud on every page, and the board is a named region', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Explore a demo office' }).click();
+  await expect(page.locator('h1')).toHaveText('Agents');
+  // A polite live region, always on the page, that says what is waiting and for what.
+  const live = page.locator('#approvalLive');
+  await expect(live).toHaveAttribute('role', 'status');
+  await expect(live).toHaveAttribute('aria-live', 'polite');
+  await expect(live).toHaveText(/^\d+ approvals? waiting: Atlas, \S/);
+  // The board is a region with a name, so it shows as a landmark rather than a bare box.
+  await expect(page.getByRole('region', { name: 'Approvals' })).toBeVisible();
+  // The board belongs to the Agents page, but the message does not.
+  await page.evaluate(() => {
+    window.location.hash = '#projects';
+  });
+  await expect(page.locator('h1')).toHaveText('Projects');
+  await expect(page.getByRole('region', { name: 'Approvals' })).toHaveCount(0);
+  await expect(live).toHaveText(/waiting: Atlas, \S/);
+});

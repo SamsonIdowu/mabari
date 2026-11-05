@@ -49,15 +49,30 @@ export function fitScale(size: Size, world: Size = BASE_WORLD): number {
   const across = size.width / world.width;
   const down = size.height / world.height;
   const low = Math.min(across, down);
+  if (grown(world)) {
+    // Drawn small, the back wall gets thinner than the wall bar over it, so the floor below the
+    // wall is fitted into the space under the bar instead, and never covers the view.
+    return Math.min(low, (size.height - WALL_BAR) / (world.height - BACK_WALL));
+  }
   const high = Math.max(across, down);
   return high / low <= COVER_WITHIN ? high : low;
 }
+
+/** The wall bar over the top of the floor, in screen pixels (.wallbar in screens.css). */
+export const WALL_BAR = 58;
+/** The back wall's height in world pixels, which sits under the wall bar. */
+const BACK_WALL = 44;
+
+/** Whether the floor grew past the prototype's office. */
+const grown = (world: Size) => world.width > BASE_W || world.height > BASE_H;
 
 /** Shows the office in the canvas, centred, at fitScale times the zoom. */
 export function viewMatrix(view: View, size: Size, world: Size = BASE_WORLD): Matrix {
   const fit = fitScale(size, world);
   const offsetX = (size.width - world.width * fit) / 2;
-  const offsetY = (size.height - world.height * fit) / 2;
+  let offsetY = (size.height - world.height * fit) / 2;
+  // A grown floor starts below the wall bar, so its first row of desks is never hidden.
+  if (grown(world)) offsetY = Math.max(offsetY, WALL_BAR - BACK_WALL * fit);
   return {
     a: fit * view.s,
     e: offsetX + fit * (world.width / 2 - view.cx * view.s),

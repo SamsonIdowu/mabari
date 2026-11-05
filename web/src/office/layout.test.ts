@@ -245,7 +245,7 @@ describe('pathTo', () => {
 
   it('crosses the lower floor first when coming back up to a desk', () => {
     const floor = floorFor(16, 0, 20);
-    const seat = loungeSeat(floor, 8);
+    const seat = loungeSeat(floor, floor.lounge!.columns - 1);
     expect(seat.x).toBeGreaterThan(928);
     expect(pathTo(seat, { x: 288, y: 182 }, floor)[0]).toEqual({ x: 288, y: seat.y });
   });

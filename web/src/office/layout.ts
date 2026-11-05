@@ -58,7 +58,7 @@ export function benchSeat(index: number): Point {
 }
 
 /** How far apart lounge seats are. */
-export const LOUNGE_PITCH = { x: 116, y: 92 };
+export const LOUNGE_PITCH = { x: 144, y: 92 };
 /** The height of the strip that holds an area's floor label, above its seats. */
 const LABEL_BAND = 40;
 /** The space below the lower floor for Mabari's reception desk and the door. */

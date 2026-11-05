@@ -60,7 +60,10 @@ const fmtK = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k`
 function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
   const overlay = layer.closest<HTMLElement>('.ovl');
   if (!overlay) return;
-  const scale = Math.max(0.72, Math.min(1.6, scene.matrix().a / 1.05)).toFixed(2);
+  const zoom = scene.matrix().a;
+  // On a big floor drawn very small, tags show only names, so neighbours don't run together.
+  overlay.classList.toggle('tiny', zoom < 0.6);
+  const scale = Math.max(0.72, Math.min(1.6, zoom / 1.05)).toFixed(2);
   if (overlay.dataset.oz === scale) return;
   overlay.dataset.oz = scale;
   overlay.style.setProperty('--oz', scale);

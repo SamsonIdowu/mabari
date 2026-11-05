@@ -10,6 +10,7 @@ import {
   viewMatrix,
   type Size,
   type View,
+  WALL_BAR,
 } from './camera.ts';
 import { BASE_H as H, BASE_W as W, deskCorner, floorFor } from './layout.ts';
 
@@ -90,6 +91,19 @@ describe('a bigger office', () => {
     const corner = toScreen({ x: floor.width, y: floor.height }, matrix);
     expect(corner.x).toBeLessThanOrEqual(size.width + 1);
     expect(corner.y).toBeLessThanOrEqual(size.height * 1.1);
+  });
+
+  it('keeps the floor below the wall bar, so the first row of desks shows', () => {
+    for (const size of [
+      { width: 1200, height: 760 },
+      { width: 1800, height: 700 },
+    ]) {
+      const matrix = viewMatrix({ cx: floor.width / 2, cy: floor.height / 2, s: 1 }, size, world);
+      expect(toScreen({ x: 0, y: 44 }, matrix).y).toBeGreaterThanOrEqual(WALL_BAR - 0.001);
+      expect(toScreen({ x: 0, y: floor.height }, matrix).y).toBeLessThanOrEqual(
+        size.height + 0.001,
+      );
+    }
   });
 
   it('pans over the whole floor when zoomed in', () => {

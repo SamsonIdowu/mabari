@@ -66,7 +66,7 @@ export function Shell() {
     <div className={collapsed ? 'app collapsed' : 'app'}>
       <Topbar />
       <Rail current={route} />
-      <main className="screen" id="screen" ref={screenRef}>
+      <main className="screen" id="screen" ref={screenRef} tabIndex={-1}>
         {route ? <Screen route={route} /> : null}
       </main>
       <NewAgentDialog />

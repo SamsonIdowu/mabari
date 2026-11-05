@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Approval, LiveAgent, Settings, Snapshot } from '../gen/models.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 
 function Body({ approval }: { approval: Approval }) {
@@ -66,8 +67,6 @@ function ApprovalDialog(props: {
   const { agent, approval, autoOn, close } = props;
   const spoken = useOfficeUi((state) => state.spokenApproval);
   useEscape(close);
-  const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => dialog.current?.focus(), []);
 
   const decide = (decision: 'allowed' | 'denied') => {
     close();
@@ -77,15 +76,8 @@ function ApprovalDialog(props: {
   };
   const risky = approval.riskLevel === 'high';
   return (
-    <div className="scrim">
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="apTitle"
-        tabIndex={-1}
-        ref={dialog}
-      >
+    <Modal>
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="apTitle">
         <div className="dhd">
           <div
             className={`p-${agent.provider}`}
@@ -140,7 +132,7 @@ function ApprovalDialog(props: {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -201,7 +193,7 @@ function AutoApproveForm({ office }: { office: Snapshot }) {
       .catch((error: Error) => useOfficeStore.getState().toast(error.message));
   };
   return (
-    <div className="scrim">
+    <Modal>
       <form
         className="dialog"
         role="dialog"
@@ -291,6 +283,6 @@ function AutoApproveForm({ office }: { office: Snapshot }) {
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

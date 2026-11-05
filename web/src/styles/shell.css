@@ -101,6 +101,10 @@
   overflow-y: auto;
   padding-right: max(0px, env(safe-area-inset-right, 0px));
 }
+/* Focus goes here when the control that opened a dialog is gone. It is not a Tab stop. */
+.screen:focus-visible {
+  outline: none;
+}
 .page {
   max-width: 1180px;
   margin: 0 auto;

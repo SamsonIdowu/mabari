@@ -4,6 +4,7 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { Modal } from '../shell/Modal.tsx';
 import { TOOLS } from './tools.ts';
 import { useEscape } from '../shell/useEscape.ts';
 
@@ -28,7 +29,7 @@ export function DialogFrame(props: {
 }) {
   useEscape(props.close);
   return (
-    <div className="scrim">
+    <Modal>
       <form
         className={props.wide ? 'dialog wide' : 'dialog'}
         role="dialog"
@@ -63,7 +64,7 @@ export function DialogFrame(props: {
         </div>
         {props.children}
       </form>
-    </div>
+    </Modal>
   );
 }
 

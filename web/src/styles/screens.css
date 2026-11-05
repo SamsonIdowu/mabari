@@ -1004,6 +1004,11 @@
 .dialog.wide {
   width: min(680px, 100%);
 }
+/* Focus lands on the dialog itself when it opens, so a screen reader reads its title. It is not a
+   Tab stop, so it gets no ring: the controls inside keep theirs. */
+.dialog:focus-visible {
+  outline: none;
+}
 .dhd {
   display: flex;
   justify-content: space-between;

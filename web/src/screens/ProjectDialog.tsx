@@ -4,6 +4,7 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Project } from '../gen/models.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 
 const COLOURS = [
@@ -58,7 +59,7 @@ export function ProjectDialog({ project, close }: { project: Project; close: () 
     }
   };
   return (
-    <div className="scrim">
+    <Modal>
       <form
         className="dialog"
         role="dialog"
@@ -149,6 +150,6 @@ export function ProjectDialog({ project, close }: { project: Project; close: () 
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

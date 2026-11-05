@@ -173,8 +173,21 @@ The testers confirmed these work. Fixes must not regress them.
 | A | FIRST-1, 2, 3, 7, 8, 9, 11; SETUP-9 (reply), SETUP-11; DAILY-8; NEW-1 | done, browser re-test passed |
 | B | SETUP-1, 2, 3, 4, 5, 6, 8, 9 (UI), 10, 12; FIRST-10; DAILY-7 | done, browser re-test passed |
 | C | A11Y-1, 2, 3, 6, 7, 9, 10, 11, 12; DAILY-1; NEW-2 | done, browser re-test passed |
-| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | done, browser re-test passed, except FIRST-5 (see RT-1) |
+| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | done, browser re-test passed. FIRST-5 failed its first re-test and passed after RT-1 |
 | E | A11Y-4; SETUP-7, 13; DAILY-3, 9, 12, 13; FIRST-12, 13, 14 (times) | done, browser re-test passed |
 | F | NEW-3 to NEW-9, NEW-11 | done, browser re-test passed. NEW-6 is covered by its API test only, because the browser cannot reach that state |
 | F | NEW-10 | no change: bubbles do not take clicks, and a test now pins that |
-| G | RT-1 to RT-11, REV-1 to REV-7 | open |
+| G | RT-1 to RT-11, REV-2, REV-3, REV-4, REV-6 | done, browser re-test passed. REV-4 by eye only |
+| G | REV-1, REV-5, REV-7 | done, covered by tests only, because a browser cannot reach them here |
+
+## Still open
+
+Seen once each in the last re-test, and not reproduced, so no fix was attempted:
+
+- The "Mabari · Manager" tag was drawn over the empty-state card text while the manager wandered.
+- At 150% zoom, an orange chip beside the Atlas scribe name tag was half hidden, leaving a stray "e".
+
+Known limits, left as they are:
+
+- `mabari disconnect claude` leaves `"agent": "mabari"` in `settings.json`. Only a wipe removes it.
+- With six or more lounge residents, the approvals card has no clear place on the right edge, so it covers as few as it can. Those agents can still be reached from the floor list.

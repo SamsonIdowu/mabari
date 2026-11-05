@@ -62,7 +62,10 @@
 /* The floor and, beside it, the list of everyone on it. The floor shrinks to make room. */
 .ofrow {
   flex: 1;
-  min-height: 0;
+  /* The floor never gets squeezed below what it needs to be usable. In a short window, such as
+     200% zoom, or a narrow one, the page scrolls instead, so the whole floor and its tools can be
+     reached. */
+  min-height: 360px;
   display: flex;
 }
 .ofrow > .ofloor {
@@ -421,7 +424,8 @@
    card stays readable and can be clicked while an approval waits. */
 .board:not(.is-mini) {
   top: 66px;
-  max-height: calc(100% - 80px);
+  /* Leaves the floor's tool strip at the bottom clear when many approvals wait. */
+  max-height: calc(100% - 134px);
 }
 .board:not(.is-mini) {
   animation: bpop 0.22s ease-out;
@@ -2278,6 +2282,10 @@ tr:last-child td {
   left: 268px;
   bottom: 20px;
 }
+/* A floor too narrow for the toolbar and the readout side by side stacks the readout above it. */
+.stage.narrow .readout {
+  bottom: 58px;
+}
 
 .fscrim {
   position: absolute;
@@ -3308,6 +3316,11 @@ section[data-screen='home'] {
   box-shadow: none;
   z-index: 3;
   box-sizing: border-box;
+  /* In a narrow window the filters and project cards no longer fit side by side. The bar scrolls
+     sideways then, so every one of them can still be reached, rather than being cut off. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 [data-theme='dark'] .wallbar {
   background: #1b1b1e;

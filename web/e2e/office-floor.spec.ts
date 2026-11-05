@@ -330,3 +330,64 @@ test('New agent sits next to New project in the header and opens the new agent d
   await agent.click();
   await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeVisible();
 });
+
+/** Whether the middle of an element is on screen and is what a click there would land on. */
+function reachable(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((css) => {
+    const box = document.querySelector(css)!.getBoundingClientRect();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+    return document.querySelector(css)!.contains(document.elementFromPoint(x, y));
+  }, selector);
+}
+
+const SMALL: [number, number][] = [
+  [720, 450],
+  [390, 844],
+];
+for (const [width, height] of SMALL) {
+  test(`the whole floor, its toolbar and the project cards can be reached at ${width}x${height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await loadDemo(page);
+    await page.waitForTimeout(500);
+
+    // The floor keeps a usable height instead of being squeezed, so the page is what scrolls.
+    const stage = (await page.locator('#stage').boundingBox())!;
+    expect(stage.height).toBeGreaterThanOrEqual(359);
+    const scroll = () =>
+      page.locator('main').evaluate((main) => {
+        main.scrollTo(0, main.scrollHeight);
+        return { max: main.scrollHeight - main.clientHeight, at: main.scrollTop };
+      });
+    const reached = await scroll();
+    expect(reached.max).toBeGreaterThan(0);
+
+    // At the bottom, the toolbar is on screen and clickable, and it stays so while the floor
+    // updates (the header re-measures itself, which once threw the page back to the top).
+    await page.waitForTimeout(2500);
+    await scroll();
+    expect(await reachable(page, '.ctools button[aria-label="Zoom in"]')).toBe(true);
+    expect(
+      await reachable(page, '.ctools button[aria-label="List of everyone on the floor"]'),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect(page.locator('#zoomPct')).toHaveText('125%');
+
+    // The wall bar scrolls sideways when its filters and project cards do not fit, so every card
+    // can be brought into view and clicked.
+    for (const place of [4, 1, 3, 2]) {
+      const card = `#projWins .pwin:nth-child(${place})`;
+      await page
+        .locator(card)
+        .evaluate((element) => element.scrollIntoView({ inline: 'center', block: 'nearest' }));
+      expect(await reachable(page, card), `project card ${place}`).toBe(true);
+    }
+    // Nothing makes the page itself scroll sideways.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+}

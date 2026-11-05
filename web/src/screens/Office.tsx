@@ -58,6 +58,8 @@ function placeScrollBar(bar: HTMLDivElement | null, scene: OfficeScene) {
   thumb.style.width = `${width}%`;
 }
 
+/** Below this width the floor's toolbar and readout no longer fit side by side. */
+const NARROW_STAGE = 560;
 const WHEEL_STEP = 40;
 const WHEEL_GAP_MS = 120;
 
@@ -670,10 +672,22 @@ function Stage({ office }: { office: Snapshot }) {
   const hint = useRef<HTMLSpanElement>(null);
   const scrollBar = useRef<HTMLDivElement>(null);
   const queueNote = useRef<HTMLDivElement>(null);
+  const stageBox = useRef<HTMLDivElement>(null);
   const scene = useRef<OfficeScene | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const skipClick = useRef(false);
   const set = useOfficeUi((state) => state.set);
+
+  // On a narrow floor the readout moves up, off the toolbar it would otherwise cover.
+  useEffect(() => {
+    const element = stageBox.current;
+    if (!element) return undefined;
+    const mark = () => element.classList.toggle('narrow', element.clientWidth < NARROW_STAGE);
+    mark();
+    const observer = new ResizeObserver(mark);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const element = canvas.current;
@@ -832,7 +846,7 @@ function Stage({ office }: { office: Snapshot }) {
 
   return (
     <div className="ofloor">
-      <div className="stage" id="stage">
+      <div className="stage" id="stage" ref={stageBox}>
         <canvas
           id="floor"
           ref={canvas}
@@ -936,6 +950,10 @@ function useOneRowWhenItFits() {
     const fit = () => {
       const bar = element.querySelector<HTMLElement>('.obar2.inhead');
       if (!bar || !element.offsetWidth) return;
+      // Measuring takes the stacked layout away for a moment. A short window scrolls, and the page
+      // would be clamped to the shorter header and jump to the top, so its place is put back.
+      const scroller = element.closest('main');
+      const place = scroller?.scrollTop ?? 0;
       element.classList.remove('stack');
       const kids = [...bar.children].filter(
         (kid) => (kid as HTMLElement).offsetWidth,
@@ -944,6 +962,7 @@ function useOneRowWhenItFits() {
         kids.reduce((sum, kid) => sum + kid.offsetWidth, 0) +
         HEAD_GAP * Math.max(0, kids.length - 1);
       if (need > bar.clientWidth + 1) element.classList.add('stack');
+      if (scroller && scroller.scrollTop !== place) scroller.scrollTop = place;
     };
     fit();
     const observer = new ResizeObserver(fit);

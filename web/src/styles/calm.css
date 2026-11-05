@@ -252,6 +252,15 @@ body.notes .note.inline {
 .ohead.stack .ohact {
   order: 2;
   margin-left: auto;
+  /* In a narrow window the actions wrap, and the title's line of numbers wraps under it, so
+     nothing runs off the right edge. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.ohead.stack .ohtitle {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .ohead.stack .obar2.inhead {
   order: 3;

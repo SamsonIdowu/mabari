@@ -18,3 +18,24 @@ deploy/docker/mabari_master_key
 # Local tool state
 .claude/
 .remember/
+
+# Design references, planning notes and agent instructions stay local
+design/
+docs/BUILD_PLAN*.md
+docs/IMPLEMENTATION_PLAN*.md
+docs/HANDOFF.md
+CLAUDE.md
+graphify-out/
+
+# Secrets: keys, tokens and local settings never leave this computer
+*.pem
+*.key
+*.p12
+*.pfx
+*_token
+*master_key*
+/secrets/
+.envrc
+.npmrc
+.vscode/
+.idea/

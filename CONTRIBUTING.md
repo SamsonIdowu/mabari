@@ -4,7 +4,7 @@ Thank you for helping. Mabari is a small Go server and a React app that show AI 
 
 ## Ground rules
 
-- `design/mabari-prototype.html` is the source of truth for how Mabari looks and behaves. Keep its CSS class names when porting a screen.
+- Keep the existing CSS class names and look when changing a screen; the pixel office and Home follow one design, and screenshots in pull requests help review.
 - The UI stays calm: only red (approvals and errors) and amber (queued instructions) ask for attention.
 - Never use provider logos or imitate another product's look. Provider colours only: orange for Claude, green for OpenAI and Codex, blue for custom agents.
 - Security first: bind to `127.0.0.1`, keep secrets in the system keychain, back up any settings file before changing it, and never approve a risky action without a click.

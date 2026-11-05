@@ -4,33 +4,24 @@ Mabari runs on your own computer and opens at **http://localhost:4317**. It only
 
 ## Pick a way to run it
 
-| | Homebrew (macOS, Linux) | Scoop (Windows) | .deb or .rpm | Direct download | Docker |
-|---|---|---|---|---|---|
-| One command to install | Yes | Yes | Yes | Unpack an archive | `docker compose up` |
-| Starts at login | `mabari service install` | `mabari service install` | `systemctl --user enable --now mabari` | `mabari service install` | Compose's restart policy |
-| Keys kept in | macOS Keychain or Secret Service | Credential Manager | Secret Service | Your system's keychain | An encrypted file, sealed with a Docker secret |
-| Claude Code sessions | Yes | Yes | Yes | Yes | Yes, with `compose.claude.yaml` (see below) |
-| Codex agents | If the Codex CLI is installed | Same | Same | Same | Only in the `mabari-agents` image |
-| Native folder picker | Yes | Yes | Yes | Yes | No: mount folders under `/workspace` |
-| Local Whisper | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Install whisper.cpp | Only in `mabari-agents`, built with `WHISPER_CPP_VERSION` (checked with 1.9.5) |
-| Upgrades restart the service | Yes | Yes | Yes | Replace the binary, then `mabari service restart` | `docker compose up -d --build` |
+The one-line installers in the [README](../README.md#install-in-one-line) are the quickest way:
 
-## Homebrew
+| | Installer (macOS, Linux, Windows) | Docker |
+|---|---|---|
+| One command to install | `install.sh` or `install.ps1` | `install.sh --docker` or `install.ps1 -Docker` |
+| Starts at login | `mabari service install` | Compose's restart policy |
+| Keys kept in | macOS Keychain, Secret Service or Credential Manager | An encrypted file, sealed with a Docker secret |
+| Claude Code sessions | Yes | Yes, with `compose.claude.yaml` (see below) |
+| Codex agents | If the Codex CLI is installed | Only in the `agents` image |
+| Native folder picker | Yes | No: mount folders under `/workspace` |
+| Local Whisper | Install whisper.cpp | Only in the `agents` image, built with `WHISPER_CPP_VERSION` (checked with 1.9.5) |
+| Upgrades | Run the installer again, then `mabari service restart` | Run the installer again |
 
-```sh
-brew install --cask SamsonIdowu/tap/mabari
-mabari service install
-```
+The installer downloads a release build when one is published, and otherwise builds from source (git, Go 1.27+ and Node 22+).
 
-## Scoop
+## Release builds
 
-```powershell
-scoop bucket add mabari https://github.com/SamsonIdowu/scoop-bucket
-scoop install mabari
-mabari service install
-```
-
-## .deb and .rpm
+When releases are published, each has archives for macOS, Linux and Windows (amd64 and arm64), `.deb` and `.rpm` packages, and `checksums.txt`.
 
 ```sh
 sudo apt install ./mabari_<version>_linux_amd64.deb      # or: sudo dnf install ./mabari-<version>.x86_64.rpm
@@ -39,11 +30,7 @@ systemctl --user enable --now mabari
 
 The package installs `/usr/bin/mabari` and a systemd user unit for every user. Nobody's Mabari starts until they turn it on. To keep it running after you log out, run `loginctl enable-linger $USER`; Mabari never does that for you.
 
-## Direct download
-
-Download the archive for your system from the release page, check it against `checksums.txt`, unpack it, and put `mabari` somewhere on your `PATH`. Then run `mabari`, or `mabari service install` to start it at every login.
-
-The checksums file is signed with cosign. To check it:
+For an archive, check it against `checksums.txt`, unpack it, and put `mabari` somewhere on your `PATH`. The checksums file is signed with cosign. To check it:
 
 ```sh
 cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
@@ -76,8 +63,10 @@ MABARI_SECRETS=encrypted-file MABARI_MASTER_KEY_FILE=~/.mabari/master_key mabari
 
 ```sh
 make docker-key                                    # once: writes deploy/docker/mabari_master_key
-docker compose -f deploy/docker/compose.yaml up -d
+docker compose -f deploy/docker/compose.yaml up -d --build
 ```
+
+The Docker installer (`install.sh --docker` or `install.ps1 -Docker`) does both for you.
 
 Keep `mabari_master_key` safe. Without it the stored keys can't be read.
 
@@ -91,7 +80,7 @@ The container publishes the port on `127.0.0.1` only. Inside, Mabari listens on 
 
 **Project folders.** Mount each one under `/workspace` in `compose.yaml`, for example `- ~/code/shop:/workspace/shop`. There is no native folder picker in Docker, so New project lists what is mounted.
 
-**Claude Code on your computer.** Claude Code's hooks run on your computer and report to the container. Install Mabari on your computer as well (Homebrew, Scoop or a download), then run:
+**Claude Code on your computer.** Claude Code's hooks run on your computer and report to the container. Install Mabari on your computer as well (with the installer), then run:
 
 ```sh
 mabari connect claude --token-file ~/.mabari/hook_token

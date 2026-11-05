@@ -314,3 +314,19 @@ test('starting a project leaves the office filters alone and still says it start
   );
   await expect(page.locator('.tag .nt:visible')).toHaveCount(1);
 });
+
+test('New agent sits next to New project in the header and opens the new agent dialog', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  const head = page.locator('.ohead');
+  const project = head.getByRole('button', { name: 'New project', exact: true });
+  const agent = head.getByRole('button', { name: 'New agent', exact: true });
+  await expect(agent).toBeVisible();
+  // Side by side, on the same row.
+  const [first, second] = [(await project.boundingBox())!, (await agent.boundingBox())!];
+  expect(Math.abs(first.y - second.y)).toBeLessThan(4);
+  expect(Math.abs(first.x + first.width - second.x)).toBeLessThan(24);
+  await agent.click();
+  await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeVisible();
+});

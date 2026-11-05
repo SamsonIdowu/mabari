@@ -986,6 +986,21 @@ function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] 
         </button>
         <button
           type="button"
+          className="btn"
+          title="Make a new agent and give it a desk"
+          onClick={() => {
+            // In a project's view the new agent starts in that project.
+            const { project } = useOfficeUi.getState();
+            useOfficeUi.getState().set({ newAgent: project === 'all' ? {} : { project } });
+          }}
+        >
+          <Icon>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M16 11h6" />
+          </Icon>
+          New agent
+        </button>
+        <button
+          type="button"
           className="btn fsonly"
           title="Leave full screen (Esc)"
           onClick={toggleFullscreen}

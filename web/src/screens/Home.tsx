@@ -9,6 +9,7 @@ import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { mascotBox, MouseGestures } from '../office/mouseGestures.ts';
 import { drawMascot, IDLE_GESTURES, POKE_GESTURES, veeFrame } from '../office/vee.ts';
 import { useVee } from '../office/veeStore.ts';
+import { whereWorking } from '../office/where.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
 import { HomeDock } from './HomeDock.tsx';
@@ -79,6 +80,14 @@ function NeedLine({ line }: { line: VeeLine }) {
   );
 }
 
+/** " in Shop": where a workflow sub-agent works, so its line says whose work it is. */
+function workplace(agentId: string): string {
+  const office = useOfficeStore.getState().office;
+  const agent = office?.agents.find((item) => item.id === agentId);
+  const where = agent ? whereWorking(agent, office?.projects ?? []) : null;
+  return where ? ` in ${where.name}` : '';
+}
+
 function Lines({ reply }: { reply: VeeReply }) {
   const lines = reply.lines ?? [];
   // A reply about the project picked in the dock says so, as its counts are for that project.
@@ -138,8 +147,14 @@ function Lines({ reply }: { reply: VeeReply }) {
               <Dot hue={line.hue} />
               <b>{line.name}</b>
             </button>
-            {line.label ? <span className="muted"> · {line.label}</span> : null} {line.state}:{' '}
-            {line.task}
+            {line.label ? (
+              <span className="muted">
+                {' '}
+                · {line.label}
+                {workplace(line.agentId)}
+              </span>
+            ) : null}{' '}
+            {line.state}: {line.task}
             {line.estimate ? (
               <span className="muted"> ({shortMinutes(line.estimate.secondsLeft)})</span>
             ) : null}

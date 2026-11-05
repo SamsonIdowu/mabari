@@ -9,6 +9,7 @@ import { restingLook } from './resting.ts';
 import type { OfficeScene, Walker } from './scene.ts';
 import { chipFor } from './talk.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
+import { whereWorking } from './where.ts';
 
 const STEP_LABELS: Record<string, string> = {
   read_file: 'Read',
@@ -75,6 +76,7 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   const { width, height } = scene.size;
   const seen = new Set<string>();
   const messages = useOfficeStore.getState().office?.messages ?? [];
+  const projects = useOfficeStore.getState().office?.projects ?? [];
   const now = Date.now();
   const nameOf = (id: string) => scene.walkers.get(id)?.name ?? 'someone';
   for (const walker of scene.walkers.values()) {
@@ -99,9 +101,16 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     tag.style.top = `${(point.y / height) * 100}%`;
 
     const eta = etaShort(walker);
+    // Short lines stacked, rather than one long pill, so neighbouring tags keep apart: the name,
+    // then for a workflow sub-agent where it works, then the model and time left.
+    const where = walker.workflow ? whereWorking(walker, projects) : null;
     setHtml(
       tag.firstElementChild!,
-      `<span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(walker.name)}</b><small>${esc(modelLabel(walker.model))}</small>${eta ? `<em>${eta}</em>` : ''}`,
+      `<span class="nn"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(walker.name)}</b></span>` +
+        (where
+          ? `<span class="pj"><i style="background:${esc(where.color)}"></i><span class="pjn">${esc(where.name)}</span></span>`
+          : '') +
+        `<span class="nm"><small>${esc(modelLabel(walker.model))}</small>${eta ? `<em>${eta}</em>` : ''}</span>`,
     );
     const attention = walker.state === 'approval' || walker.state === 'error';
     tag.className = `tag ${providerClass(walker)}${ui.selected === walker.id ? ' sel' : ''}${attention ? ' attn' : ''}`;

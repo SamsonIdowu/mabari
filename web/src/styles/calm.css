@@ -451,14 +451,16 @@ section[data-screen='home'] {
 .ovl .bub {
   scale: var(--oz, 1);
   transform-origin: 50% 100%;
-  max-width: 190px;
+  max-width: 164px;
 }
 .ovl.far .bub:not(.red):not(.reply) {
   display: none;
 }
 /* a big floor drawn very small: names only, so tags don't run into each other */
 .ovl.tiny .tag small,
-.ovl.tiny .tag em {
+.ovl.tiny .tag em,
+.ovl.tiny .tag .pj,
+.ovl.tiny .tag .nm {
   display: none;
 }
 /* office full screen: hide everything but the floor, the command bar, the agent panel and dialogs */
@@ -871,4 +873,13 @@ section[data-screen]:not([data-screen='office']) .acc {
 .h2dock .menu.up {
   left: 50%;
   transform: translateX(-50%);
+}
+.ovl .bub.reply {
+  max-width: 220px;
+}
+/* Messages between agents stay readable: up to four lines. */
+.ovl .bub.talk {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  max-width: 210px;
 }

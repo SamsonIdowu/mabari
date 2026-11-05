@@ -39,3 +39,4 @@ graphify-out/
 .npmrc
 .vscode/
 .idea/
+*.tsbuildinfo

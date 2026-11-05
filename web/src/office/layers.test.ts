@@ -28,9 +28,26 @@ describe('noise filters', () => {
     useLayers.getState().quiet();
     expect(isQuiet(useLayers.getState().layers)).toBe(true);
     expect(hiddenClasses(useLayers.getState().layers)).toBe(
-      'hide-bub hide-meta hide-msg hide-tags',
+      'hide-bub hide-meta hide-msg hide-link hide-tags',
     );
     useLayers.getState().quiet();
     expect(hiddenClasses(useLayers.getState().layers)).toBe('');
+  });
+
+  it("shows connections between agents until they're turned off, even with an older saved choice", async () => {
+    storage.set('mabari.layers', JSON.stringify({ bub: false, meta: true, msg: true, tags: true }));
+    const { useLayers } = await import('./layers.ts');
+    expect(useLayers.getState().layers).toMatchObject({ bub: false, link: true });
+    useLayers.getState().toggle('link');
+    expect(JSON.parse(storage.get('mabari.layers')!).link).toBe(false);
+  });
+
+  it('keeps quiet mode quiet for someone who saved it before connections were a layer', async () => {
+    storage.set(
+      'mabari.layers',
+      JSON.stringify({ bub: false, meta: false, msg: false, tags: false }),
+    );
+    const { useLayers, isQuiet } = await import('./layers.ts');
+    expect(isQuiet(useLayers.getState().layers)).toBe(true);
   });
 });

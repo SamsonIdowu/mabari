@@ -114,7 +114,7 @@ test('noise filters hide layers, quiet mode hides them all, and the browser reme
   await quiet.click();
   await expect(quiet).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.ovl > div').first()).toHaveClass(
-    'hide-bub hide-meta hide-msg hide-tags',
+    'hide-bub hide-meta hide-msg hide-link hide-tags',
   );
   await expect(page.locator('.tag.attn').first()).toBeVisible();
   await quiet.click();

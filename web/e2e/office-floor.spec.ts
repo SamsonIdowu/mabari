@@ -391,3 +391,103 @@ for (const [width, height] of SMALL) {
     ).toBe(true);
   });
 }
+
+/**
+ * What is wrong with the speech bubbles and name tags showing right now: a quiet bubble over a
+ * name tag, two bubbles over each other, and a word broken across two lines.
+ */
+function bubbleProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    type Box = { left: number; top: number; right: number; bottom: number };
+    const boxOf = (element: Element): Box => {
+      const { left, top, right, bottom } = element.getBoundingClientRect();
+      return { left, top, right, bottom };
+    };
+    const hit = (a: Box, b: Box) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const tags: { id: string; box: Box }[] = [];
+    const bubbles: { id: string; pinned: boolean; text: string; box: Box; element: Element }[] = [];
+    for (const wrap of document.querySelectorAll<HTMLElement>('#stage [data-o]')) {
+      if (wrap.hidden) continue;
+      const id = wrap.dataset.o!;
+      const tag = wrap.querySelector('.tag')!;
+      if (getComputedStyle(tag).display !== 'none') tags.push({ id, box: boxOf(tag) });
+      const bubble = wrap.querySelector<HTMLElement>('.bub')!;
+      if (!bubble.hidden && getComputedStyle(bubble).display !== 'none') {
+        const pinned = bubble.classList.contains('pin');
+        bubbles.push({
+          id,
+          pinned,
+          text: bubble.textContent!,
+          box: boxOf(bubble),
+          element: bubble,
+        });
+      }
+    }
+    const problems: string[] = [];
+    for (const bubble of bubbles) {
+      // What needs you may sit over a tag when nothing else can be done. Quiet bubbles never do.
+      if (bubble.pinned) continue;
+      for (const tag of tags) {
+        if (hit(bubble.box, tag.box)) problems.push(`"${bubble.text}" covers the tag of ${tag.id}`);
+      }
+    }
+    for (let first = 0; first < bubbles.length; first++) {
+      for (let second = first + 1; second < bubbles.length; second++) {
+        if (hit(bubbles[first]!.box, bubbles[second]!.box)) {
+          problems.push(
+            `"${bubbles[first]!.text}" and "${bubbles[second]!.text}" cover each other`,
+          );
+        }
+      }
+    }
+    for (const bubble of bubbles) {
+      const node = bubble.element.firstChild;
+      if (node?.nodeType !== Node.TEXT_NODE) continue;
+      for (const word of node.textContent!.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(node, word.index);
+        range.setEnd(node, word.index + word[0].length);
+        const lines = new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)));
+        if (lines.size > 1)
+          problems.push(`"${word[0]}" is broken across lines in "${bubble.text}"`);
+      }
+    }
+    return problems;
+  });
+}
+
+for (const extra of [0, 9]) {
+  test(`speech bubbles keep name tags readable and never break a word, with ${10 + extra} agents`, async ({
+    page,
+    request,
+  }) => {
+    await request.post('/api/demo/load');
+    for (let n = 0; n < extra; n++) {
+      const made = await request.post('/api/agents', {
+        data: {
+          name: `Extra${n}`,
+          account: 'claude_code',
+          model: 'claude-sonnet-4-5',
+          task: 'Work through the backlog',
+          projectId: '',
+          folder: '~/code/extra',
+          dailyCostCap: 0,
+          allowedTools: [],
+        },
+      });
+      expect(made.ok()).toBe(true);
+    }
+    await page.goto('/#office');
+    await expect(page.locator('#stage .tag .nt')).toHaveCount(10 + extra);
+    // Bubbles come and go as the agents work, so it is looked at for several seconds.
+    const seen = new Set<string>();
+    for (let look = 0; look < 12; look++) {
+      for (const problem of await bubbleProblems(page)) seen.add(problem);
+      await page.waitForTimeout(500);
+    }
+    expect([...seen], [...seen].join('\n')).toEqual([]);
+    // Something is still being said: the rule hides some bubbles, not all of them.
+    expect(await page.locator('#stage .bub:visible').count()).toBeGreaterThan(2);
+  });
+}

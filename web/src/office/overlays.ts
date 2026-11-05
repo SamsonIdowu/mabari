@@ -4,6 +4,15 @@ import { MabariDef, type LiveAgent } from '../gen/models.ts';
 import { decisionColors, decisionLabels, providers, type ProviderName } from '../shared/tokens.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { R } from './background.ts';
+import {
+  bubbleBox,
+  MAX_SETTLE,
+  PINNED_RANK,
+  placeBubbles,
+  tagBox,
+  type Box,
+  type BubbleItem,
+} from './bubbles.ts';
 import { drawChar } from './character.ts';
 import { restingLook } from './resting.ts';
 import type { OfficeScene, Walker } from './scene.ts';
@@ -56,6 +65,11 @@ function fmtClock(value: number): string {
 
 const fmtK = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value));
 
+/** How much tags and bubbles are drawn at, for an office zoom: they grow and shrink with it. */
+function overlayScale(zoom: number): number {
+  return Number(Math.max(0.72, Math.min(1.6, zoom / 1.05)).toFixed(2));
+}
+
 /** Name tags and speech bubbles, positioned over the canvas every frame. */
 /** Tags and bubbles grow and shrink with the office, and quiet bubbles hide when it's small. */
 function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
@@ -64,11 +78,66 @@ function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
   const zoom = scene.matrix().a;
   // On a big floor drawn very small, tags show only names, so neighbours don't run together.
   overlay.classList.toggle('tiny', zoom < 0.6);
-  const scale = Math.max(0.72, Math.min(1.6, zoom / 1.05)).toFixed(2);
+  const scale = overlayScale(zoom).toFixed(2);
   if (overlay.dataset.oz === scale) return;
   overlay.dataset.oz = scale;
   overlay.style.setProperty('--oz', scale);
   overlay.classList.toggle('far', Number(scale) < 0.86);
+}
+
+/**
+ * An element's size before the overlay's scaling, measured only when what is in it changed:
+ * this runs every frame, and reading a size forces the page to lay out. A bubble that is not
+ * showing is shown for the moment it takes to measure. Null when it takes no room at all.
+ */
+interface Size {
+  key: string;
+  width: number;
+  height: number;
+  /** For a bubble: its height cut to one line, with the class `one`. */
+  oneLine: number;
+}
+const measured = new WeakMap<Element, Size>();
+function sizeOf(element: HTMLElement, key: string): Size | null {
+  const known = measured.get(element);
+  if (known?.key === key) return known;
+  const wasHidden = element.hidden;
+  const wasOne = element.classList.contains('one');
+  element.hidden = false;
+  element.classList.remove('one');
+  const size: Size = { key, width: element.offsetWidth, height: element.offsetHeight, oneLine: 0 };
+  element.classList.add('one');
+  size.oneLine = element.offsetHeight;
+  element.classList.toggle('one', wasOne);
+  element.hidden = wasHidden;
+  if (!size.width && !size.height) {
+    measured.delete(element);
+    return null;
+  }
+  measured.set(element, size);
+  return size;
+}
+
+/** The bubbles that were cut to one line last frame, so this frame draws them that way again. */
+const cutShort = new WeakSet<Element>();
+
+/** What one agent's bubble and tag need from the placing pass, once their content is in. */
+interface Placing {
+  id: string;
+  bubble: HTMLElement;
+  tag: HTMLElement;
+  /** Where the tag hangs from, and where the bubble sits when nothing is in its way, in pixels. */
+  at: { x: number; y: number };
+  bubbleAt: { x: number; y: number };
+  /** How far the bubble may come down towards its agent, in pixels. */
+  settle: number;
+  rank: number;
+  /** Not wanted at all: nothing to say, walking, or in the spotlight. */
+  quiet: boolean;
+  /** May be cut to one line to make room. A reply is read in full, and an approval is brief. */
+  shortenable: boolean;
+  tagKey: string;
+  bubbleKey: string;
 }
 
 /** A session running as Mabari, the default agent, is "Mabari · Shop", after its folder. */
@@ -83,6 +152,7 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   const projects = useOfficeStore.getState().office?.projects ?? [];
   const now = Date.now();
   const nameOf = (id: string) => scene.walkers.get(id)?.name ?? 'someone';
+  const placing: Placing[] = [];
   for (const walker of scene.walkers.values()) {
     seen.add(walker.id);
     let element = layer.querySelector<HTMLElement>(`[data-o="${CSS.escape(walker.id)}"]`);
@@ -108,17 +178,17 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     // Short lines stacked, rather than one long pill, so neighbouring tags keep apart: the name,
     // then for a workflow sub-agent where it works, then the model and time left.
     const where = walker.workflow ? whereWorking(walker, projects) : null;
-    setHtml(
-      tag.firstElementChild!,
+    const tagHtml =
       `<span class="nn"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(shownName(walker))}</b></span>` +
-        (where
-          ? `<span class="pj"><i style="background:${esc(where.color)}"></i><span class="pjn">${esc(where.name)}</span></span>`
-          : '') +
-        `<span class="nm"><small>${esc(modelLabel(walker.model))}</small>${eta ? `<em>${eta}</em>` : ''}</span>`,
-    );
+      (where
+        ? `<span class="pj"><i style="background:${esc(where.color)}"></i><span class="pjn">${esc(where.name)}</span></span>`
+        : '') +
+      `<span class="nm"><small>${esc(modelLabel(walker.model))}</small>${eta ? `<em>${eta}</em>` : ''}</span>`;
+    setHtml(tag.firstElementChild!, tagHtml);
     const attention = walker.state === 'approval' || walker.state === 'error';
     tag.className = `tag ${providerClass(walker)}${ui.selected === walker.id ? ' sel' : ''}${attention ? ' attn' : ''}`;
-    tag.querySelector<HTMLElement>('.qd')!.hidden = !walker.queued?.length;
+    const queued = Boolean(walker.queued?.length);
+    tag.querySelector<HTMLElement>('.qd')!.hidden = !queued;
     const chip = chipFor(walker.id, messages, now, nameOf);
     const chipElement = tag.querySelector<HTMLElement>('.mchip')!;
     chipElement.hidden = !chip;
@@ -132,17 +202,85 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     const isTalk = walker.bubbleKind === 'talk';
     const isAsk = walker.bubbleKind === 'ask';
     const spotlit = ui.selected === walker.id && !ui.team && ui.spotlight;
-    bubble.hidden = !walker.bubble || (walker.path.length > 0 && !isReply) || (spotlit && !isReply);
+    const quiet = !walker.bubble || (walker.path.length > 0 && !isReply) || (spotlit && !isReply);
+    // What needs you and what answers you is never hidden. See bubbles.ts.
+    const asking = isAsk || (walker.state === 'approval' && !isTalk);
+    const rank = asking ? 3 : isReply || (walker.state === 'error' && !isTalk) ? 2 : isTalk ? 1 : 0;
+    bubble.hidden = quiet;
     if (bubble.textContent !== walker.bubble) bubble.textContent = walker.bubble;
-    bubble.className = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${isAsk ? ' ask' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}`;
+    const bubbleClass = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${isAsk ? ' ask' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}${rank >= PINNED_RANK ? ' pin' : ''}`;
+    bubble.className = cutShort.has(bubble) ? `${bubbleClass} one` : bubbleClass;
     bubble.style.borderColor = isTalk ? walker.talkColor : '';
     const raised = walker.state === 'thinking' || walker.state === 'error' ? 26 : 0;
     const bubblePoint = scene.screenOf({ x: walker.x, y: walker.y - 48 - raised });
-    bubble.style.left = left;
-    bubble.style.top = `${(bubblePoint.y / height) * 100}%`;
+    // A raised bubble may come back down to the usual place, and a little nearer than that.
+    const usual = raised ? scene.screenOf({ x: walker.x, y: walker.y - 48 }).y : bubblePoint.y;
+    placing.push({
+      id: walker.id,
+      bubble,
+      tag,
+      at: point,
+      bubbleAt: bubblePoint,
+      settle: MAX_SETTLE + Math.max(0, usual - bubblePoint.y),
+      rank,
+      quiet,
+      shortenable: rank < 3 && !isReply,
+      tagKey: `${tagHtml}|${chip?.text ?? ''}|${queued}|${tag.className}`,
+      bubbleKey: `${walker.bubble}|${bubbleClass}`,
+    });
   }
   for (const element of [...layer.querySelectorAll<HTMLElement>('[data-o]')]) {
     if (!seen.has(element.dataset.o!)) element.remove();
+  }
+  placeOnFloor(layer, scene, placing);
+}
+
+/**
+ * Puts each bubble over its agent, moved clear of the name tags and of other bubbles, or hidden if
+ * it cannot be, and keeps it on the floor. See bubbles.ts for the rules.
+ */
+function placeOnFloor(layer: HTMLElement, scene: OfficeScene, placing: Placing[]): void {
+  const { width, height } = scene.size;
+  const overlay = layer.closest<HTMLElement>('.ovl');
+  const scale = overlayScale(scene.matrix().a);
+  const far = overlay?.classList.contains('far') ?? false;
+  const tiny = overlay?.classList.contains('tiny') ? 'tiny' : '';
+  const tagsHidden = layer.classList.contains('hide-tags');
+  const bubblesHidden = layer.classList.contains('hide-bub');
+  const tags: Box[] = [];
+  const items: BubbleItem[] = [];
+  for (const entry of placing) {
+    // A tag that is not drawn covers nothing.
+    const selected = entry.tag.classList.contains('sel') || entry.tag.classList.contains('attn');
+    if (!tagsHidden || selected) {
+      const size = sizeOf(entry.tag, `${entry.tagKey}|${tiny}`);
+      if (size) tags.push(tagBox(entry.at.x, entry.at.y, size.width, size.height, scale));
+    }
+    // A bubble the zoom or the noise filters already hide needs no place.
+    const pinned = entry.rank >= PINNED_RANK;
+    if (entry.quiet || (!pinned && (far || bubblesHidden))) continue;
+    const size = sizeOf(entry.bubble, entry.bubbleKey);
+    if (size) {
+      const { x, y } = entry.bubbleAt;
+      const box = bubbleBox(x, y, size.width, size.height, scale);
+      const short =
+        entry.shortenable && size.oneLine < size.height - 1
+          ? bubbleBox(x, y, size.width, size.oneLine, scale)
+          : undefined;
+      items.push({ id: entry.id, rank: entry.rank, box, short, settle: entry.settle });
+    }
+  }
+  const placed = placeBubbles(items, tags, width);
+  for (const entry of placing) {
+    const place = placed.get(entry.id);
+    if (place) {
+      entry.bubble.hidden = place.hidden;
+      entry.bubble.classList.toggle('one', place.short);
+      if (place.short) cutShort.add(entry.bubble);
+      else cutShort.delete(entry.bubble);
+    }
+    entry.bubble.style.left = `${((entry.bubbleAt.x + (place?.shift ?? 0)) / width) * 100}%`;
+    entry.bubble.style.top = `${((entry.bubbleAt.y - (place?.lift ?? 0)) / height) * 100}%`;
   }
 }
 

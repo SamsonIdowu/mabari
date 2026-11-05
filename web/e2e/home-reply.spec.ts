@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ request }) => {
@@ -106,3 +107,27 @@ test('the acknowledgement stays with the reply, and earlier replies can be read 
   await expect(say.locator('.hclist li').first()).toBeVisible();
   await expect(pager).toContainText('3 of 3');
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`the bubble, its pager and a scrolling reply pass the accessibility checks in the ${theme} theme`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript((name) => window.localStorage.setItem('mabari.theme', name), theme);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await ask(page, 'the invoice rounding is wrong');
+    await expect(page.locator('#veeSay .vack')).toBeVisible({ timeout: 10_000 });
+    await page.getByLabel('Message Mabari').fill('what is the status?');
+    await page.getByLabel('Message Mabari').press('Enter');
+    await expect(page.locator('#veeSay .hclist li').first()).toBeVisible();
+    await expect(page.locator('#veeSay .vsay')).toHaveAttribute('tabindex', '0');
+    const results = await new AxeBuilder({ page })
+      .include('#veeSay')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      results.violations.map((item) => `${item.id}: ${item.help}`),
+      'accessibility violations in the bubble',
+    ).toEqual([]);
+  });
+}

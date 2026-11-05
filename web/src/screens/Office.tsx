@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
+import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { renderOverlays } from '../office/overlays.ts';
 import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
@@ -15,7 +16,7 @@ import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
-import { CommandBar } from './CommandBar.tsx';
+import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './OfficeWall.tsx';
 import { PromptTray } from './PromptTray.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
 
@@ -116,6 +117,25 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
         </Icon>
         New project from a description
       </button>
+      {office.demo ? (
+        <button
+          type="button"
+          className="mi"
+          role="menuitem"
+          title="Clear the demo agents. Only real agents from your connections stay."
+          onClick={() => {
+            close();
+            void api
+              .stopDemo()
+              .then(() => useOfficeStore.getState().toast('The demo has stopped.'));
+          }}
+        >
+          <Icon>
+            <path d="M6 6h12v12H6z" />
+          </Icon>
+          Stop the demo
+        </button>
+      ) : null}
       <a className="mi" href="#projects" role="menuitem" onClick={close}>
         <Icon>
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -226,7 +246,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   ];
 
   return (
-    <div className="obar2">
+    <div className="obar2 inhead">
       <div className="ddwrap">
         <button
           type="button"
@@ -287,15 +307,17 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
         <button
           type="button"
           className="btn ghost sm"
+          id="ddKey"
           aria-haspopup="true"
           aria-expanded={menu === 'key'}
+          aria-label="Colour key"
           onClick={() => toggle('key')}
         >
           <Icon>
             <circle cx="12" cy="12" r="9" />
             <path d="M12 11v6M12 7h.01" />
           </Icon>
-          Colour key
+          <span className="klbl">Colour key</span>
         </button>
         {menu === 'key' ? (
           <div
@@ -435,8 +457,8 @@ function FloorMessage({ office }: { office: Snapshot }) {
           <>
             <h2>Connected. No agents running yet.</h2>
             <p className="muted">
-              Start a Codex session in your terminal or start one here. It will walk in and take a
-              desk.
+              Start a session in your terminal, or run one from the agent builder. It will walk in
+              and take a desk.
             </p>
           </>
         ) : (
@@ -450,13 +472,9 @@ function FloorMessage({ office }: { office: Snapshot }) {
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
           {connected ? (
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
-            >
-              New agent
-            </button>
+            <a className="btn primary" href="#builder">
+              Build an agent
+            </a>
           ) : (
             <a className="btn primary" href="#accounts">
               Connect an account
@@ -567,7 +585,7 @@ function Stage({ office }: { office: Snapshot }) {
   }, [fullscreen]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const tags = useRef<HTMLDivElement>(null);
-  const board = useRef<HTMLDivElement>(null);
+  const layers = useLayers((state) => state.layers);
   const readout = useRef<HTMLDivElement>(null);
   const spotlight = useRef<HTMLDivElement>(null);
   const hint = useRef<HTMLSpanElement>(null);
@@ -581,11 +599,10 @@ function Stage({ office }: { office: Snapshot }) {
     const element = canvas.current;
     if (!element) return undefined;
     const running = new OfficeScene(element, (current) => {
-      if (!tags.current || !board.current || !readout.current || !spotlight.current) return;
+      if (!tags.current || !readout.current || !spotlight.current) return;
       renderOverlays(
         {
           tags: tags.current,
-          board: board.current,
           readout: readout.current,
           spotlight: spotlight.current,
           hint: hint.current,
@@ -694,17 +711,13 @@ function Stage({ office }: { office: Snapshot }) {
         reviewing: hit.state === 'approval' ? (hit.approval?.id ?? null) : null,
       });
     } else {
-      const desk = useOfficeUi.getState().selected ? null : scene.current.deskAt(pointIn(event));
-      set({ selected: null, follow: false, ...(desk === null ? {} : { newAgent: { desk } }) });
+      set({ selected: null, follow: false });
     }
   };
 
   const hover = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!scene.current) return;
-    const desk = scene.current.deskAt(pointIn(event));
-    scene.current.hoverDesk = desk;
-    event.currentTarget.style.cursor = desk === null ? '' : 'pointer';
-    event.currentTarget.title = desk === null ? '' : 'Create a new agent at this desk';
+    event.currentTarget.style.cursor = scene.current.hit(pointIn(event)) ? 'pointer' : '';
   };
 
   return (
@@ -718,9 +731,6 @@ function Stage({ office }: { office: Snapshot }) {
           aria-label="Office floor. Click an agent to inspect it."
           onClick={select}
           onMouseMove={hover}
-          onMouseLeave={() => {
-            if (scene.current) scene.current.hoverDesk = null;
-          }}
           onMouseDown={(event) => {
             if (event.button === 0) {
               drag.current = { x: event.clientX, y: event.clientY, moved: false };
@@ -728,7 +738,7 @@ function Stage({ office }: { office: Snapshot }) {
           }}
         />
         <div className="ovl">
-          <div ref={tags} />
+          <div ref={tags} className={hiddenClasses(layers)} />
           <div id="focusLayer" ref={spotlight} hidden>
             <div
               className="fscrim"
@@ -746,17 +756,10 @@ function Stage({ office }: { office: Snapshot }) {
             <div className="fsteps" />
           </div>
         </div>
-        <div
-          className="board"
-          ref={board}
-          aria-label="Notice board"
-          onClick={(event) => {
-            const item = (event.target as HTMLElement).closest<HTMLElement>('[data-review]');
-            if (item) set({ reviewing: item.dataset.review ?? null });
-          }}
-        />
-        <div className="fnote note" style={{ left: '49%', top: '3%' }}>
-          Approvals pin here. Click one to review it.
+        <WallBar office={office} />
+        <ApprovalBell office={office} />
+        <div className="fnote note" style={{ right: '2%', top: '9%' }}>
+          Approvals pop up from the bell. Click one to review it.
         </div>
         <div
           className="fnote note"
@@ -773,9 +776,87 @@ function Stage({ office }: { office: Snapshot }) {
         <div className="readout" ref={readout} aria-live="off" />
         <PromptTray />
         <span className="stagehint" ref={hint}>
-          Click an agent to see its live steps. Drag to move around when zoomed in.
+          Click an agent to see its live steps and to instruct or query it. Drag to move around when
+          zoomed in.
         </span>
         <FloorMessage office={office} />
+        <MabariUpdates />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Agents header is one row when everything fits with comfortable gaps, and two rows when it
+ * doesn't: the title with the actions first, then the filters. Nothing ever overlaps.
+ */
+function useOneRowWhenItFits() {
+  const head = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = head.current;
+    if (!element) return undefined;
+    const fit = () => {
+      const bar = element.querySelector<HTMLElement>('.obar2.inhead');
+      if (!bar || !element.offsetWidth) return;
+      element.classList.remove('stack');
+      const kids = [...bar.children].filter(
+        (kid) => (kid as HTMLElement).offsetWidth,
+      ) as HTMLElement[];
+      const need =
+        kids.reduce((sum, kid) => sum + kid.offsetWidth, 0) +
+        HEAD_GAP * Math.max(0, kids.length - 1);
+      if (need > bar.clientWidth + 1) element.classList.add('stack');
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    const bar = element.querySelector('.obar2.inhead');
+    if (bar) for (const kid of bar.children) observer.observe(kid);
+    window.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  });
+  return head;
+}
+
+const HEAD_GAP = 12;
+
+function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }) {
+  const head = useOneRowWhenItFits();
+  return (
+    <div className="ohead" ref={head}>
+      <div className="ohtitle">
+        <h1 id="oTitle">Agents</h1>
+        <Summary scoped={scoped} />
+      </div>
+      <FilterBar office={office} scoped={scoped} />
+      <div className="ohact">
+        <AutoApproveButton settings={office.settings} />
+        <MabariUpdatesButton />
+        <button
+          type="button"
+          className="btn"
+          title="Describe a project and let the planner pick a team"
+          onClick={() => useOfficeUi.getState().set({ newProject: true })}
+        >
+          <Icon>
+            <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
+          </Icon>
+          New project
+        </button>
+        <button
+          type="button"
+          className="btn fsonly"
+          title="Leave full screen (Esc)"
+          onClick={toggleFullscreen}
+        >
+          <Icon>
+            <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          </Icon>
+          Exit full screen
+        </button>
       </div>
     </div>
   );
@@ -795,55 +876,11 @@ export function Office() {
     <section data-screen="office" style={{ height: '100%' }}>
       <div className="office">
         <div className="ocol">
-          <div className="ohead">
-            <div className="ohtitle">
-              <h1>Agents</h1>
-              <Summary scoped={scoped} />
-            </div>
-            <div className="ohact">
-              {office.demo ? (
-                <button
-                  type="button"
-                  className="btn ghost"
-                  title="Clear the demo agents. Only real agents from your connections stay."
-                  onClick={() =>
-                    void api
-                      .stopDemo()
-                      .then(() => useOfficeStore.getState().toast('The demo has stopped.'))
-                  }
-                >
-                  Stop the demo
-                </button>
-              ) : null}
-              <AutoApproveButton settings={office.settings} />
-              <button
-                type="button"
-                className="btn"
-                onClick={() => useOfficeUi.getState().set({ newProject: true })}
-              >
-                <Icon>
-                  <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
-                </Icon>
-                New project
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
-              >
-                <Icon>
-                  <path d="M12 5v14M5 12h14" />
-                </Icon>
-                New agent
-              </button>
-            </div>
-          </div>
-          <FilterBar office={office} scoped={scoped} />
+          <OfficeHead office={office} scoped={scoped} />
           {lead ? <TeamBanner lead={lead} agents={office.agents} /> : null}
           <AutoBanner office={office} />
           <AccountBanners office={office} />
           <Stage office={office} />
-          <CommandBar office={office} />
         </div>
         {selected ? <AgentPanel key={selected.id} office={office} agent={selected} /> : null}
       </div>

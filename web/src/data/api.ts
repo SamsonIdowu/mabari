@@ -306,7 +306,7 @@ export const api = {
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
   vee: (text: string) => send<VeeResult>('POST', '/api/vee', { text }),
-  agentAction: (id: string, action: 'interrupt' | 'stop' | 'retry') =>
+  agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
   createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),

@@ -197,6 +197,10 @@ body {
   background: var(--amber);
   color: #1c1300;
 }
+/* The light theme's amber is darker for contrast, so its text is white, as on the floor's tags. */
+[data-theme='light'] .badge.amber {
+  color: #fff;
+}
 .pdot {
   width: 10px;
   height: 10px;

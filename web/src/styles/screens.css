@@ -190,9 +190,10 @@
 }
 .board {
   position: absolute;
-  left: 0;
-  top: 0;
+  right: 14px;
+  top: 12px;
   width: 200px;
+  max-height: calc(100% - 26px);
   pointer-events: auto;
   background: #ffffff;
   color: #0c0c0c;
@@ -201,8 +202,30 @@
   padding: 6px 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   font-size: 11.5px;
-  max-height: 38%;
   overflow-y: auto;
+  transform-origin: top right;
+  z-index: 5;
+}
+.board.is-mini {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+.board:not(.is-mini) {
+  animation: bpop 0.22s ease-out;
+}
+@keyframes bpop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 .board h4 {
   font-size: 11px;
@@ -213,9 +236,23 @@
   justify-content: space-between;
   margin-bottom: 4px;
 }
-.bitem {
+.bhr {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+.bx {
+  border: 0;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: #0c0c0c;
+  padding: 0 2px;
+}
+.bitem {
+  display: flex;
+  align-items: flex-start;
   gap: 6px;
   width: 100%;
   text-align: left;
@@ -235,17 +272,61 @@
 .bitem i {
   width: 8px;
   height: 8px;
+  margin-top: 4px;
   border-radius: 50%;
   background: #d93a3e;
   flex: none;
   animation: blink 1s steps(2) infinite;
 }
+/* A request wraps onto up to three lines instead of being cut off. */
 .bitem span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.bitem span b {
+  font-weight: 800;
+}
+.bmini {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #0c0c0c;
+  background: #ffffff;
+  color: #6b6b6b;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+.bmini .ico {
+  width: 17px;
+  height: 17px;
+}
+.bmini.has {
+  color: #0c0c0c;
+}
+.bcount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
 }
 .bempty {
   color: #6e5a40;
@@ -2945,4 +3026,448 @@ section[data-screen='home'] {
   .defcard.open {
     animation: none;
   }
+}
+
+/* The fixed wall bar above the floor: noise filters, project panels, the clock and room for the
+   bell. It never zooms or pans, and only a change in tone separates it from the floor. */
+.wallbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 66px 0 14px;
+  background: #f6f6f5;
+  border-bottom: 0;
+  box-shadow: none;
+  z-index: 3;
+  box-sizing: border-box;
+}
+[data-theme='dark'] .wallbar {
+  background: #1b1b1e;
+}
+.wbgrow {
+  flex: 1;
+}
+.layers {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+#projWins {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.wclock {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-left: 4px;
+}
+.wclock svg {
+  width: 30px;
+  height: 30px;
+  display: block;
+}
+.wcf {
+  fill: #111;
+}
+.wcp {
+  fill: #fff;
+}
+.wch,
+.wcm {
+  stroke: #111;
+  stroke-linecap: round;
+}
+.wch {
+  stroke-width: 2.2;
+}
+.wcm {
+  stroke-width: 1.5;
+}
+.wcs {
+  stroke: #e5484d;
+  stroke-width: 0.8;
+  stroke-linecap: round;
+}
+[data-theme='dark'] .wcf {
+  fill: #3a3a40;
+}
+[data-theme='dark'] .wcp {
+  fill: #2a2a2f;
+}
+[data-theme='dark'] .wch,
+[data-theme='dark'] .wcm {
+  stroke: #f4f4f4;
+}
+.lbtn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #0c0c0c;
+  background: #ffffff;
+  color: #0c0c0c;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  padding: 0;
+}
+.lbtn .ico {
+  width: 16px;
+  height: 16px;
+}
+.lbtn[aria-pressed='false'] {
+  color: #6b6b6b;
+  border-color: #bdbdbd;
+  box-shadow: none;
+}
+.lbtn[aria-pressed='false']::after {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 2px;
+  background: #a0a0a0;
+  transform: rotate(-45deg);
+  border-radius: 2px;
+}
+.lbtn.quiet[aria-pressed='true'] {
+  background: #0c0c0c;
+  color: #fff;
+}
+.lbtn.quiet[aria-pressed='false']::after {
+  display: none;
+}
+.lsep {
+  width: 1px;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.18);
+  margin: 0 2px;
+}
+[data-theme='dark'] .lsep {
+  background: rgba(255, 255, 255, 0.2);
+}
+/* Noise filters. Approval bubbles and the tags of selected or needs-me agents always show. */
+.hide-bub .bub:not(.red) {
+  display: none !important;
+}
+.hide-meta .tag small,
+.hide-meta .tag em {
+  display: none;
+}
+.hide-msg .mchip,
+.hide-msg .qd {
+  display: none !important;
+}
+.hide-tags .tag:not(.sel):not(.attn) {
+  display: none;
+}
+.pwin {
+  position: relative;
+  width: 104px;
+  height: 44px;
+  font-size: 10px;
+  flex: none;
+  border: 2px solid #111 !important;
+  background: #fff !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.15em;
+  padding: 0.3em 0.45em;
+  box-sizing: border-box;
+  border-radius: 2px;
+  color: #0c0c0c;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 1.1;
+}
+.pwin:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.pwin.on {
+  box-shadow: inset 0 0 0 2px var(--pc);
+}
+.pwn {
+  font-weight: 800;
+  line-height: 1.15;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  border-left: 3px solid var(--pc);
+  padding-left: 0.35em;
+}
+.pwb {
+  flex: 1;
+  min-width: 0;
+  height: 0.5em;
+  background: #e6e6e6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pwb i {
+  display: block;
+  height: 100%;
+  background: var(--pc);
+}
+.pws {
+  display: flex;
+  gap: 0.35em;
+  align-items: center;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #555;
+}
+.pws b {
+  background: var(--red);
+  color: #fff;
+  border-radius: 6px;
+  padding: 0 0.35em;
+  font-size: 0.9em;
+}
+.pwin.done .pws {
+  color: #1b8a4b;
+}
+[data-theme='dark'] .pwin {
+  color: #f4f4f4;
+  background: #2a2a2f !important;
+  border-color: #3a3a40 !important;
+}
+[data-theme='dark'] .pws {
+  color: #b5b5b5;
+}
+[data-theme='dark'] .pwb {
+  background: #3a3a40;
+}
+[data-theme='dark'] .pwin.done .pws {
+  color: #5fd38d;
+}
+[data-theme='dark'] .pwin:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.pwin.empty {
+  display: grid;
+  place-items: center;
+  font-size: 20px !important;
+  color: #6b6b6b;
+}
+@media (prefers-reduced-motion: reduce) {
+  .board:not(.is-mini) {
+    animation: none;
+  }
+}
+
+/* Instruct and Query at the bottom of the agent panel */
+.cmdbar.inpanel {
+  border-top: 1px solid var(--line);
+  padding: 12px 16px 14px !important;
+  gap: 8px;
+  zoom: 1;
+}
+.cmdbar.inpanel .cmdrow {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cmdbar.inpanel .modeseg {
+  flex: 1 1 100%;
+}
+.cmdbar.inpanel .cmdin {
+  flex: 1 1 100%;
+  min-height: 40px;
+}
+.cmdbar.inpanel .mic {
+  width: 40px;
+  height: 40px;
+}
+.cmdbar.inpanel .sendbtn {
+  flex: 1;
+  min-height: 40px;
+}
+
+/* full screen: the Mabari updates button and its panel */
+.fsonly {
+  display: none !important;
+}
+body.ofs .fsonly {
+  display: inline-flex !important;
+}
+.fsmb {
+  position: relative;
+}
+.fsmb svg {
+  width: 20px;
+  height: 20px;
+}
+.fsmb .bcount {
+  top: -7px;
+  right: -7px;
+}
+.fsmbpop {
+  position: absolute;
+  right: 16px;
+  top: 58px;
+  width: 340px;
+  max-height: 60vh;
+  overflow: auto;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fsmbpop h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 0;
+}
+.fsmbpop h4 svg {
+  width: 22px;
+  height: 22px;
+}
+.fsmbitem {
+  font-size: 13.5px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface2);
+}
+.fsmbitem small {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-bottom: 2px;
+}
+
+/* Library: status screens and every component, as identical tiles at the app's page scale */
+.libgrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.libtile {
+  height: 400px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.libgrid .notescard {
+  grid-column: 1/-1;
+  height: auto;
+  overflow: visible;
+}
+.notescard > .grid2 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+@media (max-width: 1100px) {
+  .notescard > .grid2 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .libgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .libgrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .libtile {
+    height: auto;
+  }
+}
+.cxrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.cxrow .lbtn,
+.cxrow .bmini {
+  cursor: default;
+}
+.ctools.cxstatic {
+  position: static !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  zoom: 1;
+  box-shadow: none;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 4px 6px;
+  background: var(--surface);
+}
+.cxrow .pwin {
+  position: relative;
+  cursor: default;
+}
+.cxpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.libcol {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+#compPage .card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  padding: 14px 16px !important;
+  gap: 10px;
+}
+#compPage .card h2 {
+  font-size: 18px;
+}
+#compPage .card .help,
+#compPage .card p {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+section[data-screen='components'] {
+  zoom: 1 !important;
+}
+section[data-screen='components'] .page h1 {
+  font-size: 40px;
+}
+#statesPane .statecard {
+  height: 270px;
+  padding: 14px 16px !important;
+  gap: 8px;
+}
+#statesPane .statecard h2 {
+  font-size: 18px;
+}
+#statesPane .statecard .help {
+  font-size: 14.5px;
+}
+#statesPane .mock {
+  font-size: 15px;
+  gap: 6px;
+  padding: 10px;
+}
+#statesPane .grid3 {
+  gap: 14px;
 }

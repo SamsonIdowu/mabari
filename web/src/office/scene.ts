@@ -3,7 +3,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { blk, buildBg, drawClockHands, ell, PAL, R, rrect } from './background.ts';
+import { blk, buildBg, ell, PAL, R, RACKS, rrect } from './background.ts';
 import { clampView, teamView, toScreen, viewMatrix, fromScreen, type View } from './camera.ts';
 import { drawChar } from './character.ts';
 import { drawEnvelopes } from './talk.ts';
@@ -373,21 +373,20 @@ export class OfficeScene {
   private drawServerRoom(walkers: Walker[], t: number): void {
     const c = this.context;
     const running = walkers.some((item) => item.state === 'running' && !item.path.length);
-    for (let sx = 30; sx < 38; sx++) {
-      if (sx === 33) continue;
-      for (let s2 = 0; s2 < 6; s2++) {
-        const on = Math.sin(t / (running ? 90 : 420) + sx * 1.7 + s2 * 2.3) > 0.2;
-        R(c, sx * 32 + 23, 65 + s2 * 8, 3, 3, on ? (s2 % 2 ? '#3FB97A' : '#F2B33D') : '#1A1B20');
-        const blink = Math.sin(t / (running ? 70 : 500) + sx + s2) > 0.4;
-        R(c, sx * 32 + 17, 65 + s2 * 8, 3, 3, blink ? '#5B9BF0' : '#1A1B20');
+    RACKS.forEach((rx, ri) => {
+      for (let s2 = 0; s2 < 5; s2++) {
+        const on = Math.sin(t / (running ? 90 : 420) + ri * 1.7 + s2 * 2.3) > 0.2;
+        R(c, rx + 19, 81 + s2 * 8, 3, 3, on ? (s2 % 2 ? '#3FB97A' : '#F2B33D') : '#1A1B20');
+        const blink = Math.sin(t / (running ? 70 : 500) + ri + s2) > 0.4;
+        R(c, rx + 13, 81 + s2 * 8, 3, 3, blink ? '#5B9BF0' : '#1A1B20');
       }
       if (running) {
-        c.globalAlpha = 0.06 + Math.sin(t / 120 + sx) * 0.03;
+        c.globalAlpha = 0.06 + Math.sin(t / 120 + ri) * 0.03;
         c.fillStyle = '#5B9BF0';
-        c.fillRect(sx * 32, 112, 32, 40);
+        c.fillRect(rx - 2, 122, 30, 36);
         c.globalAlpha = 1;
       }
-    }
+    });
     R(c, 2, 17 * 32 + 10, 6, 40, Math.sin(t / 300) > 0 ? '#6CC7D9' : '#5AB3C4');
     c.globalAlpha = 0.12;
     c.fillStyle = '#6CC7D9';
@@ -492,7 +491,6 @@ export class OfficeScene {
     const m = this.matrix();
     c.setTransform(m.a, 0, 0, m.a, m.e, m.f);
     c.drawImage(officeBackground(theme), 0, 0);
-    drawClockHands(c, theme, new Date());
     this.drawMotes(theme, t, dt);
 
     const walkers = [...this.walkers.values()];

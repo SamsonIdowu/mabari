@@ -150,19 +150,25 @@ function plant(c: Ctx, x: number, y: number, P: Palette) {
   ell(c, x + 15, y + 9, 4, 4);
   ell(c, x + 11, y + 13, 3, 3);
 }
+/** The back wall's height in world pixels. */
+export const WALL = 44;
+/** Where the server racks stand, in world pixels. */
+export const RACKS = [966, 996, 1026, 1080, 1110, 1140];
+
 export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;
   const c = cv.getContext('2d')!;
   const P: Palette = PAL[theme];
-  /* floor: large calm tiles, darker server room, soft carpet in meeting room, pale pantry */
-  for (let ty = 2; ty < 22; ty++)
+  /* floor: large calm tiles, darker server room, soft carpet in meeting room, pale pantry. The
+     floor starts under the back wall, so it shows from the wall's foot at y 44. */
+  for (let ty = 1; ty < 22; ty++)
     for (let tx = 0; tx < 38; tx++) {
       const n = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
       const v = (n % 4) / 250;
       let col: string = P.floorA;
-      if (tx >= 30 && ty >= 2 && ty <= 6) col = P.server;
+      if (tx >= 30 && ty >= 1 && ty <= 6) col = P.server;
       else if (tx >= 30 && ty >= 8 && ty <= 11) col = P.carpet;
       else if (tx >= 30 && ty >= 13) col = (tx + ty) % 2 ? P.pantA : P.pantB;
       R(c, tx * 32, ty * 32, 32, 32, col);
@@ -173,78 +179,24 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
         if (tx % 2 === 0) R(c, tx * 32, ty * 32, 1, 32, P.plank);
       }
     }
-  /* back wall: clean, thin dark skirting */
-  R(c, 0, 0, W, 64, P.wall);
+  /* back wall: 44 px, clean, with no windows, prints or clock: the wall bar above the floor holds
+     the projects and the clock now */
+  R(c, 0, 0, W, WALL, P.wall);
   R(c, 0, 0, W, 4, P.wallTop);
-  R(c, 0, 60, W, 4, P.base);
-  c.fillStyle = 'rgba(0,0,0,.14)';
-  c.fillRect(0, 64, W, 5);
-  c.fillStyle = 'rgba(0,0,0,.06)';
-  c.fillRect(0, 69, W, 6);
-  for (let wx = 19; wx < 26; wx += 2) {
-    const X = wx * 32;
-    R(c, X + 2, 8, 60, 46, P.frame);
-    R(c, X + 4, 10, 56, 42, P.win);
-    R(c, X + 4, 10, 56, 12, P.winLite);
-    R(c, X + 31, 10, 2, 42, P.frame);
-    if (theme === 'dark') {
-      R(c, X + 12, 18, 2, 2, P.star);
-      R(c, X + 46, 15, 2, 2, P.star);
-      R(c, X + 38, 40, 2, 2, P.star);
-    }
-    c.fillStyle = P.shaft;
-    c.beginPath();
-    c.moveTo(X + 5, 64);
-    c.lineTo(X + 59, 64);
-    c.lineTo(X + 100, 250);
-    c.lineTo(X + 22, 250);
-    c.closePath();
-    c.fill();
-  }
-  /* whiteboard behind the notice board overlay */
-  R(c, 8 * 32 - 4, 6, 6 * 32 + 8, 48, P.frame);
-  R(c, 8 * 32 - 1, 9, 6 * 32 + 2, 42, P.paper);
-  /* clock */
-  c.fillStyle = P.frame;
-  ell(c, 26 * 32 + 12, 28, 11, 11);
-  c.fillStyle = P.paper;
-  ell(c, 26 * 32 + 12, 28, 9, 9);
-  for (let hm = 0; hm < 12; hm++) {
-    const ha = (hm / 12) * Math.PI * 2;
-    R(c, 26 * 32 + 12 + Math.sin(ha) * 7.5 - 0.5, 28 - Math.cos(ha) * 7.5 - 0.5, 1, 1, P.ink);
-  }
-  /* framed monochrome prints and the wordmark */
-  [
-    [6 * 32 + 6, 14],
-    [7 * 32 + 2, 20],
-  ].forEach(function (f, i) {
-    R(c, f[0]! - 2, f[1]! - 2, i ? 18 : 22, i ? 22 : 28, P.frame);
-    R(c, f[0]!, f[1]!, i ? 14 : 18, i ? 18 : 24, P.art);
-    c.fillStyle = P.ink;
-    if (i) ell(c, f[0]! + 7, f[1]! + 9, 4, 4);
-    else {
-      c.beginPath();
-      c.moveTo(f[0]! + 2, f[1]! + 20);
-      c.lineTo(f[0]! + 9, f[1]! + 8);
-      c.lineTo(f[0]! + 16, f[1]! + 20);
-      c.closePath();
-      c.fill();
-    }
-  });
-  /* storage cabinets */
+  /* storage cabinets, standing below the wall */
   for (let fx = 1; fx < 6; fx++) {
     const x = fx * 32;
-    blk(c, x + 2, 58, 28, 8, 44, P.cab, P.cabD, P);
+    blk(c, x + 2, 68, 28, 8, 40, P.cab, P.cabD, P);
     for (let d = 0; d < 3; d++) {
-      R(c, x + 4, 70 + d * 14, 24, 1, 'rgba(0,0,0,.18)');
-      R(c, x + 12, 74 + d * 14, 8, 2, P.metal);
+      R(c, x + 4, 78 + d * 13, 24, 1, 'rgba(0,0,0,.18)');
+      R(c, x + 12, 82 + d * 13, 8, 2, P.metal);
     }
   }
   plant(c, 6, 104, P);
   /* glass partition between the work floor and the rooms */
-  R(c, 29 * 32 + 12, 64, 8, H - 64, P.glass);
-  R(c, 29 * 32 + 12, 64, 1, H - 64, P.wallLow);
-  R(c, 29 * 32 + 19, 64, 1, H - 64, P.wallLow);
+  R(c, 29 * 32 + 12, WALL, 8, H - WALL, P.glass);
+  R(c, 29 * 32 + 12, WALL, 1, H - WALL, P.wallLow);
+  R(c, 29 * 32 + 19, WALL, 1, H - WALL, P.wallLow);
   [5, 10, 15, 19].forEach(function (gy) {
     R(c, 29 * 32 + 10, gy * 32 - 10, 12, 58, P.floorA);
   });
@@ -255,23 +207,21 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     R(c, 30 * 32, Y + 14, 8 * 32, 2, 'rgba(0,0,0,.12)');
     R(c, 32 * 32, Y, 48, 16, ry === 7 ? P.carpet : P.pantA);
   });
-  /* server racks */
-  for (let sx = 30; sx < 38; sx++) {
-    if (sx === 33) continue;
-    const x2 = sx * 32;
+  /* server racks: six, in two groups of three, inside the walls */
+  for (const x2 of RACKS) {
     blk(
       c,
-      x2 + 3,
-      54,
+      x2,
+      70,
       26,
       6,
-      58,
+      52,
       theme === 'dark' ? '#202024' : '#2A2A2D',
       theme === 'dark' ? '#0C0C0E' : '#141416',
       P,
     );
-    for (let s2 = 0; s2 < 6; s2++)
-      R(c, x2 + 6, 64 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
+    for (let s2 = 0; s2 < 5; s2++)
+      R(c, x2 + 3, 80 + s2 * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
   }
   /* meeting room */
   for (let mx = 0; mx < 4; mx++)
@@ -355,34 +305,4 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   R(c, 18 * 32, H - 8, 64, 8, P.base);
   R(c, 18 * 32 + 4, H - 20, 56, 12, P.wallLow);
   return cv;
-}
-
-/** The wall clock's hands, showing the real local time. */
-export function drawClockHands(c: Ctx, theme: keyof typeof PAL, now: Date) {
-  const P = PAL[theme];
-  const cx = 26 * 32 + 12;
-  const cy = 28;
-  const minutes = now.getMinutes() + now.getSeconds() / 60;
-  const hours = (now.getHours() % 12) + minutes / 60;
-  const seconds = now.getSeconds() + now.getMilliseconds() / 1000;
-  const hand = (fraction: number, length: number) => {
-    c.beginPath();
-    c.moveTo(cx, cy);
-    c.lineTo(
-      cx + Math.sin(fraction * Math.PI * 2) * length,
-      cy - Math.cos(fraction * Math.PI * 2) * length,
-    );
-    c.stroke();
-  };
-  c.lineCap = 'round';
-  c.strokeStyle = P.ink;
-  c.lineWidth = 1.8;
-  hand(hours / 12, 4.2);
-  c.lineWidth = 1.2;
-  hand(minutes / 60, 6.6);
-  c.strokeStyle = '#E5484D';
-  c.lineWidth = 0.6;
-  hand(seconds / 60, 7.4);
-  c.fillStyle = P.ink;
-  ell(c, cx, cy, 1.1, 1.1);
 }

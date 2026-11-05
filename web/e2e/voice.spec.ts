@@ -134,8 +134,14 @@ test('hearing nothing sends nothing', async ({ page }) => {
   expect(messages).toEqual([]);
 });
 
+async function choose(page: Page, name: string) {
+  const tag = (await page.locator('.tag', { hasText: name }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
+}
+
 test('the mic works by holding it too', async ({ page }) => {
   await office(page);
+  await choose(page, 'Scout');
   const mic = page.getByRole('button', { name: 'Hold to talk' });
   await mic.hover();
   await page.mouse.down();
@@ -161,6 +167,7 @@ test('a spoken approval opens the card and still needs a click', async ({ page, 
 
 test('Space in a text box types a space', async ({ page }) => {
   await office(page);
+  await choose(page, 'Scout');
   const box = page.getByLabel('Message', { exact: true });
   await box.pressSequentially('a b');
   await expect(box).toHaveValue('a b');
@@ -169,11 +176,8 @@ test('Space in a text box types a space', async ({ page }) => {
 
 test('no help text mentions a countdown', async ({ page }) => {
   await office(page);
-  await page.locator('.topright').getByText('Notes').click();
-  await expect(page.locator('.cmdbar .note')).toContainText(
-    'press Send when you are happy with it',
-  );
   await page.goto('/#components');
+  await page.getByRole('tab', { name: 'Components' }).click();
   await expect(page.locator('main')).not.toContainText(/2 second|Send now/);
   await expect(page.locator('main')).toContainText('Nothing is sent until you press Send');
 });

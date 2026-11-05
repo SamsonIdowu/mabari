@@ -312,6 +312,10 @@ export interface SessionState {
   talkColor: string;
   leaving: boolean;
   /**
+   * PausedFrom is the state an interrupted agent was in, so Continue can return to it.
+   */
+  pausedFrom: AgentState;
+  /**
    * Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
    * each with the agent's reply once it gives one. At most AskedKept.
    */

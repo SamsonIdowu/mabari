@@ -49,7 +49,9 @@ test('a brief, a file and a folder become a team that waits for its plan', async
   await expect(dialog).toBeHidden();
   await expect(page.locator('.dd').first()).toContainText('Bean counter');
   // Plan first: the lead posts its plan before anyone else joins.
-  await expect(page.locator('.board')).toContainText('Approve the plan for Bean counter', { timeout: 15_000 });
+  await expect(page.locator('.board')).toContainText('Approve the plan for Bean counter', {
+    timeout: 15_000,
+  });
   await expect(page.locator('.tag .nt:visible')).toHaveCount(1);
   await page.locator('.board').getByText('Approve the plan for Bean counter').click();
   const approval = page.getByRole('dialog');
@@ -66,8 +68,13 @@ test('the project can start right away, and a bad folder is explained', async ({
   await dialog.getByRole('button', { name: 'Attach', exact: true }).click();
   await expect(dialog.locator('#bRepoSrcHint')).toContainText('Use a full path');
   await dialog.getByRole('button', { name: 'Start right away' }).click();
-  await dialog.locator('#briefText').fill('Build an internal dashboard that shows weekly sales by region');
+  await dialog
+    .locator('#briefText')
+    .fill('Build an internal dashboard that shows weekly sales by region');
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();
-  await dialog.locator('.plancard').getByRole('button', { name: /Start project with 3 agents/ }).click();
+  await dialog
+    .locator('.plancard')
+    .getByRole('button', { name: /Start project with 3 agents/ })
+    .click();
   await expect(page.locator('.tag .nt:visible')).toHaveCount(3, { timeout: 15_000 });
 });

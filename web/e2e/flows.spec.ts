@@ -13,8 +13,12 @@ async function loadDemo(page: Page) {
 
 const message = (page: Page) => page.getByLabel('Message', { exact: true });
 
+/** Clicks an agent on the floor, which opens its panel with Instruct and Query at the bottom. */
 async function target(page: Page, name: string) {
-  await page.getByLabel('Send to').selectOption({ label: name });
+  const tag = (await page.locator('.tag', { hasText: name }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
 test('flow a: an instruction reaches an agent straight away', async ({ page }) => {
@@ -59,8 +63,8 @@ test('flow b: instructions to busy Claude agents wait for a checkpoint', async (
 
 test('flow c: a query is answered from the log, with links to the events', async ({ page }) => {
   await loadDemo(page);
-  await page.getByRole('button', { name: 'Query' }).first().click();
   await target(page, 'Ledger');
+  await page.getByRole('button', { name: 'Query' }).click();
   await message(page).fill('How is it going?');
   await page.locator('.cmdbar').getByRole('button', { name: 'Ask', exact: true }).click();
   const panel = page.getByRole('complementary', { name: 'Agent details' });
@@ -74,19 +78,6 @@ test('flow c: a query is answered from the log, with links to the events', async
   await expect(answer).toBeHidden();
 });
 
-test('a question to everyone shows the whole team', async ({ page }) => {
-  await loadDemo(page);
-  await page.getByRole('button', { name: 'Query' }).first().click();
-  await target(page, 'Everyone');
-  await message(page).fill('Status?');
-  await page.locator('.cmdbar').getByRole('button', { name: 'Ask', exact: true }).click();
-  const popover = page.locator('.popover');
-  await expect(popover).toContainText('No agent was interrupted.');
-  await expect(popover).toContainText('Ledger');
-  await popover.getByRole('button', { name: 'Close' }).click();
-  await expect(popover).toBeHidden();
-});
-
 test('flow d: approving and denying from the notice board', async ({ page }) => {
   await loadDemo(page);
   await page.locator('.bitem').click();
@@ -97,7 +88,8 @@ test('flow d: approving and denying from the notice board', async ({ page }) => 
   await card.getByRole('button', { name: 'Allow once' }).click();
   await expect(card).toBeHidden();
   await expect(page.getByText('Atlas is continuing')).toBeVisible();
-  await expect(page.locator('.board')).toContainText('Nothing waiting. Nice.');
+  // Nothing is waiting, so the card goes back to a grey bell.
+  await expect(page.getByRole('button', { name: 'Nothing needs approval' })).toBeVisible();
   await page.getByRole('link', { name: 'Activity log' }).click();
   await expect(page.locator('tr', { hasText: 'db:migrate' })).toContainText('Allowed');
 });
@@ -157,41 +149,27 @@ test('approving everything needs the box ticked', async ({ page }) => {
   await dialog.getByText('I understand agents can delete files').click();
   await confirm.click();
   await expect(page.getByText('Auto approve is on. 1 waiting approval was approved')).toBeVisible();
-  await expect(page.locator('.board')).toContainText('Nothing waiting. Nice.');
+  await expect(page.getByRole('button', { name: 'Nothing needs approval' })).toBeVisible();
 });
 
-test('flow f: auto dispatch sends to the best agent and says who', async ({ page }) => {
+test('Instruct and Query live in the agent panel and address that agent', async ({ page }) => {
   await loadDemo(page);
-  await message(page).fill('the invoice rounding is wrong');
-  await page.getByRole('button', { name: 'Send instruction' }).click();
-  await expect(page.getByText(/Mabari sent it to Ledger/)).toBeVisible();
-  await expect(page.getByRole('complementary', { name: 'Agent details' })).toContainText('Ledger');
-  await expect(page.getByLabel('Send to')).toHaveValue('selected');
-});
-
-test('the command bar is the only composer and targets the selected agent', async ({ page }) => {
-  await loadDemo(page);
-  const box = (await page.locator('.tag', { hasText: 'Scout' }).boundingBox())!;
-  await page.mouse.click(box.x + box.width / 2, box.y - 24);
+  // No message bar under the office until an agent is chosen, and none after.
+  await expect(page.locator('.cmdbar')).toHaveCount(0);
+  await target(page, 'Scout');
   const panel = page.getByRole('complementary', { name: 'Agent details' });
-  await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
-  await expect(panel.getByRole('textbox')).toHaveCount(0);
-  await expect(panel.getByRole('group', { name: 'Message type' })).toHaveCount(0);
+  await expect(panel.locator('.cmdbar')).toHaveCount(1);
+  await expect(panel.getByRole('group', { name: 'Message type' })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Interrupt' })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Stop' })).toBeVisible();
-  await expect(page.getByLabel('Send to')).toHaveValue('selected');
+  await expect(page.getByLabel('Send to')).toHaveCount(0);
   await expect(message(page)).toHaveAttribute('placeholder', 'Tell Scout what to do');
   await message(page).fill('Look at the docs');
   await page.getByRole('button', { name: 'Send instruction' }).click();
   await expect(page.getByText('Sent to Scout')).toBeVisible();
   await expect(panel.locator('.fe').first()).toContainText('Received: Look at the docs');
-});
-
-test('the Send to picker selects the agent it names', async ({ page }) => {
-  await loadDemo(page);
-  await target(page, 'Scout');
-  const panel = page.getByRole('complementary', { name: 'Agent details' });
-  await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cmdbar')).toHaveCount(0);
 });
 
 test('escape closes an open approval card', async ({ page }) => {
@@ -205,9 +183,10 @@ test('escape closes an open approval card', async ({ page }) => {
 
 test('escape closes one layer at a time', async ({ page }) => {
   await loadDemo(page);
-  await target(page, 'Atlas');
+  // Atlas needs an approval, so choosing it opens the card over its panel.
+  const tag = (await page.locator('.tag', { hasText: 'Atlas' }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
-  await panel.getByRole('button', { name: 'Review' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();

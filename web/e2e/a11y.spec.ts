@@ -14,7 +14,8 @@ const SCREENS = [
   '#accounts',
   '#activity',
   '#preferences',
-  '#states',
+  '#builder',
+  '#components',
 ];
 
 async function audit(page: Page) {

@@ -129,34 +129,6 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   }
 }
 
-function renderBoard(board: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {
-  const ui = useOfficeUi.getState();
-  const waiting = agents.filter(
-    (agent) => agent.state === 'approval' && inScope(agent, ui, agents),
-  );
-  const items = waiting.map((agent) => {
-    const { detail, type } = agent.approval ?? { detail: { cmd: '', path: '' }, type: '' };
-    // The prototype's apSum: the command, the plan's project, or the file.
-    const summary =
-      type === 'command'
-        ? detail.cmd
-        : type === 'plan'
-          ? `Approve the plan for ${detail.project ?? ''}`
-          : `Edit ${detail.path}`;
-    return `<button class="bitem" type="button" data-review="${esc(agent.approval?.id ?? '')}"><i></i><span><b>${esc(agent.name)}</b>: ${esc(summary ?? '')}</span>Review</button>`;
-  });
-  setHtml(
-    board,
-    `<h4><span>Needs approval</span>${waiting.length ? `<span class="badge">${waiting.length}</span>` : ''}</h4>${items.join('') || '<span class="bempty">Nothing waiting. Nice.</span>'}`,
-  );
-  const spotlit = ui.selected !== null && ui.spotlight && !ui.team;
-  board.hidden = !!ui.team || spotlit;
-  const point = scene.screenOf({ x: 8 * 32, y: 8 });
-  board.style.left = `${point.x}px`;
-  board.style.top = `${point.y}px`;
-  board.style.width = `${Math.max(200, 6 * 32 * scene.matrix().a)}px`;
-}
-
 function renderReadout(readout: HTMLElement, agents: LiveAgent[], selected: LiveAgent | null) {
   const ui = useOfficeUi.getState();
   let rows: [string, string][];
@@ -327,7 +299,6 @@ function renderSpotlight(
 
 export interface OverlayElements {
   tags: HTMLElement;
-  board: HTMLElement;
   readout: HTMLElement;
   spotlight: HTMLElement;
   hint: HTMLElement | null;
@@ -355,7 +326,6 @@ export function renderOverlays(
   const shown = walker && inScope(walker, ui, agents) && matches(walker, ui) ? walker : null;
   renderTags(elements.tags, scene, agents);
   scaleTags(elements.tags, scene);
-  renderBoard(elements.board, scene, agents);
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());
   if (elements.hint) elements.hint.hidden = walker !== null;

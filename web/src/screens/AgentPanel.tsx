@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
+import { send } from '../office/send.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
 import { openThread, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import {
@@ -13,6 +14,7 @@ import {
   providers,
   type ProviderName,
 } from '../shared/tokens.ts';
+import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
@@ -496,6 +498,92 @@ function Banners({ agent }: { agent: LiveAgent }) {
   );
 }
 
+/**
+ * Instruct and Query live at the bottom of the panel and always address the agent it shows.
+ * Instruct goes into the agent's session; Query is answered from Mabari's log.
+ */
+function MessageBox({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
+  const listening = useVoice((state) => state.phase === 'listen');
+  const mode = useOfficeUi((state) => state.mode);
+  const set = useOfficeUi((state) => state.set);
+  const [text, setText] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  const instruct = mode === 'instruct';
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const message = text.trim();
+    if (!message) {
+      input.current?.focus();
+      return;
+    }
+    setText('');
+    void send(message, mode, agent.id, office);
+  };
+  return (
+    <div className="cmdbar inpanel" id="cmdBar">
+      <form className="cmdrow" autoComplete="off" onSubmit={submit}>
+        <div className="seg modeseg" role="group" aria-label="Message type">
+          <button
+            type="button"
+            className={instruct ? 'ins on' : 'ins'}
+            aria-pressed={instruct}
+            onClick={() => set({ mode: 'instruct' })}
+          >
+            <Icon>
+              <path d="M4 12h12M12 6l6 6-6 6" />
+            </Icon>
+            Instruct
+          </button>
+          <button
+            type="button"
+            className={instruct ? 'qry' : 'qry on'}
+            aria-pressed={!instruct}
+            onClick={() => set({ mode: 'query' })}
+          >
+            <Icon>
+              <path d="M9 9a3 3 0 1 1 4 2.8c-.6.3-1 .9-1 1.6V14M12 18h.01" />
+            </Icon>
+            Query
+          </button>
+        </div>
+        <div className={instruct ? 'cmdin' : 'cmdin qry'}>
+          <label className="sr" htmlFor="cmdText">
+            Message
+          </label>
+          <input
+            id="cmdText"
+            ref={input}
+            value={text}
+            placeholder={
+              instruct
+                ? `Tell ${agent.name} what to do`
+                : `Ask what ${agent.name} is doing. Answered from the log`
+            }
+            onChange={(event) => setText(event.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className={listening ? 'mic live' : 'mic'}
+          aria-label="Hold to talk"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            useVoice.getState().start(office);
+          }}
+        >
+          <Icon>
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </Icon>
+        </button>
+        <button type="submit" className={`btn sendbtn ${instruct ? 'ins' : 'qry'}`}>
+          {instruct ? 'Send instruction' : 'Ask'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function Foot({ agent }: { agent: LiveAgent }) {
   const [confirming, setConfirming] = useState(false);
   const set = useOfficeUi((state) => state.set);
@@ -520,18 +608,33 @@ function Foot({ agent }: { agent: LiveAgent }) {
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            className="btn"
-            title="Pause after the current tool call and wait for you"
-            disabled={agent.state === 'paused'}
-            onClick={() => void api.agentAction(agent.id, 'interrupt')}
-          >
-            <Icon>
-              <path d="M9 5v14M15 5v14" />
-            </Icon>
-            Interrupt
-          </button>
+          {agent.state === 'paused' ? (
+            <button
+              type="button"
+              className="btn primary"
+              aria-pressed="true"
+              title="Continue from where it stopped"
+              onClick={() => void api.agentAction(agent.id, 'continue')}
+            >
+              <Icon>
+                <path d="M7 5l11 7-11 7z" />
+              </Icon>
+              Continue
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              aria-pressed="false"
+              title="Pause after the current tool call and wait for you"
+              onClick={() => void api.agentAction(agent.id, 'interrupt')}
+            >
+              <Icon>
+                <path d="M9 5v14M15 5v14" />
+              </Icon>
+              Interrupt
+            </button>
+          )}
           <button
             type="button"
             className="btn danger-out"
@@ -557,6 +660,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
   const project = office.projects.find((item) => item.id === agent.projectId);
   const lead = office.agents.find((item) => item.id === agent.leadId);
   const subagents = office.agents.filter((item) => item.leadId === agent.id);
+  const builtFrom = agent.defId ? office.defs?.find((def) => def.id === agent.defId) : undefined;
   const chipClass = STATE_CHIPS[agent.state];
   const tabs: [Tab, string][] = [
     ['live', 'Live'],
@@ -635,6 +739,14 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
               Helper of <b>{lead.name}</b>
             </span>
           ) : null}
+          {builtFrom ? (
+            <span>
+              Built from{' '}
+              <a href="#builder" className="mono" style={{ color: 'var(--fg)', fontWeight: 700 }}>
+                {builtFrom.name}
+              </a>
+            </span>
+          ) : null}
           {subagents.length ? (
             <span>
               Helpers <b>{subagents.map((item) => item.name).join(', ')}</b>
@@ -679,6 +791,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         {tab === 'chats' ? <Chats agent={agent} office={office} /> : null}
       </div>
       <Foot agent={agent} key={agent.id} />
+      <MessageBox agent={agent} office={office} key={`m-${agent.id}`} />
       {dialog === 'settings' ? (
         <AgentSettingsDialog
           agent={agent}

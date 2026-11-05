@@ -27,6 +27,22 @@ export const VEE_HELLO: VeeReply = {
   relay: null,
 };
 
+export interface MabariUpdate {
+  id: number;
+  text: string;
+  at: number;
+}
+
+const UPDATES_KEPT = 30;
+let nextUpdate = 1;
+
+/** In full screen Home can't be seen, so Mabari's news also shows as a toast. */
+function toastInFullscreen(text: string) {
+  if (typeof document !== 'undefined' && document.body.classList.contains('ofs')) {
+    useOfficeStore.getState().toast(`Mabari: ${text}`);
+  }
+}
+
 interface VeeStore {
   state: VeeState;
   said: VeeReply;
@@ -39,6 +55,8 @@ interface VeeStore {
   unread: number;
   /** True while Home is on screen. */
   onHome: boolean;
+  /** Mabari's latest messages, newest last, for the updates button in full screen. */
+  updates: MabariUpdate[];
   play: (name: string) => void;
   say: (reply: VeeReply, queued?: boolean) => void;
   hear: (text: string) => Promise<void>;
@@ -130,11 +148,17 @@ export const useVee = create<VeeStore>((set, get) => ({
   relays: [],
   unread: 0,
   onHome: false,
+  updates: [],
   play: (name) => {
     const gesture = VEE_GESTURES[name];
     if (gesture) set({ gesture: { name, start: performance.now(), dur: gesture.dur } });
   },
   say: (reply, queued = false) => {
+    set((state) => ({
+      updates: [...state.updates, { id: nextUpdate++, text: reply.text, at: Date.now() }].slice(
+        -UPDATES_KEPT,
+      ),
+    }));
     set({
       said: reply,
       state: 'talk',
@@ -167,7 +191,10 @@ export const useVee = create<VeeStore>((set, get) => ({
   setOnHome: (on) => set(on ? { onHome: true, unread: 0 } : { onHome: false }),
   post: (text, gesture = 'nod') => {
     get().say({ ...VEE_HELLO, text, gesture, kind: '' }, true);
-    if (!get().onHome) set((state) => ({ unread: state.unread + 1 }));
+    if (!get().onHome) {
+      set((state) => ({ unread: state.unread + 1 }));
+      toastInFullscreen(text);
+    }
   },
   reset: () => {
     window.speechSynthesis?.cancel();
@@ -180,6 +207,7 @@ export const useVee = create<VeeStore>((set, get) => ({
       talkUntil: 0,
       relays: [],
       unread: 0,
+      updates: [],
     });
   },
   settle: (now) => {
@@ -204,7 +232,10 @@ function relay(item: Relay, reply: string) {
     },
     true,
   );
-  if (!store.onHome) useVee.setState((state) => ({ unread: state.unread + 1 }));
+  if (!store.onHome) {
+    useVee.setState((state) => ({ unread: state.unread + 1 }));
+    toastInFullscreen(line.text);
+  }
 }
 
 /**

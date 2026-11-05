@@ -27,6 +27,8 @@ interface OfficeUi extends OfficeFilters {
   newAgent: { desk?: number; project?: string } | null;
   /** The New project chat. */
   newProject: boolean;
+  /** Full screen's panel of Mabari's latest updates. */
+  mabariUpdates: boolean;
   mode: MessageMode;
   /** "auto", "selected", "everyone" or an agent id. */
   target: string;
@@ -71,6 +73,7 @@ const FRESH_VIEW = {
   autoBanner: false,
   newAgent: null,
   newProject: false,
+  mabariUpdates: false,
   target: 'auto',
   panelTab: 'live',
   highlight: null,

@@ -51,14 +51,14 @@ for (const [width, height] of [
     await page.setViewportSize({ width, height });
     await loadDemo(page);
     const stage = (await page.locator('.stage').boundingBox())!;
-    const bar = (await page.locator('.obar2').boundingBox())!;
+    const head = (await page.locator('.ohead').boundingBox())!;
     const main = (await page.locator('main').boundingBox())!;
-    expect(stage.y).toBe(bar.y + bar.height);
+    // The office sits right under the header and runs to the bottom: no bar under it.
+    expect(stage.y).toBeCloseTo(head.y + head.height, 0);
     expect(stage.x).toBe(main.x);
     expect(stage.x + stage.width).toBe(main.x + main.width);
-    const commands = (await page.locator('.cmdbar').boundingBox())!;
-    expect(stage.y + stage.height).toBe(commands.y);
-    expect(commands.y + commands.height).toBe(height);
+    expect(stage.y + stage.height).toBeCloseTo(height, 0);
+    await expect(page.locator('.cmdbar')).toHaveCount(0);
   });
 }
 
@@ -156,6 +156,8 @@ test('the keyboard and the wheel zoom the office', async ({ page }) => {
 
 test('shortcuts leave text boxes alone', async ({ page }) => {
   await loadDemo(page);
+  const tag = (await page.locator('.tag', { hasText: 'Scout' }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   const box = page.getByLabel('Message', { exact: true });
   await box.fill('');
   await box.press('=');
@@ -165,27 +167,86 @@ test('shortcuts leave text boxes alone', async ({ page }) => {
   await expect(page.locator('#fsBtn')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('full screen keeps the floor, the command bar and the panel', async ({ page }) => {
+test('full screen hides only the top bar and the menu, and every control keeps working', async ({
+  page,
+}) => {
   await loadDemo(page);
   const button = page.locator('#fsBtn');
   await expect(button).toHaveAttribute('title', 'Full screen (F)');
+  await expect(page.getByRole('button', { name: 'Exit full screen' })).toBeHidden();
+  await expect(page.getByRole('button', { name: "Mabari's updates" })).toBeHidden();
   await page.keyboard.press('f');
   await expect(page.locator('body')).toHaveClass(/ofs/);
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   await expect(button).toHaveAttribute('title', 'Exit full screen (F or Esc)');
   await expect(page.locator('.rail')).toBeHidden();
   await expect(page.locator('.topbar')).toBeHidden();
-  await expect(page.locator('.ohead')).toBeHidden();
-  await expect(page.locator('#floor')).toBeVisible();
-  await expect(page.locator('.cmdbar')).toBeVisible();
-  await page.keyboard.press('f');
+  // The header stays, compact, with all of its controls.
+  const head = page.locator('.ohead');
+  await expect(head).toBeVisible();
+  for (const name of [
+    'Auto approve',
+    'New project',
+    'Exit full screen',
+    "Mabari's updates",
+    'Colour key',
+  ]) {
+    await expect(head.getByRole('button', { name })).toBeVisible();
+  }
+  await head.getByRole('button', { name: 'Needs me' }).click();
+  await expect(head.getByRole('button', { name: 'Needs me' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await head.getByRole('button', { name: 'Everyone' }).click();
+  // The wall bar, filters, bell and zoom tools work too.
+  await page.getByRole('button', { name: 'Speech bubbles' }).click();
+  await expect(page.getByRole('button', { name: 'Speech bubbles' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await page.getByRole('button', { name: 'Speech bubbles' }).click();
+  await page.getByRole('button', { name: 'Minimise' }).click();
+  await expect(page.getByRole('button', { name: '1 approval waiting' })).toBeVisible();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.locator('#zoomPct')).toHaveText('125%');
+  // Mabari's updates open from the header, and lead back to Home.
+  await head.getByRole('button', { name: "Mabari's updates" }).click();
+  const updates = page.getByRole('dialog', { name: "Mabari's updates" });
+  await expect(updates).toContainText('Open the chat with Mabari');
+  // The agent panel and its message box work.
+  const tag = (await page.locator('.tag', { hasText: 'Scout' }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel.locator('.cmdbar')).toBeVisible();
+  await head.getByRole('button', { name: 'Exit full screen' }).click();
   await expect(page.locator('body')).not.toHaveClass(/ofs/);
+});
+
+test('in full screen Mabari counts its updates and opens the chat on Home', async ({ page }) => {
+  await loadDemo(page);
+  await page.keyboard.press('f');
+  await page.evaluate(() =>
+    fetch('/api/vee', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'tell Scout to add the pricing pages' }),
+    }),
+  );
+  // The relay arrives while Home can't be seen: a count on the button and a toast.
+  const updatesButton = page.getByRole('button', { name: "Mabari's updates" });
+  await updatesButton.click();
+  const updates = page.getByRole('dialog', { name: "Mabari's updates" });
+  await updates.getByRole('button', { name: 'Open the chat with Mabari' }).click();
+  await expect(page.locator('body')).not.toHaveClass(/ofs/);
+  await expect(page).toHaveURL(/#home$/);
 });
 
 test('escape leaves full screen last', async ({ page }) => {
   await loadDemo(page);
   await page.keyboard.press('f');
-  await page.getByLabel('Send to').selectOption({ label: 'Scout' });
+  const tag = (await page.locator('.tag', { hasText: 'Scout' }).first().boundingBox())!;
+  await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel).toBeVisible();
   await page.locator('h2', { hasText: 'Scout' }).click();

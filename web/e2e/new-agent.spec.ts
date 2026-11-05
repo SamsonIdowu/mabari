@@ -17,7 +17,13 @@ async function loadDemo(page: Page) {
 /** Where a point in the office is on screen at 100% zoom. */
 async function onScreen(page: Page, point: { x: number; y: number }) {
   const box = (await page.locator('#floor').boundingBox())!;
-  const scale = Math.min(box.width / WORLD.width, box.height / WORLD.height);
+  // The office covers the view when the shapes are within 10%, and fits inside otherwise.
+  const across = box.width / WORLD.width;
+  const down = box.height / WORLD.height;
+  const scale =
+    Math.max(across, down) / Math.min(across, down) <= 1.1
+      ? Math.max(across, down)
+      : Math.min(across, down);
   return {
     x: box.x + (box.width - WORLD.width * scale) / 2 + point.x * scale,
     y: box.y + (box.height - WORLD.height * scale) / 2 + point.y * scale,
@@ -26,10 +32,18 @@ async function onScreen(page: Page, point: { x: number; y: number }) {
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Create a new agent' });
 
+/** The Agents page has no New agent button now (the builder is where agents are made), so the
+ * dialog is opened from Accounts. Creating an agent there takes you to the office. */
+async function openNewAgent(page: Page) {
+  await page.goto('/#accounts');
+  await page.getByRole('button', { name: 'New agent' }).click();
+  await expect(dialog(page)).toBeVisible();
+}
+
 test('New agent replaces Start agent everywhere', async ({ page }) => {
   await loadDemo(page);
-  await expect(page.locator('.ohead').getByRole('button', { name: 'New agent' })).toBeEnabled();
-  for (const route of ['#office', '#projects', '#accounts', '#states']) {
+  await expect(page.locator('.ohead').getByRole('button', { name: 'New agent' })).toHaveCount(0);
+  for (const route of ['#office', '#projects', '#accounts']) {
     await page.goto(`/${route}`);
     await expect(page.locator('main')).not.toContainText(/Start (an )?agent/);
   }
@@ -40,7 +54,7 @@ test('New agent replaces Start agent everywhere', async ({ page }) => {
 
 test('creates an agent that walks into the office', async ({ page }) => {
   await loadDemo(page);
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   const form = dialog(page);
   await form.getByLabel('Name').fill('Juniper');
   await form.getByLabel('Instructions').fill('Keep the docs tidy');
@@ -53,7 +67,7 @@ test('creates an agent that walks into the office', async ({ page }) => {
 
 test('a role fills the form without overwriting what you typed', async ({ page }) => {
   await loadDemo(page);
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   const form = dialog(page);
   await expect(form.locator('.rolebtn b')).toHaveText([
     'Coder',
@@ -86,13 +100,13 @@ test('a role fills the form without overwriting what you typed', async ({ page }
 
 test('a role picks a free name', async ({ page }) => {
   await loadDemo(page);
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   await dialog(page)
     .getByRole('button', { name: /^Coder/ })
     .click();
   await dialog(page).getByRole('button', { name: 'Create agent' }).click();
   await expect(page.locator('.tag .nt', { hasText: 'Juniper' })).toBeVisible();
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   await dialog(page)
     .getByRole('button', { name: /^Coder/ })
     .click();
@@ -101,34 +115,27 @@ test('a role picks a free name', async ({ page }) => {
 
 test('the server turns down a name already in use', async ({ page }) => {
   await loadDemo(page);
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   const form = dialog(page);
   await form.getByLabel('Name').fill('Ledger');
   await form.getByRole('button', { name: 'Create agent' }).click();
   await expect(form.getByRole('alert')).toContainText('There is already an agent called Ledger.');
 });
 
-test('clicking an empty desk opens the dialog for that desk', async ({ page }) => {
+test('clicking an empty desk does nothing: the builder is where agents are made', async ({
+  page,
+}) => {
   await loadDemo(page);
   const desk = await onScreen(page, EMPTY_DESK);
   await page.mouse.move(desk.x, desk.y);
-  await expect(page.locator('#floor')).toHaveCSS('cursor', 'pointer');
-  await expect(page.locator('#floor')).toHaveAttribute('title', 'Create a new agent at this desk');
-  await page.mouse.click(desk.x, desk.y);
-  const form = dialog(page);
-  await expect(form).toContainText('It walks in and takes desk 16.');
-  await expect(form.getByLabel('Desk')).toHaveValue('');
-  await form.getByLabel('Name').fill('Juniper');
-  await form.getByRole('button', { name: 'Create agent' }).click();
-  await expect(form).toBeHidden();
-  await expect(page.locator('.tag .nt', { hasText: 'Juniper' })).toBeVisible();
-  await page.mouse.move(desk.x, desk.y);
   await expect(page.locator('#floor')).not.toHaveCSS('cursor', 'pointer');
+  await page.mouse.click(desk.x, desk.y);
+  await expect(dialog(page)).toBeHidden();
 });
 
 test('the model starts on the agent settings and follows a lead', async ({ page }) => {
   await loadDemo(page);
-  await page.locator('.ohead').getByRole('button', { name: 'New agent' }).click();
+  await openNewAgent(page);
   const model = dialog(page).getByLabel('Model');
   await expect(model.locator('option').first()).toHaveText(/^From agent settings \(.+\)$/);
   await dialog(page)

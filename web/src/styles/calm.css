@@ -218,6 +218,49 @@ body.notes .note.inline {
   padding-top: 4px !important;
   padding-bottom: 10px !important;
 }
+/* One row header: title, filters, then actions. Two rows when it would not fit. */
+.obar2.inhead {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0;
+  background: none;
+  flex-wrap: nowrap;
+  zoom: 1;
+  order: 2;
+  gap: 10px 12px !important;
+}
+.ohead {
+  flex-wrap: nowrap !important;
+  border-bottom: 0;
+  padding: 10px 20px !important;
+}
+.ohead .ohtitle {
+  flex: none;
+  order: 1;
+}
+.ohead .ohact {
+  flex: none;
+  order: 3;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+.ohead.stack {
+  flex-wrap: wrap !important;
+  row-gap: 10px !important;
+}
+.ohead.stack .ohact {
+  order: 2;
+  margin-left: auto;
+}
+.ohead.stack .obar2.inhead {
+  order: 3;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+}
+.obar2.inhead .note.inline {
+  display: none;
+}
 .panel {
   width: 440px;
 }
@@ -233,13 +276,15 @@ section[data-screen='home'] {
   height: 100%;
   zoom: 1 !important;
 }
+/* Greeting, Mabari and the chat box are centred as one group, with clear space below. */
 .home2 {
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 32px 18px;
-  gap: 6px;
+  justify-content: center;
+  padding: 20px 32px 48px;
+  gap: 10px;
   min-height: 0;
 }
 .h2head {
@@ -260,8 +305,9 @@ section[data-screen='home'] {
 }
 .h2stage {
   position: relative;
-  flex: 1;
-  min-height: 0;
+  flex: 0 1 auto;
+  height: min(54vh, 480px);
+  min-height: 260px;
   width: 100%;
   max-width: 1100px;
 }
@@ -339,6 +385,7 @@ section[data-screen='home'] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 28px;
 }
 .yousaid {
   align-self: center;
@@ -488,12 +535,31 @@ body.ofs .app {
   grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: minmax(0, 1fr) !important;
 }
+/* Full screen hides only the top bar and the menu. The header stays, compact, with every control. */
 body.ofs .topbar,
 body.ofs .rail,
-body.ofs .ohead,
-body.ofs .obar2,
 body.ofs #hookBanner {
   display: none !important;
+}
+body.ofs .klbl {
+  display: none;
+}
+body.ofs #ddKey {
+  padding: 0 8px;
+}
+body.ofs .ohtitle .help {
+  display: none;
+}
+body.ofs .ohead {
+  gap: 10px !important;
+  padding: 8px 16px !important;
+}
+body.ofs .ohact {
+  gap: 8px;
+}
+body.ofs .ohead h1,
+body.ofs #oTitle {
+  font-size: 24px;
 }
 /* projects: lighter borders */
 section[data-screen='projects'] .card {

@@ -31,9 +31,25 @@ export function clampView(view: View): View {
   };
 }
 
-/** Fits the whole office into the canvas, centred. The floor is extended to fill what's left. */
+/** Within this ratio of shapes the office covers the view instead of fitting inside it. */
+const COVER_WITHIN = 1.1;
+
+/**
+ * The scale that shows the office at 100%. When the view and the office are nearly the same shape
+ * (10% or less apart) it covers the view, trimming a little of the outer walls, so no empty bands
+ * show. Otherwise it fits inside and the floor is extended to fill what's left.
+ */
+export function fitScale(size: Size): number {
+  const across = size.width / W;
+  const down = size.height / H;
+  const low = Math.min(across, down);
+  const high = Math.max(across, down);
+  return high / low <= COVER_WITHIN ? high : low;
+}
+
+/** Shows the office in the canvas, centred, at fitScale times the zoom. */
 export function viewMatrix(view: View, size: Size): Matrix {
-  const fit = Math.min(size.width / W, size.height / H);
+  const fit = fitScale(size);
   const offsetX = (size.width - W * fit) / 2;
   const offsetY = (size.height - H * fit) / 2;
   return {

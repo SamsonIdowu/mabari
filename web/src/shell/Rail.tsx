@@ -32,7 +32,12 @@ function LiveBadge() {
     const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
   }, [last]);
-  return live ? <span className="badge amber">live</span> : null;
+  // Decorative: the link's name already says what it is, and "live" only means "just now".
+  return live ? (
+    <span className="badge amber" aria-hidden="true">
+      live
+    </span>
+  ) : null;
 }
 
 function NavLink({ item, current }: { item: NavItem; current: Route | null }) {

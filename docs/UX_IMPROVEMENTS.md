@@ -4,7 +4,7 @@ Four testers drove a real browser through Mabari at commit `f5b28a2`, each on it
 
 Finding ids are kept from the testers' reports so each fix traces back. Every item below was read against the code and the prototype. Where that changed a finding, the item says so.
 
-**Status key:** `open`, `built, merged` (waiting for the browser re-test), `done`, or `no change` with a reason. The tracker at the end is the record.
+**Status key:** `open`, `done`, or `no change` with a reason. The tracker at the end is the record.
 
 ## Decisions made in this round
 
@@ -129,6 +129,31 @@ Owner: web and server. These came out of packages A to E and the merged test run
 | NEW-10 | low | A tester's click on Sage missed while its question bubble showed. | Find out if bubbles swallow clicks on the sprite. If so, fix it. | A test clicks an agent showing a question bubble and its panel opens. |
 | NEW-11 | low | The wall bar has four project slots, so a fifth project has no card and no sign that it exists. | Check the prototype. Show a quiet "+N" that opens Projects, unless the prototype settles it otherwise. | Covered by a test, or `no change` with the reason. |
 
+## Work package G: Found by the re-test and review
+
+Owner: web and server. Independent testers re-tested every finding in a browser on a new build, and a reviewer read the merged diff. These are what they found. `RT` items came from testers and `REV` items from the review.
+
+| ID | Sev | Problem | Required change | Done when |
+|---|---|---|---|---|
+| RT-1 (reopens FIRST-5) | medium | While an instruction is queued the header says "6 working" and the list shows WORKING 5 plus QUEUED 1. An agent with both a question and a queued instruction also drops ` · 1 queued` from the header. | Header and groups must reconcile at every instant. Count a queued agent in one place only, and show the queued count for every agent with a queued instruction. | A test asserts the sum with a queued agent, and with one that has a question as well. |
+| RT-2 (extends DAILY-7) | medium | An agent created with "No project" is filed under Checkout revamp, because its folder is that project's folder. | An explicit "No project" from the dialog wins over matching by folder. | An API test creates one in a project's folder and it stays unfiled. |
+| RT-3 | medium | After "Make Mabari the default agent", a wipe removes the hooks but leaves `"agent": "mabari"` in `settings.json`. | Wipe removes it, only when it is Mabari's own value. Keep rule 5: back up first, and never touch another value. | Test against a scratch `CLAUDE_CONFIG_DIR`. |
+| RT-4 | low | Home with only an API key saved shows no `Connect an account`, although agents can't run on a key. | Show it whenever no connected account can start an agent. | Covered by a test. |
+| RT-5 | low | The Settings wipe confirmation drops focus to `<body>` when it opens and after Cancel, and Escape does nothing. | Focus moves to the confirmation and back to the Wipe button on Cancel. Escape cancels. | Covered by a test. |
+| RT-6 | low | With the demo off and a stale saved filter, the project resets but Models stays "All Claude" over an empty floor. | Drop saved filters that no longer match anything, the same way for both. | Covered by a test. |
+| RT-7 | low | The rail badge reads "Agents , 2 need you", with a stray space. | Remove it, if the markup allows. | Asserted exactly. |
+| RT-8 | low | At 720x450 a wheel over the floor zooms it and can't scroll the page, and the floor fills most of the view. | When the page can scroll, a plain wheel scrolls it and Ctrl or pinch zooms. No change when the page fits. | Covered by a test at 720x450 and at 1440x900. |
+| RT-9 | low | The Colour key is cut by 35 px at 1280x720, with only a faint scroll cue. | Make the cue plain, or make it fit. | Visual check at 1280x720. |
+| RT-10 | low | The Needs approval board covers the lounge agent at 1440x900. | Keep lounge agents clear of it, or make sure they can still be reached. | Asserted by bounding boxes. |
+| RT-11 | low | With 19 agents, six or seven identical "Working out what to do next" bubbles show. | Quiet bubbles with identical text show once per row at most. Never hide approvals, questions, replies or errors. | Covered by a unit test in `bubbles.test.ts`. |
+| REV-1 | medium | Codex: after Deny, the state stays `approval` with no approval card. An instruction sent then is queued, and nothing ever delivers it (`codex/connector.go:631-675`). The agent also still counts as needing you. | Test `agent.Approval != nil` in `Instruct`. Leave `approval` on a decline as well. Always deliver the queue after a decision and at `turn/completed`. | A test denies, instructs and sees it delivered. |
+| REV-2 | medium | `isOurs` matches any binary starting with `mabari`, so a stranger's `mabari-lint hook pre-commit` would be removed. That is against rule 5. | Require Mabari's whole command shape: `hook`, `--port`, a number, optional `--token-file`, then an event from `hookEvents`, plus the name or configured binary. `mabari-run` keeps working, and stale paths are still replaced. | Tests cover `mabari-lint hook pre-commit` kept, `mabari-run` and an old path recognised. |
+| REV-3 | low | Offline, an approval says "was not sent. The approval is still waiting", which is untrue if only the response was lost. | Say "may not have been sent" and point to where to check, or re-read before claiming. | Wording test. |
+| REV-4 | low | `bubbles.ts:130`: the one-line variant can overlap a tag at scale above 1, because `reach` uses only the full box. | Build `reach` from the union of both boxes. | Unit test at scale 1.6. |
+| REV-5 | low | `useEscape` compares a count taken at mount, so after a lower dialog closes, Escape can close two. | Compare positions in the stack. | Covered by a test. |
+| REV-6 | low | `planner.Slug` maps every non-Latin name to `~/code/project`, so two such projects share a folder. | Make the fallback unique. | Covered by a test. |
+| REV-7 | low | `useOfficeSync.reload`: overlapping reloads share `waiting`, and the second can throw and reload again. | Use a reload generation counter. | Covered by a test. |
+
 ## Keep as it is
 
 The testers confirmed these work. Fixes must not regress them.
@@ -145,9 +170,11 @@ The testers confirmed these work. Fixes must not regress them.
 
 | Package | IDs | Status |
 |---|---|---|
-| A | FIRST-1, 2, 3, 7, 8, 9, 11; SETUP-9 (reply), SETUP-11; DAILY-8; NEW-1 | built, merged |
-| B | SETUP-1, 2, 3, 4, 5, 6, 8, 9 (UI), 10, 12; FIRST-10; DAILY-7 | built, merged |
-| C | A11Y-1, 2, 3, 6, 7, 9, 10, 11, 12; DAILY-1; NEW-2 | built, merged |
-| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | built, merged |
-| E | A11Y-4; SETUP-7, 13; DAILY-3, 9, 12, 13; FIRST-12, 13, 14 (times) | built, merged |
-| F | NEW-3 to NEW-11 | open |
+| A | FIRST-1, 2, 3, 7, 8, 9, 11; SETUP-9 (reply), SETUP-11; DAILY-8; NEW-1 | done, browser re-test passed |
+| B | SETUP-1, 2, 3, 4, 5, 6, 8, 9 (UI), 10, 12; FIRST-10; DAILY-7 | done, browser re-test passed |
+| C | A11Y-1, 2, 3, 6, 7, 9, 10, 11, 12; DAILY-1; NEW-2 | done, browser re-test passed |
+| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | done, browser re-test passed, except FIRST-5 (see RT-1) |
+| E | A11Y-4; SETUP-7, 13; DAILY-3, 9, 12, 13; FIRST-12, 13, 14 (times) | done, browser re-test passed |
+| F | NEW-3 to NEW-9, NEW-11 | done, browser re-test passed. NEW-6 is covered by its API test only, because the browser cannot reach that state |
+| F | NEW-10 | no change: bubbles do not take clicks, and a test now pins that |
+| G | RT-1 to RT-11, REV-1 to REV-7 | open |

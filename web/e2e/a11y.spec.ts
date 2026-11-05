@@ -269,3 +269,59 @@ test('every control is a target of at least 24 by 24 px', async ({ page }) => {
   expect(measured, 'something was measured').toBeGreaterThan(50);
   expect(small).toEqual([]);
 });
+
+test('only red and amber ask for attention: the live badge is neutral, question chips outlined', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Explore a demo office' }).click();
+  await expect(page.locator('h1')).toHaveText('Agents');
+
+  // The Chats link says "live" for a few seconds after agents talk. That is not a queued
+  // instruction, so it is not amber.
+  const live = page.locator('.rail .badge', { hasText: 'live' });
+  await expect(live).toBeVisible({ timeout: 30_000 });
+  const badge = await live.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const amber = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.background = 'var(--amber)';
+    document.body.append(probe);
+    const fill = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return fill;
+  });
+  await expect(live).not.toHaveClass(/amber/);
+  expect(badge).not.toBe(amber);
+
+  // A question, from either side, is a ring and not a solid fill; the receiver of anything
+  // else keeps the prototype's fill.
+  const classes = {
+    questionIn: new Set<string>(),
+    questionOut: new Set<string>(),
+    otherIn: new Set<string>(),
+  };
+  await expect
+    .poll(
+      async () => {
+        const chips = await page.evaluate(() =>
+          [...document.querySelectorAll('.mchip:not([hidden])')].map((chip) => ({
+            text: chip.textContent ?? '',
+            className: chip.className,
+          })),
+        );
+        for (const { text, className } of chips) {
+          const incoming = text.startsWith('✉ From');
+          if (text.includes('Question'))
+            (incoming ? classes.questionIn : classes.questionOut).add(className);
+          else if (incoming) classes.otherIn.add(className);
+        }
+        return classes.questionIn.size > 0 && classes.otherIn.size > 0;
+      },
+      { timeout: 40_000 },
+    )
+    .toBe(true);
+  expect([...classes.questionIn]).toEqual(['mchip mc-out']);
+  expect([...classes.otherIn]).toEqual(['mchip mc-in']);
+  for (const className of classes.questionOut) expect(className).toBe('mchip mc-out');
+});

@@ -46,6 +46,12 @@ export interface Chip {
   text: string;
   color: string;
   incoming: boolean;
+  /**
+   * Drawn as a ring, not filled. The prototype fills a receiver's chip, but a filled question
+   * chip is the loudest thing on the floor after red, and only red and amber may ask for
+   * attention. So questions are outlined on both sides.
+   */
+  outlined: boolean;
 }
 
 /** The chip under an agent's name tag while it is sending or receiving a message. */
@@ -63,6 +69,7 @@ export function chipFor(
     text: `${incoming ? '✉ From' : '↗ To'} ${other} · ${kindLabel(message.kind)}`,
     color: kindColor(message.kind),
     incoming,
+    outlined: !incoming || message.kind === 'question',
   };
 }
 

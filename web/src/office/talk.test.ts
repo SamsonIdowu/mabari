@@ -16,13 +16,23 @@ describe('floor messages', () => {
       text: '↗ To Ledger · Question',
       color: '#48DBFB',
       incoming: false,
+      outlined: true,
     });
     expect(chipFor('b', messages, 2000, nameOf)).toEqual({
       text: '✉ From Sage · Question',
       color: '#48DBFB',
       incoming: true,
+      outlined: true,
     });
     expect(chipFor('c', messages, 2000, nameOf)).toBeNull();
+  });
+
+  it('outlines a question on both sides, and fills what a receiver gets of any other kind', () => {
+    const report = [message('1', 1000, 'report')];
+    expect(chipFor('b', report, 2000, nameOf)?.outlined).toBe(false);
+    expect(chipFor('a', report, 2000, nameOf)?.outlined).toBe(true);
+    const question = [message('1', 1000, 'question')];
+    expect(chipFor('b', question, 2000, nameOf)?.outlined).toBe(true);
   });
 
   it('shows the newest message and fades after about 4 seconds', () => {

@@ -59,7 +59,8 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
       <Icon>{item.icon}</Icon>
       <span className="lbl">{item.label}</span>
       {item.badge === 'needs' ? <NeedsBadge /> : null}
-      {live ? <span className="badge amber">live</span> : null}
+      {/* Neutral, not amber: amber means a queued instruction, and only red and amber ask for attention. */}
+      {live ? <span className="badge calm">live</span> : null}
       {item.badge === 'unread' ? <UnreadBadge /> : null}
     </a>
   );

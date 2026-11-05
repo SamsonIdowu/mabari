@@ -89,6 +89,9 @@ type Reply struct {
 	Working  int              `json:"working"`
 	Total    int              `json:"total"`
 	Need     int              `json:"need"`
+	// More is how many working agents a status leaves off its list of Lines, so the list and the
+	// count always add up. It is zero for any other reply.
+	More int `json:"more"`
 	// Target is what a builder reply works on: the agent to improve, or what a new agent should do.
 	Target string `json:"target"`
 	// Relay is set when Mabari passed an instruction on and will relay the reply.
@@ -413,9 +416,14 @@ func shorten(text string) string {
 }
 
 func (o view) agentStatus(agent *models.LiveAgent) Reply {
-	text := agent.Name + " (" + models.AIName(agent) + ") is " +
-		strings.ToLower(models.StateLabels[agent.State]) + ": " + strings.TrimSuffix(agent.Task, ".") + ". " +
-		models.ETALong(agent, o.now) + "."
+	text := agent.Name + " (" + models.AIName(agent) + ") " + models.Doing(agent) + ": " +
+		strings.TrimSuffix(agent.Task, ".") + ". "
+	if agent.State == models.StateError && !agent.Asking() && agent.Error != "" {
+		// The error says more than "Stopped by an error" does.
+		text += strings.TrimSuffix(agent.Error, ".") + "."
+	} else {
+		text += models.ETALong(agent, o.now) + "."
+	}
 	if last, ok := lastReply(agent); ok {
 		text += " Its last reply: " + shorten(last.Reply)
 	}
@@ -575,13 +583,33 @@ func (o view) status() Reply {
 		return o.reply("The office is empty for now. Connect an account or explore the demo office to see agents at work.",
 			"shrug", KindEmpty)
 	}
-	reply := o.reply(strconv.Itoa(len(o.working))+" agents are working"+o.in()+" and "+strconv.Itoa(len(o.need))+" need you.",
-		"point", KindStatus)
-	for _, agent := range o.working[:min(6, len(o.working))] {
+	text := strconv.Itoa(len(o.working)) + " agents are working" + o.in()
+	if len(o.working) == 1 {
+		text = "1 agent is working" + o.in()
+	}
+	switch len(o.need) {
+	case 0:
+	case 1:
+		text += " and 1 needs you"
+	default:
+		text += " and " + strconv.Itoa(len(o.need)) + " need you"
+	}
+	text += "."
+	listed := o.working[:min(statusListed, len(o.working))]
+	reply := o.reply(text, "point", KindStatus)
+	// A long list is cut, and says by how much, so the count and the list always reconcile.
+	if reply.More = len(o.working) - len(listed); reply.More > 0 {
+		reply.Text += " Here are " + strconv.Itoa(len(listed)) + " of them, and " + strconv.Itoa(reply.More) + " more."
+	}
+	for _, agent := range listed {
 		reply.Lines = append(reply.Lines, o.line(agent))
 	}
 	return reply
 }
+
+// statusListed is the most agents the status lists, as in the prototype. Past it, the reply says
+// how many more are working.
+const statusListed = 6
 
 // WorkflowLabel is how Mabari's lines name a workflow sub-agent.
 const WorkflowLabel = "workflow sub-agent"

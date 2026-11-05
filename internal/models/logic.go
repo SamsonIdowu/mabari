@@ -35,6 +35,24 @@ var StateLabels = map[AgentState]string{
 	StatePaused:   "Interrupted",
 }
 
+// StatePhrases say what an agent is doing in a sentence, after its name: "Atlas is waiting for your
+// approval", "Mori hit an error". StateLabels are for chips and headings, where "Needs approval"
+// and "Error" read well but "Atlas is needs approval" does not. Every state has one: a test
+// compares the two maps.
+var StatePhrases = map[AgentState]string{
+	StateThinking: "is thinking",
+	StateReading:  "is reading files",
+	StateEditing:  "is editing",
+	StateRunning:  "is running tests",
+	StateBrowsing: "is browsing",
+	StateApproval: "is waiting for your approval",
+	StateSpawning: "is starting a subagent",
+	StateIdle:     "is idle",
+	StateDone:     "is done",
+	StateError:    "hit an error",
+	StatePaused:   "was interrupted",
+}
+
 // Models lists the demo office's models for each account kind.
 var Models = map[AccountKind][]string{
 	AccountCodex:        {"gpt-5-codex", "gpt-5", "gpt-5-mini"},
@@ -166,6 +184,19 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 		return "Paused. What should I do?", ""
 	}
 	return "", ""
+}
+
+// Doing is what the agent is doing as a phrase after its name: "is editing", "is waiting for your
+// approval", "is asking you a question". An agent waiting on your answer says so whatever it was
+// doing when it asked.
+func Doing(a *LiveAgent) string {
+	if a.Asking() {
+		return "is asking you a question"
+	}
+	if phrase, ok := StatePhrases[a.State]; ok {
+		return phrase
+	}
+	return "is " + strings.ToLower(string(a.State))
 }
 
 // ETALong is the estimate in plain words, as the panel and answers say it.

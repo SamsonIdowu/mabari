@@ -4,6 +4,7 @@ package vee
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -125,5 +126,68 @@ func TestEverySuggestionIsUnderstood(t *testing.T) {
 				t.Errorf("%d agents: suggested %q, got %q %q", len(agents), phrase, reply.Kind, reply.Text)
 			}
 		}
+	}
+}
+
+// Mabari speaks in sentences about each state: nobody "is needs approval" or "is error".
+func TestAgentStatusReadsAsASentence(t *testing.T) {
+	agents := office()
+	want := map[string]string{
+		"Atlas": "Atlas (Custom AI) is waiting for your approval: Do Atlas's work. Paused until you decide on the approval.",
+		"Mori":  "Mori (Custom AI) hit an error: Do Mori's work. Lost the connection.",
+		"Pixel": "Pixel (Custom AI) is idle: Do Pixel's work. No task right now.",
+	}
+	for name, sentence := range want {
+		reply := Answer("what is "+name+" doing?", agents, now)
+		if reply.Text != sentence {
+			t.Errorf("%s: got %q, want %q", name, reply.Text, sentence)
+		}
+	}
+	// Every state has a sentence, not just the three above.
+	for state := range models.StateLabels {
+		one := agent("Pixel", state)
+		reply := Answer("what is Pixel doing?", []*models.LiveAgent{one}, now)
+		if !strings.HasPrefix(reply.Text, "Pixel (Custom AI) "+models.StatePhrases[state]+":") {
+			t.Errorf("%s: %q", state, reply.Text)
+		}
+	}
+	asking := agent("Pixel", models.StateThinking)
+	asking.Question = &models.Question{ID: "q-1", Items: []models.QuestionItem{{Question: "Which one?"}}}
+	if got := Answer("what is Pixel doing?", []*models.LiveAgent{asking}, now).Text; !strings.Contains(got, "is asking you a question") {
+		t.Errorf("an agent asking: %q", got)
+	}
+}
+
+// The status lists six agents at most, and says how many more are working, so the count and the
+// list reconcile.
+func TestStatusCountAndListReconcile(t *testing.T) {
+	for _, working := range []int{0, 1, 5, 6, 7, 10} {
+		var agents []*models.LiveAgent
+		for index := range working {
+			agents = append(agents, agent("Worker"+strings.Repeat("x", index), models.StateEditing))
+		}
+		agents = append(agents, agent("Pixel", models.StateIdle), agent("Rune", models.StateDone))
+		reply := Answer("status?", agents, now)
+		if reply.Kind != KindStatus || reply.Working != working || len(reply.Lines)+reply.More != working {
+			t.Errorf("%d working: %d listed and %d more, working = %d", working, len(reply.Lines), reply.More, reply.Working)
+		}
+		if reply.Total != working+2 || len(reply.Lines) > 6 {
+			t.Errorf("%d working: total %d, %d listed", working, reply.Total, len(reply.Lines))
+		}
+		if working > 6 {
+			more := strconv.Itoa(working - 6)
+			if want := "Here are 6 of them, and " + more + " more."; !strings.Contains(reply.Text, want) {
+				t.Errorf("%d working: %q lacks %q", working, reply.Text, want)
+			}
+		} else if reply.More != 0 || strings.Contains(reply.Text, "more.") {
+			t.Errorf("%d working: nothing was cut, but %q (more = %d)", working, reply.Text, reply.More)
+		}
+	}
+	if got := Answer("status?", []*models.LiveAgent{agent("Ledger", models.StateEditing)}, now).Text; got != "1 agent is working." {
+		t.Errorf("one working agent: %q", got)
+	}
+	needing := []*models.LiveAgent{agent("Ledger", models.StateEditing), agent("Mori", models.StateError)}
+	if got := Answer("status?", needing, now).Text; got != "1 agent is working and 1 needs you." {
+		t.Errorf("one needing: %q", got)
 	}
 }

@@ -139,3 +139,34 @@ func TestMessageColoursMatchThePrototype(t *testing.T) {
 		}
 	}
 }
+
+// Every state that has a label for chips has a phrase for sentences, so Mabari never says
+// "Atlas is needs approval" or "Mori is error".
+func TestEveryStateHasAPhrase(t *testing.T) {
+	for state, label := range StateLabels {
+		phrase, ok := StatePhrases[state]
+		if !ok || phrase == "" {
+			t.Errorf("%s has no phrase", state)
+			continue
+		}
+		if !strings.HasPrefix(phrase, "is ") && !strings.HasPrefix(phrase, "hit ") && !strings.HasPrefix(phrase, "was ") {
+			t.Errorf("%s: %q doesn't read after a name", state, phrase)
+		}
+		if phrase == "is "+strings.ToLower(label) && (state == StateApproval || state == StateError) {
+			t.Errorf("%s: %q is the chip label in a sentence", state, phrase)
+		}
+	}
+	if len(StatePhrases) != len(StateLabels) {
+		t.Errorf("%d phrases for %d labels", len(StatePhrases), len(StateLabels))
+	}
+	asking := &LiveAgent{SessionState: SessionState{State: StateThinking}, Question: &Question{ID: "q"}}
+	if got := Doing(asking); got != "is asking you a question" {
+		t.Errorf("an agent asking says %q", got)
+	}
+	if got := Doing(&LiveAgent{SessionState: SessionState{State: StateApproval}}); got != "is waiting for your approval" {
+		t.Errorf("an agent waiting on approval says %q", got)
+	}
+	if got := Doing(&LiveAgent{SessionState: SessionState{State: StateError}}); got != "hit an error" {
+		t.Errorf("an agent in error says %q", got)
+	}
+}

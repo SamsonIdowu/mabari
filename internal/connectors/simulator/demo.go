@@ -22,6 +22,27 @@ var (
 // demoSlowdown stretches the demo's seeded work, so it stays on screen for longer.
 const demoSlowdown = 4.5
 
+// thinkingSpeed is how fast progress runs while an agent is thinking, against other steps.
+const thinkingSpeed = 0.6
+
+// demoPace is how many seconds of an agent's Rate pass in one real second. A tick is one real
+// second and moves the office on by officeSecondsPerTick, and a thinking step is slower, so over
+// the plan's steps an agent covers its Rate this many times faster than the clock. Estimates
+// are told in real seconds with it, so a demo minute is a minute (FIRST-8). It is an average
+// across the steps rather than the speed of the step in hand, so an estimate falls steadily and
+// doesn't lurch every time an agent starts or stops thinking.
+var demoPace = func() float64 {
+	total := 0.0
+	for _, state := range plan {
+		if state == models.StateThinking {
+			total += thinkingSpeed
+		} else {
+			total++
+		}
+	}
+	return officeSecondsPerTick * total / float64(len(plan))
+}()
+
 // demoTasks is what idle demo agents pick up next.
 var demoTasks = []string{
 	"Add input validation to the signup form",

@@ -526,13 +526,21 @@ type goldenFrame struct {
 	Log      int           `json:"log"`
 }
 
-// folderNames are the demo's folders. The prototype names a folder as nothing, which makes lines
-// like "touches . Over to you" (FIRST-7); the port names it, "touches test/.", and that is the
-// one way it knowingly differs. The folders are taken out of what the port said before it is
-// compared, so everything else is still checked against the prototype.
-var folderNames = regexp.MustCompile(`\b(?:test|docs)/`)
+// The port knowingly differs from the prototype in what agents say to each other, in two ways,
+// and the golden test sets both aside so everything else is still checked against the prototype.
+//
+//   - The prototype names a folder as nothing, which makes lines like "touches . Over to you"
+//     (FIRST-7); the port names it, "touches test/.".
+//   - The prototype counts "give me about 15 min" in office time, which runs several times faster
+//     than the clock; the port tells real minutes (FIRST-8).
+var (
+	folderNames = regexp.MustCompile(`\b(?:test|docs)/`)
+	minuteWords = regexp.MustCompile(`about \d+ min\b`)
+)
 
 func withoutFolders(text string) string { return folderNames.ReplaceAllString(text, "") }
+
+func withoutMinutes(text string) string { return minuteWords.ReplaceAllString(text, "about N min") }
 
 func TestMatchesThePrototype(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "golden.json"))
@@ -568,7 +576,8 @@ func TestMatchesThePrototype(t *testing.T) {
 			if len(agent.Feed) > 0 {
 				got.Top = agent.Feed[0].Tool + "|" + agent.Feed[0].Summary
 				if agent.Feed[0].Tool == "message" {
-					got.Top = withoutFolders(got.Top)
+					got.Top = withoutMinutes(withoutFolders(got.Top))
+					want.Top = withoutMinutes(want.Top)
 				}
 			}
 			// Subagents are contractors, unlike in the prototype: off duty they leave the floor,
@@ -586,7 +595,7 @@ func TestMatchesThePrototype(t *testing.T) {
 		if got := len(snapshot.Messages); got != frame.Messages {
 			t.Fatalf("tick %d: %d messages, prototype has %d", tick, got, frame.Messages)
 		}
-		if got := withoutFolders(snapshot.Messages[len(snapshot.Messages)-1].Text); got != frame.LastText {
+		if got := withoutMinutes(withoutFolders(snapshot.Messages[len(snapshot.Messages)-1].Text)); got != withoutMinutes(frame.LastText) {
 			t.Fatalf("tick %d: last message %q, prototype has %q", tick, got, frame.LastText)
 		}
 		if got := len(snapshot.Log); got != frame.Log {

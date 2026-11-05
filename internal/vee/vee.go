@@ -191,7 +191,7 @@ type view struct {
 }
 
 func estimate(a *models.LiveAgent, now time.Time) *models.Estimate {
-	return models.EstimateFor(a.State, a.Progress, a.Rate, now)
+	return a.EstimateAt(now)
 }
 
 func look(agents []*models.LiveAgent, now time.Time) view {

@@ -38,6 +38,20 @@ func EstimateFor(state AgentState, progress, rate float64, now time.Time) *Estim
 	}
 }
 
+// RatePerSecond is the agent's progress per real second: Rate, in office seconds, scaled to the
+// clock. For every real agent it is Rate itself.
+func (a *LiveAgent) RatePerSecond() float64 {
+	if a.RateScale > 0 {
+		return a.Rate * a.RateScale
+	}
+	return a.Rate
+}
+
+// EstimateAt forecasts when the agent finishes, from now, in real seconds. See EstimateFor.
+func (a *LiveAgent) EstimateAt(now time.Time) *Estimate {
+	return EstimateFor(a.State, a.Progress, a.RatePerSecond(), now)
+}
+
 // LatestFinish combines estimates for a team, a project or the whole office: the work is finished
 // when the last agent is. Agents with no estimate are skipped, and it returns nil if none have one.
 func LatestFinish(estimates ...*Estimate) *Estimate {

@@ -125,7 +125,7 @@ func (a *LiveAgent) Refresh(now time.Time) {
 	a.Cost = CostOf(a.TokensIn, a.TokensOut, a.Model)
 	// An agent waiting on the person's answer isn't working, whatever it was doing when it asked.
 	a.Working = a.State.Active() && !a.Asking()
-	a.Estimate = EstimateFor(a.State, a.Progress, a.Rate, now)
+	a.Estimate = a.EstimateAt(now)
 	a.Bubble, a.BubbleKind = bubbleFor(a, now.UnixMilli())
 }
 
@@ -219,7 +219,7 @@ func ETALong(a *LiveAgent, now time.Time) string {
 	case StatePaused:
 		return "Interrupted, waiting for your instruction"
 	}
-	estimate := EstimateFor(a.State, a.Progress, a.Rate, now)
+	estimate := a.EstimateAt(now)
 	if estimate == nil {
 		return "No estimate yet"
 	}
@@ -354,10 +354,10 @@ func BaseName(path string) string {
 
 // ETAWords is the prototype's phrase for when an agent will be free, used in agent chat.
 func ETAWords(a *LiveAgent) string {
-	if !a.State.Active() || a.Rate <= 0 {
+	if !a.State.Active() || a.RatePerSecond() <= 0 {
 		return "a few minutes"
 	}
-	minutes := max(1, int(math.Round((1-a.Progress)/a.Rate/60)))
+	minutes := max(1, int(math.Round((1-a.Progress)/a.RatePerSecond()/60)))
 	return "about " + strconv.Itoa(minutes) + " min"
 }
 

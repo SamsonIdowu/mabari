@@ -315,6 +315,7 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 	agent.Task, agent.State, agent.Desk = task, state, desk
 	agent.Progress = orElse(spec.progress, func() float64 { return s.between(0.1, 0.6) })
 	agent.Rate = s.between(0.0009, 0.0018)
+	agent.RateScale = demoPace
 	agent.Elapsed = orElse(spec.elapsed, func() int64 { return s.rounded(120, 1800) })
 	agent.TokensIn = orElse(spec.tokensIn, func() int64 { return s.rounded(8000, 90000) })
 	agent.TokensOut = orElse(spec.tokensOut, func() int64 { return s.rounded(2000, 20000) })
@@ -678,7 +679,7 @@ func (s *Simulator) tickAgent(agent *models.LiveAgent) {
 	}
 	speed := 1.0
 	if agent.State == models.StateThinking {
-		speed = 0.6
+		speed = thinkingSpeed
 	}
 	agent.Progress = math.Min(1, agent.Progress+float64(agent.Rate*officeSecondsPerTick*speed))
 	agent.TokensIn += s.rounded(200, 900)

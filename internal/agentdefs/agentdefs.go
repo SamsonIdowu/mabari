@@ -75,6 +75,9 @@ var colours = []struct{ hex, name string }{
 
 var validName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
 
+// plainKey is a front matter key written plainly, as Claude Code's own fields are.
+var plainKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
+
 // Problem is a reason a definition can't be saved, worded for the person.
 type Problem string
 
@@ -465,11 +468,11 @@ func extraFields(data []byte) string {
 	var b strings.Builder
 	keep := false
 	for _, line := range strings.Split(rest[:end], "\n") {
-		if line != "" && line[0] != ' ' && line[0] != '\t' && line[0] != '-' && line[0] != '#' {
-			key, _, _ := strings.Cut(line, ":")
-			// Compare keys the way YAML reads them, so a quoted or differently cased copy of a
-			// field Mabari writes can't slip through and override it.
-			keep = !known[strings.ToLower(strings.Trim(strings.TrimSpace(key), `"'`))]
+		if line != "" && line[0] != ' ' && line[0] != '\t' {
+			// Only a plain key is kept, never a quoted, tagged, anchored or complex one, and never
+			// any spelling of a field Mabari writes, so nothing kept can override those fields.
+			key, _, found := strings.Cut(line, ":")
+			keep = found && plainKey.MatchString(key) && !known[strings.ToLower(key)]
 		}
 		if keep {
 			b.WriteString(line + "\n")

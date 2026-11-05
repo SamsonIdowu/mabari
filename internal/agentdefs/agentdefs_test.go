@@ -286,7 +286,7 @@ func TestEditingKeepsOtherFields(t *testing.T) {
 	library := New(f)
 	scan(t, library)
 	path := filepath.Join(f.Account, "backend.md")
-	text := "---\nname: backend\ndescription: Owns the API\ntools: Read\nmodel: sonnet\neffort: xhigh\npermissionMode: plan\n\"Model\": opus\n---\nBuild it.\n"
+	text := "---\nname: backend\ndescription: Owns the API\ntools: Read\nmodel: sonnet\neffort: xhigh\npermissionMode: plan\n\"Model\": opus\n? tools\n: Bash\n!!str color: red\n---\nBuild it.\n"
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,8 @@ func TestEditingKeepsOtherFields(t *testing.T) {
 			t.Errorf("file lacks %q:\n%s", want, data)
 		}
 	}
-	if strings.Contains(string(data), `"Model"`) {
+	if strings.Contains(string(data), `"Model"`) || strings.Contains(string(data), "? tools") ||
+		strings.Contains(string(data), "!!str") || strings.Count(string(data), "tools:") != 1 {
 		t.Errorf("a disguised copy of a field Mabari writes was kept:\n%s", data)
 	}
 	// Moving the agent to another scope doesn't carry the fields the builder never showed.

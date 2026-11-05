@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import {
   ACCOUNT_LABEL,
@@ -14,6 +14,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { AccountKind, Settings as SettingsModel, Snapshot } from '../gen/models.ts';
 import { playDing } from '../office/ding.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { useEscape } from '../shell/useEscape.ts';
 import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { DemoNote } from './DemoNote.tsx';
 import { PageHead } from './parts.tsx';
@@ -460,8 +461,49 @@ function DataCard({ settings }: { settings: SettingsModel }) {
   );
 }
 
+/**
+ * The second step of the wipe. It is not a dialog, but it takes focus as one would: onto Cancel,
+ * the safe button, and Escape cancels it (RT-5). It exists only while it is asked, so Escape is
+ * only its own then.
+ */
+function WipeConfirm({ cancel, wipe }: { cancel: () => void; wipe: () => void }) {
+  const safe = useRef<HTMLButtonElement>(null);
+  useEffect(() => safe.current?.focus(), []);
+  useEscape(cancel);
+  return (
+    <div className="banner red" role="alert">
+      <Icon>
+        <path d="M12 8v5M12 16h.01" />
+      </Icon>
+      <span className="grow">
+        This cannot be undone. The projects, agents, history, accounts, keys and tokens listed above
+        go now. Your settings stay.
+      </span>
+      <button type="button" className="btn" ref={safe} onClick={cancel}>
+        Cancel
+      </button>
+      <button type="button" className="btn danger" onClick={wipe}>
+        Yes, wipe all data
+      </button>
+    </div>
+  );
+}
+
 function WipeCard() {
   const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Cancelling swaps the confirmation for the Wipe button again, so focus is put back on it.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!confirming && refocus.current) {
+      refocus.current = false;
+      trigger.current?.focus();
+    }
+  }, [confirming]);
+  const cancel = () => {
+    refocus.current = true;
+    setConfirming(false);
+  };
   const wipe = async () => {
     await api.wipe();
     setConfirming(false);
@@ -485,24 +527,15 @@ function WipeCard() {
         </p>
       </div>
       {confirming ? (
-        <div className="banner red" role="alert">
-          <Icon>
-            <path d="M12 8v5M12 16h.01" />
-          </Icon>
-          <span className="grow">
-            This cannot be undone. The projects, agents, history, accounts, keys and tokens listed
-            above go now. Your settings stay.
-          </span>
-          <button type="button" className="btn" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
-          <button type="button" className="btn danger" onClick={() => void wipe()}>
-            Yes, wipe all data
-          </button>
-        </div>
+        <WipeConfirm cancel={cancel} wipe={() => void wipe()} />
       ) : (
         <div>
-          <button type="button" className="btn danger-out" onClick={() => setConfirming(true)}>
+          <button
+            type="button"
+            className="btn danger-out"
+            ref={trigger}
+            onClick={() => setConfirming(true)}
+          >
             Wipe all data…
           </button>
         </div>

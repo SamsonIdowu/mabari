@@ -396,6 +396,44 @@ test('the wipe says what goes and what stays, and does exactly that', async ({ p
   expect(accounts.every((account) => account.status === 'off')).toBe(true);
 });
 
+// RT-5: the wipe's second step is not a dialog, but it must not throw focus onto the page.
+test('the wipe confirmation takes focus, Escape and Cancel give it back to the Wipe button', async ({
+  page,
+}) => {
+  await page.goto('/#preferences');
+  const wipe = page.getByRole('button', { name: 'Wipe all data…' });
+  const confirm = page.getByRole('alert').filter({ hasText: 'cannot be undone' });
+  const cancel = confirm.getByRole('button', { name: 'Cancel' });
+
+  // Opened by keyboard: focus lands on Cancel, the safe button, not on the page.
+  await wipe.focus();
+  await page.keyboard.press('Enter');
+  await expect(confirm).toBeVisible();
+  await expect(cancel).toBeFocused();
+
+  // Escape cancels, and focus is back on the Wipe button.
+  await page.keyboard.press('Escape');
+  await expect(confirm).toBeHidden();
+  await expect(wipe).toBeFocused();
+
+  // So does Cancel, by keyboard and by mouse.
+  await page.keyboard.press('Enter');
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(confirm).toBeHidden();
+  await expect(wipe).toBeFocused();
+  await wipe.click();
+  await expect(cancel).toBeFocused();
+  await cancel.click();
+  await expect(confirm).toBeHidden();
+  await expect(wipe).toBeFocused();
+
+  // Nothing was wiped by any of it, and Escape with nothing to cancel does nothing.
+  await page.keyboard.press('Escape');
+  await expect(wipe).toBeVisible();
+  await expect(page.getByText('All data wiped')).toHaveCount(0);
+});
+
 // DAILY-7
 test('New agent files under the office filter, or under no project, never the first project', async ({
   page,

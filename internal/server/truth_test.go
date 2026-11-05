@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
@@ -72,5 +73,49 @@ func TestVeeSaysHowToGetAnAgentWhenThereIsNone(t *testing.T) {
 	}
 	if result.Message != nil {
 		t.Errorf("a message was sent: %+v", result.Message)
+	}
+}
+
+// The demo's Claude agent asks a question, and answering it through the API takes it down and
+// lets the agent carry on (FIRST-11).
+func TestAnsweringTheDemosQuestionThroughTheAPI(t *testing.T) {
+	office := newOffice(t)
+	office.simulator.SetDemoQuestion(time.Millisecond)
+	office.demo(t)
+	if err := office.engine.Do(func() { office.engine.AgentByName("Sage").Queued = []models.Instruction{} }); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if err := office.simulator.Tick(); err != nil {
+		t.Fatal(err)
+	}
+	sage := agentNamed(t, office, "Sage")
+	if sage.Question == nil || len(sage.Question.Items) != 2 || sage.Provider != models.ProviderClaude {
+		t.Fatalf("Sage's question = %+v", sage.Question)
+	}
+	// Home counts it among what needs you, and its agent isn't working.
+	needs := askVee(t, office, `{"text":"who needs me?"}`)
+	found := false
+	for _, line := range needs.Reply.Lines {
+		found = found || line.Name == "Sage" && line.QuestionID == sage.Question.ID
+	}
+	if !found {
+		t.Errorf("Mabari doesn't list Sage's question: %+v", needs.Reply.Lines)
+	}
+
+	path := "/api/agents/" + sage.ID + "/answer"
+	good := `{"questionId":"` + sage.Question.ID + `","answers":[{"picked":[0]},{"picked":[1]}]}`
+	if response := office.do(t, http.MethodPost, path, `{"questionId":"`+sage.Question.ID+`","answers":[{"picked":[0]}]}`); response.Code != http.StatusBadRequest {
+		t.Errorf("one answer for two questions = %d", response.Code)
+	}
+	if response := office.do(t, http.MethodPost, path, good); response.Code != http.StatusOK {
+		t.Fatalf("answer = %d: %s", response.Code, response.Body)
+	}
+	after := agentNamed(t, office, "Sage")
+	if after.Question != nil || !after.Working || after.Reply != "Thanks. Going with Cursor-based and Link headers." {
+		t.Errorf("after: question %v, working %v, reply %q", after.Question, after.Working, after.Reply)
+	}
+	if response := office.do(t, http.MethodPost, path, good); response.Code != http.StatusConflict {
+		t.Errorf("answering twice = %d", response.Code)
 	}
 }

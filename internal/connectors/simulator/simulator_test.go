@@ -44,6 +44,9 @@ func setup(t *testing.T, path string, seed uint32) (*Simulator, *events.Engine, 
 	sim := New(engine, Mulberry32(seed), 0)
 	// Long enough for the golden test; TestTheDemoTurnsItselfOff checks the real length's effect.
 	sim.SetDemoLength(24 * time.Hour)
+	// The demo's question is the port's own, not the prototype's, and it stops an agent, which would
+	// move every random draw the golden test follows. The tests of it turn it on.
+	sim.SetDemoQuestion(0)
 	return sim, engine, c, s
 }
 

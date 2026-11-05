@@ -3,6 +3,8 @@
 package simulator
 
 import (
+	"time"
+
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
 
@@ -42,6 +44,36 @@ var demoPace = func() float64 {
 	}
 	return officeSecondsPerTick * total / float64(len(plan))
 }()
+
+// DemoQuestionAfter is how long into the demo a Claude agent asks its question. It is later than
+// the first look at the floor, which is approvals and errors, and sooner than anyone has left.
+const DemoQuestionAfter = 30 * time.Second
+
+// demoAsker is the demo agent that asks the question: a Claude agent, as only Claude Code asks
+// them, and one whose work the question is about.
+const demoAsker = "Sage"
+
+// demoQuestion is what it asks, in the shape Claude Code's AskUserQuestion has: questions with
+// options to pick from and a line on what each means, one that takes several answers, and a place
+// to type something else. Asking it stops the agent until you answer in its panel.
+var demoQuestion = models.Question{Items: []models.QuestionItem{
+	{
+		Question: "Which pagination style should the orders API use?", Header: "Pagination",
+		Options: []models.QuestionOption{
+			{Label: "Cursor-based", Description: "Stable while orders change. The client sends the last id it saw."},
+			{Label: "Page numbers", Description: "Simple, and the client can jump to any page. Slower on big tables."},
+			{Label: "Offset and limit", Description: "The familiar form. Can skip or repeat orders when new ones arrive."},
+		},
+	},
+	{
+		Question: "What else should it include?", Header: "Extras", MultiSelect: true,
+		Options: []models.QuestionOption{
+			{Label: "Total count", Description: "Costs an extra query on every request."},
+			{Label: "Link headers", Description: "Next and previous links, as GitHub does."},
+			{Label: "API docs", Description: "Update the reference for the new parameters."},
+		},
+	},
+}}
 
 // demoTasks is what idle demo agents pick up next.
 var demoTasks = []string{

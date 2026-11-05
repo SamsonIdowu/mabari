@@ -49,6 +49,10 @@ func (a *LiveAgent) RatePerSecond() float64 {
 
 // EstimateAt forecasts when the agent finishes, from now, in real seconds. See EstimateFor.
 func (a *LiveAgent) EstimateAt(now time.Time) *Estimate {
+	// An agent waiting on your answer isn't getting closer to done.
+	if a.Asking() {
+		return nil
+	}
 	return EstimateFor(a.State, a.Progress, a.RatePerSecond(), now)
 }
 

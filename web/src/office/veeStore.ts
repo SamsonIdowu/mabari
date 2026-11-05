@@ -36,6 +36,8 @@ export interface MabariUpdate {
 }
 
 const UPDATES_KEPT = 30;
+/** How many of Mabari's replies the bubble's pager can go back through. */
+const LOG_KEPT = 20;
 let nextUpdate = 1;
 
 /** In full screen Home can't be seen, so Mabari's news also shows as a toast. */
@@ -48,6 +50,12 @@ function toastInFullscreen(text: string) {
 interface VeeStore {
   state: VeeState;
   said: VeeReply;
+  /** Everything Mabari said on Home, oldest first, so an earlier reply can be read again. */
+  log: VeeReply[];
+  /** Which of the log the bubble shows, or null for the latest. */
+  view: number | null;
+  /** Steps the bubble to an earlier (-1) or later (+1) reply, as the prototype's pager does. */
+  look: (step: number) => void;
   heard: string;
   gesture: PlayingGesture | null;
   talkUntil: number;
@@ -173,6 +181,14 @@ function savedProject(): string {
 export const useVee = create<VeeStore>((set, get) => ({
   state: 'idle',
   said: VEE_HELLO,
+  log: [],
+  view: null,
+  look: (step) =>
+    set((state) => {
+      const last = state.log.length - 1;
+      const next = Math.max(0, Math.min(last, (state.view ?? last) + step));
+      return { view: next === last ? null : next };
+    }),
   heard: '',
   gesture: null,
   talkUntil: 0,
@@ -208,6 +224,7 @@ export const useVee = create<VeeStore>((set, get) => ({
         -UPDATES_KEPT,
       ),
     }));
+    set((state) => ({ log: [...state.log, reply].slice(-LOG_KEPT), view: null }));
     set({
       said: reply,
       state: 'talk',
@@ -253,6 +270,8 @@ export const useVee = create<VeeStore>((set, get) => ({
     set({
       state: 'idle',
       said: VEE_HELLO,
+      log: [],
+      view: null,
       heard: '',
       gesture: null,
       talkUntil: 0,
@@ -275,6 +294,9 @@ function relay(item: Relay, reply: string) {
   if (holder && !item.agentId) item = { ...item, agentId: holder.id, agent: holder.name };
   const line = relayLine(item, reply);
   const store = useVee.getState();
+  // The acknowledgement that came when this was sent stays with the reply, so who got it and why
+  // can still be read once the reply lands.
+  const ack = store.log.find((said) => said.relay?.instructionId === item.instructionId)?.text;
   store.say(
     {
       ...VEE_HELLO,
@@ -283,6 +305,7 @@ function relay(item: Relay, reply: string) {
       kind: 'relayed',
       spoken: line.spoken,
       agentId: line.clipped ? item.agentId : undefined,
+      ack,
     },
     true,
   );

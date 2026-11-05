@@ -198,6 +198,8 @@ export interface VeeReply {
   spoken?: string;
   /** A relayed reply too long for the bubble names its agent, to read the rest there. */
   agentId?: string | undefined;
+  /** The acknowledgement a relayed reply answers, shown above it so both can be read at once. */
+  ack?: string | undefined;
 }
 
 /** A project as Mabari's replies show it. Mirrors internal/vee.ProjectChoice. */

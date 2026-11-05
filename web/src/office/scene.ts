@@ -132,6 +132,7 @@ export class OfficeScene {
   /** Agent definitions resting in the lounge, in seat order. */
   resting: Resting[] = [];
   seating: Seating = seatingFor([], []);
+  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[] } = { agents: [], defs: [] };
   view: View = { cx: BASE_W / 2, cy: BASE_H / 2, s: 1 };
   size = { width: BASE_W, height: BASE_H };
   /** The floor's size last frame, to notice it changing. */
@@ -271,7 +272,12 @@ export class OfficeScene {
   private sync(): void {
     const office = useOfficeStore.getState().office;
     const agents = office?.agents ?? [];
-    this.seating = seatingFor(agents, office?.defs ?? []);
+    const defs = office?.defs ?? [];
+    // The store replaces these lists when they change, so the seating is worked out only then.
+    if (agents !== this.seatedFrom.agents || defs !== this.seatedFrom.defs) {
+      this.seating = seatingFor(agents, defs);
+      this.seatedFrom = { agents, defs };
+    }
     const floor = this.floor;
     const present = new Set(agents.map((agent) => agent.id));
     for (const id of this.walkers.keys()) {

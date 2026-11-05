@@ -7,6 +7,8 @@
 package planner
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"slices"
 	"strconv"
@@ -318,14 +320,20 @@ var folded = strings.NewReplacer(
 var notSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Slug turns a name into a folder name: "Café ordering für Zürich" is "cafe-ordering-fur-zurich".
-// Letters with no plain form are left out, and a name with none, such as one in Japanese, is
-// "project", so there is always something to call the folder.
+// Letters with no plain form are left out. A name with no plain letters at all, such as one in
+// Japanese, is "project-" and eight hex digits taken from the name, so there is always something to
+// call the folder, and no two such names share one. The same name gives the same folder each time.
 func Slug(name string) string {
 	slug := strings.Trim(notSlug.ReplaceAllString(folded.Replace(strings.ToLower(name)), "-"), "-")
-	if slug == "" {
+	if slug != "" {
+		return slug
+	}
+	key := strings.Join(strings.Fields(strings.ToLower(name)), " ")
+	if key == "" {
 		return "project"
 	}
-	return slug
+	sum := sha256.Sum256([]byte(key))
+	return "project-" + hex.EncodeToString(sum[:4])
 }
 
 func upperFirst(text string) string {

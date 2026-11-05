@@ -3,6 +3,7 @@
 package planner
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"unicode"
@@ -155,14 +156,37 @@ func TestSlug(t *testing.T) {
 		"Ünïcödé Thing":          "unicode-thing",
 		"  Shop  Admin!! ":       "shop-admin",
 		"E-commerce Store":       "e-commerce-store",
-		"做一个咖啡店的网站":              "project",
 		"":                       "project",
-		"---":                    "project",
-		"Привет":                 "project",
 		"Crème brûlée (version)": "creme-brulee-version",
 	} {
 		if got := Slug(name); got != want {
 			t.Errorf("Slug(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// REV-6: a name with no plain letters to write still gets a folder, and two such names never share
+// one, so two projects named in Japanese and Russian don't work in the same place. The folder is
+// the same each time for the same name.
+func TestSlugFallbackIsUniqueToTheName(t *testing.T) {
+	plain := regexp.MustCompile(`^project-[0-9a-f]{8}$`)
+	names := []string{"做一个咖啡店的网站", "Привет", "---", "!!!", "咖啡店", "日本語のアプリ", "مرحبا", "😀😀"}
+	seen := map[string]string{}
+	for _, name := range names {
+		got := Slug(name)
+		if !plain.MatchString(got) {
+			t.Errorf("Slug(%q) = %q, want project- and eight hex digits", name, got)
+		}
+		if got != Slug(name) {
+			t.Errorf("Slug(%q) changes between calls", name)
+		}
+		if other, taken := seen[got]; taken {
+			t.Errorf("%q and %q share the folder %q", name, other, got)
+		}
+		seen[got] = name
+	}
+	// Spacing and case don't make a name another name, as they don't for the plain slug.
+	if Slug("  Привет ") != Slug("привет") {
+		t.Error("the same name in other spacing or case got another folder")
 	}
 }

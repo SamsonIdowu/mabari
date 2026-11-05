@@ -176,12 +176,40 @@ func TestThePlannerKeepsAccentsAndOtherScripts(t *testing.T) {
 			folders[project.Name] = project.Repository.Path
 		}
 	}
-	for name, folder := range map[string]string{
-		"Café Ordering Zürich": "~/code/cafe-ordering-zurich",
-		"做一个咖啡店的网站":            "~/code/project",
-	} {
-		if folders[name] != folder {
-			t.Errorf("%q works in %q, want %q (%v)", name, folders[name], folder, folders)
+	if want := "~/code/cafe-ordering-zurich"; folders["Café Ordering Zürich"] != want {
+		t.Errorf("Café Ordering Zürich works in %q, want %q (%v)", folders["Café Ordering Zürich"], want, folders)
+	}
+	// A name with no plain letters still gets a folder of its own (REV-6).
+	if want := "~/code/" + planner.Slug("做一个咖啡店的网站"); folders["做一个咖啡店的网站"] != want ||
+		!strings.HasPrefix(want, "~/code/project-") {
+		t.Errorf("the Japanese project works in %q, want %q", folders["做一个咖啡店的网站"], want)
+	}
+}
+
+// REV-6: two projects named in scripts with no plain letters don't share a working folder.
+func TestTwoProjectsWithNoPlainLettersGetTheirOwnFolders(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	for _, name := range []string{"做一个咖啡店的网站", "Привет мир"} {
+		reply := decode[planReply](t, office.do(t, http.MethodPost, "/api/planner", `{"said":["`+name+`"]}`))
+		plan, _ := json.Marshal(reply.Plan)
+		body := `{"plan":` + string(plan) + `,"name":"` + reply.Plan.Name + `","mode":"go","brief":"x"}`
+		if response := office.do(t, http.MethodPost, "/api/projects/start", body); response.Code != http.StatusCreated {
+			t.Fatalf("starting %q = %d %s", name, response.Code, response.Body)
 		}
+	}
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	folders := map[string]string{}
+	for _, project := range snapshot.Projects {
+		if project.Repository == nil || !strings.HasPrefix(project.Repository.Path, "~/code/project-") {
+			continue
+		}
+		if other, taken := folders[project.Repository.Path]; taken {
+			t.Errorf("%q and %q share %s", project.Name, other, project.Repository.Path)
+		}
+		folders[project.Repository.Path] = project.Name
+	}
+	if len(folders) != 2 {
+		t.Errorf("found %d own folders, want 2: %v", len(folders), folders)
 	}
 }

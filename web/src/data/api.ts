@@ -13,6 +13,7 @@ import type {
   Snapshot,
   WhisperStatus,
 } from '../gen/models.ts';
+import { applyHeldChanges } from './heldChanges.ts';
 import { keepSession, sessionHeaders } from './session.ts';
 
 export interface NewAgentBody {
@@ -71,6 +72,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error(unreachableMessage(path, init?.method?.toUpperCase()), { cause: error });
   }
+  // What the server pushed before it answered is applied before the answer is handed on.
+  applyHeldChanges();
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
@@ -84,7 +87,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   // A delete answers with no content.
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  const body = (await response.json()) as T;
+  applyHeldChanges();
+  return body;
 }
 
 function send<T>(method: string, path: string, body?: unknown): Promise<T> {

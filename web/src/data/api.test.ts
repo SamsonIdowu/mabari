@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, unreachableMessage } from './api.ts';
+import { holdChangesWith } from './heldChanges.ts';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -69,5 +70,38 @@ describe('unreachableMessage', () => {
     expect(unreachableMessage('/api/approvals/ap-1/decision', 'POST')).toContain('not sent');
     expect(unreachableMessage('/api/vee', 'POST')).toContain('message was not sent');
     expect(unreachableMessage('/api/snapshot')).toBe("Can't reach Mabari.");
+  });
+});
+
+// The server pushes a change over the WebSocket and then answers the call that caused it. The
+// office holds pushed changes for a frame, so an answer must not get ahead of them: Mabari reads
+// whether an agent has its instruction the moment the answer comes.
+describe('an answer from the server', () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('arrives after the changes the server pushed before it were applied', async () => {
+    const order: string[] = [];
+    const release = holdChangesWith(() => order.push('applied'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ ok: true })));
+    await api.snapshot();
+    order.push('answered');
+    release();
+    expect(order[0]).toBe('applied');
+    expect(order.at(-1)).toBe('answered');
+  });
+
+  it('does the same for an error, and for an answer with no content', async () => {
+    for (const response of [json({ error: 'no' }, 400), new Response(null, { status: 204 })]) {
+      const applied = vi.fn();
+      const release = holdChangesWith(applied);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      await api.updateSettings({ spokenReplies: true }).catch(() => undefined);
+      expect(applied).toHaveBeenCalled();
+      release();
+    }
   });
 });

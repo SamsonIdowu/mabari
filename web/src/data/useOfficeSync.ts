@@ -6,6 +6,7 @@ import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { api } from './api.ts';
 import { frameBatch } from './frameBatch.ts';
+import { holdChangesWith } from './heldChanges.ts';
 import { useOfficeStore } from './officeStore.ts';
 import { socketProtocols } from './session.ts';
 
@@ -32,6 +33,7 @@ export function useOfficeSync(): void {
     // Changes that arrive in the same frame are applied together, so a burst of them costs the
     // page one render, not one each.
     const arrived = frameBatch<ServerMessage>(applyAll);
+    const release = holdChangesWith(arrived.flush);
 
     const reload = async () => {
       // What came before the snapshot was asked for goes in first, in order.
@@ -98,6 +100,7 @@ export function useOfficeSync(): void {
 
     return () => {
       stopped = true;
+      release();
       arrived.discard();
       clearTimeout(retry);
       clearTimeout(reloadRetry);

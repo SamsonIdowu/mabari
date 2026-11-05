@@ -2,11 +2,14 @@
 // Converted mechanically from design/mabari-prototype.html, so the pixels match exactly.
 import {
   BASE_FLOOR,
+  loungeBox,
+  LOUNGE_NOOK,
   deskTile,
   doorOf,
   LABEL_Y,
   LOUNGE_PITCH,
   type Floor,
+  type Point,
   type Room,
 } from './layout.ts';
 
@@ -191,53 +194,187 @@ function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette,
   blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
 }
 
+/** Where the lounge's moving parts are, so scene.ts can animate them over the background. */
+export interface LoungeProps {
+  /** The coffee machine's spout, where steam rises. */
+  machine: Point;
+  /** The floor lamp's shade, which glows. */
+  lamp: Point;
+  /** The fish tank's water, or null when the lounge is too small for one. */
+  tank: { x: number; y: number; w: number; h: number } | null;
+}
+
+/** Where the lounge's furniture goes, as it grows with the number resting in it. */
+export function loungeProps(floor: Floor): LoungeProps | null {
+  const box = loungeBox(floor);
+  if (!box) return null;
+  const width = box.x1 - box.x0 - LOUNGE_NOOK;
+  return {
+    machine: { x: box.x0 + 25, y: box.y0 + 4 },
+    lamp: { x: box.x1 - 30, y: box.y0 + 10 },
+    tank: width >= 2 * LOUNGE_PITCH.x ? { x: box.x0 + 104, y: box.y0 + 6, w: 64, h: 22 } : null,
+  };
+}
+
+/** The muted colours of the lounge's soft things: cushions, the beanbag, book spines. */
+function loungeColours(theme: 'dark' | 'light') {
+  return theme === 'dark'
+    ? {
+        cushionA: '#4E6B73',
+        cushionB: '#6B5A4E',
+        bean: '#3F4A5C',
+        beanD: '#2C3442',
+        water: '#1F3A47',
+        sand: '#6B6050',
+        spines: ['#4E6B73', '#6B5A4E', '#5B5B63', '#3F4A5C', '#7A7A82', '#58504A'],
+        shade: '#E8E2D0',
+      }
+    : {
+        cushionA: '#8FB3BD',
+        cushionB: '#C9A98F',
+        bean: '#9DB0C8',
+        beanD: '#7D90A8',
+        water: '#BFD9E6',
+        sand: '#E3D6B8',
+        spines: ['#8FB3BD', '#C9A98F', '#9A9A9E', '#9DB0C8', '#4A4A4E', '#B8A08A'],
+        shade: '#FFF6DE',
+      };
+}
+
 /**
- * The lounge: an open rug with a coffee bar and a sofa, as big as the number resting in it. Its
- * residents wander about it with their coffee (scene.ts), rather than sitting in rows.
+ * The lounge: a patterned rug with a coffee bar, a sofa and an armchair round a coffee table, a
+ * floor lamp, a bookshelf and plants in its nook, and a fish tank and a beanbag once it is big
+ * enough. It grows with the number resting in it. Its residents wander about it with their
+ * coffee (scene.ts), which also brings the steam, the lamp's glow and the fish to life.
  */
 function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
-  const lounge = floor.lounge!;
-  const width = lounge.columns * LOUNGE_PITCH.x;
-  const top = LABEL_Y + 12;
-  const bottom = lounge.first.y + (lounge.rows - 1) * LOUNGE_PITCH.y + 34;
-  floorLabel(c, 'Lounge', lounge.x, LABEL_Y, P);
-  R(c, lounge.x - 4, top, width + 8, bottom - top, P.rug);
-  R(c, lounge.x + 2, top + 6, width - 4, bottom - top - 12, P.rugB);
-  /* the coffee bar: a counter with the machine and a few cups */
-  blk(c, lounge.x + 10, top + 14, 60, 10, 14, P.desk, P.deskFront, P, P.deskEdge);
+  const box = loungeBox(floor)!;
+  const props = loungeProps(floor)!;
+  const L = loungeColours(theme);
+  const sofa = sofaColours(theme);
+  const { x0, y0, x1, y1 } = box;
+  const width = x1 - x0;
+  const seats = width - LOUNGE_NOOK;
+  floorLabel(c, 'Lounge', x0, LABEL_Y, P);
+  /* the rug: a border, a stripe just inside it, and a quiet diamond pattern */
+  R(c, x0 - 4, y0, width + 8, y1 - y0, P.rug);
+  R(c, x0 + 2, y0 + 6, width - 4, y1 - y0 - 12, P.rugB);
+  R(c, x0 + 8, y0 + 12, width - 16, 2, P.rug);
+  R(c, x0 + 8, y1 - 14, width - 16, 2, P.rug);
+  R(c, x0 + 8, y0 + 12, 2, y1 - y0 - 24, P.rug);
+  R(c, x1 - 10, y0 + 12, 2, y1 - y0 - 24, P.rug);
+  c.globalAlpha = theme === 'dark' ? 0.35 : 0.5;
+  for (let y = y0 + 30; y < y1 - 20; y += 24) {
+    for (let x = x0 + 24 + ((y - y0) % 48 ? 12 : 0); x < x1 - 20; x += 24) {
+      R(c, x, y, 2, 2, P.rug);
+    }
+  }
+  c.globalAlpha = 1;
+
+  /* the coffee bar: a counter with the machine, a glass of pastries and a row of mugs */
+  blk(c, x0 + 12, y0 + 18, 76, 10, 14, P.desk, P.deskFront, P, P.deskEdge);
   blk(
     c,
-    lounge.x + 16,
-    top + 2,
-    18,
-    8,
+    props.machine.x - 9,
+    y0 + 4,
+    20,
+    10,
     16,
     theme === 'dark' ? '#2A2A2F' : '#1E1E21',
     theme === 'dark' ? '#151518' : '#0E0E10',
     P,
   );
-  R(c, lounge.x + 22, top + 10, 6, 4, '#E8894A');
-  R(c, lounge.x + 42, top + 16, 5, 5, P.paper);
-  R(c, lounge.x + 52, top + 16, 5, 5, P.paper);
-  /* a sofa along the bottom, and a low table */
-  const sofa = sofaColours(theme);
-  const sofaWidth = Math.min(width - 24, 96);
-  blk(
-    c,
-    lounge.x + width - sofaWidth - 10,
-    bottom - 30,
-    sofaWidth,
-    12,
-    14,
-    sofa.top,
-    sofa.front,
-    P,
-  );
-  if (lounge.rows > 1) {
-    blk(c, lounge.x + width / 2 - 14, (top + bottom) / 2, 28, 12, 8, P.wood, P.woodD, P);
-    R(c, lounge.x + width / 2 - 3, (top + bottom) / 2 - 2, 6, 5, P.paper);
+  R(c, props.machine.x - 3, y0 + 14, 8, 3, P.metal);
+  R(c, props.machine.x + 6, y0 + 8, 3, 3, '#E8894A');
+  R(c, x0 + 46, y0 + 12, 14, 9, P.glass);
+  R(c, x0 + 46, y0 + 12, 14, 1, 'rgba(255,255,255,.35)');
+  R(c, x0 + 49, y0 + 17, 4, 3, '#C9A06A');
+  R(c, x0 + 54, y0 + 18, 4, 2, '#B98A55');
+  [0, 1, 2].forEach((index) => {
+    const mx = x0 + 64 + index * 7;
+    R(c, mx, y0 + 18, 5, 5, [L.cushionA, P.paper, L.cushionB][index]!);
+    R(c, mx + 5, y0 + 19, 1, 3, P.metal);
+  });
+
+  /* the fish tank, once there is room for it: water, sand, a plant; the fish swim in scene.ts */
+  if (props.tank) {
+    const { x, y, w, h } = props.tank;
+    blk(c, x - 3, y + h, w + 6, 4, 10, P.wood, P.woodD, P);
+    R(c, x - 2, y - 2, w + 4, h + 3, P.frame);
+    R(c, x, y, w, h, L.water);
+    R(c, x, y + h - 4, w, 4, L.sand);
+    R(c, x + 8, y + h - 12, 2, 8, P.leaf);
+    R(c, x + 11, y + h - 9, 2, 5, P.leafB);
+    R(c, x + w - 14, y + h - 10, 2, 6, P.leaf);
+    R(c, x, y, w, 1, 'rgba(255,255,255,.35)');
   }
-  plant(c, lounge.x + width - 4, LABEL_Y - 24, P);
+
+  /*
+   * Seating groups down the lounge, one for every two rows of it: a round rug with a low coffee
+   * table (a book, a mug, a little vase), a sofa with cushions below it, and an armchair facing in.
+   */
+  const rows = Math.max(1, Math.round((y1 - y0 - 40) / LOUNGE_PITCH.y));
+  const groups = Math.max(1, Math.floor(rows / 2));
+  const span = (y1 - y0 - 50) / groups;
+  for (let group = 0; group < groups; group++) {
+    const cy = y0 + 50 + span * group + span / 2 - 14;
+    const mid = { x: x0 + seats / 2 + (group % 2 ? 14 : -6), y: cy };
+    c.fillStyle = theme === 'dark' ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)';
+    c.beginPath();
+    c.ellipse(mid.x, mid.y + 12, Math.min(seats / 2 - 10, 58), 26, 0, 0, Math.PI * 2);
+    c.fill();
+    blk(c, mid.x - 20, mid.y, 40, 12, 8, P.wood, P.woodD, P);
+    R(c, mid.x - 14, mid.y + 3, 10, 6, group % 2 ? L.cushionB : L.cushionA);
+    R(c, mid.x - 14, mid.y + 3, 10, 1, 'rgba(255,255,255,.3)');
+    R(c, mid.x + 2, mid.y + 3, 5, 5, P.paper);
+    R(c, mid.x + 11, mid.y - 2, 4, 8, P.pot);
+    R(c, mid.x + 10, mid.y - 5, 2, 3, P.leafB);
+    R(c, mid.x + 14, mid.y - 6, 2, 4, P.leaf);
+    const sofaWidth = Math.min(seats - 60, 104);
+    const sofaX = mid.x - sofaWidth / 2;
+    blk(c, sofaX, mid.y + 26, sofaWidth, 12, 16, sofa.top, sofa.front, P);
+    R(c, sofaX + 4, mid.y + 28, sofaWidth - 8, 6, sofa.cushion);
+    R(c, sofaX + 8, mid.y + 20, 14, 9, L.cushionA);
+    R(c, sofaX + sofaWidth - 22, mid.y + 20, 14, 9, L.cushionB);
+    const chairX = group % 2 ? x0 + seats - 38 : x0 + 14;
+    if (seats >= 2 * LOUNGE_PITCH.x || groups > 1) {
+      blk(c, chairX, mid.y - 4, 24, 14, 16, sofa.top, sofa.front, P);
+      R(c, chairX + 3, mid.y - 2, 18, 8, sofa.cushion);
+    }
+  }
+
+  /* a beanbag by the coffee bar, once the lounge is deep enough */
+  if (rows >= 3) {
+    const bx = x0 + seats - 30;
+    const by = y0 + 70;
+    c.fillStyle = L.beanD;
+    c.beginPath();
+    c.ellipse(bx, by + 3, 15, 11, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = L.bean;
+    c.beginPath();
+    c.ellipse(bx - 1, by, 13, 9, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  /* the nook: a floor lamp, a bookshelf and a big plant */
+  const nook = x1 - LOUNGE_NOOK + 8;
+  R(c, props.lamp.x, props.lamp.y + 6, 2, 34, P.metal);
+  R(c, props.lamp.x - 5, props.lamp.y + 40, 12, 3, P.metal);
+  R(c, props.lamp.x - 8, props.lamp.y - 2, 18, 9, L.shade);
+  R(c, props.lamp.x - 8, props.lamp.y + 6, 18, 1, 'rgba(0,0,0,.15)');
+  const shelfY = y0 + 64;
+  if (shelfY + 46 < y1 - 40) {
+    blk(c, nook + 6, shelfY, 44, 6, 40, P.wood, P.woodD, P);
+    for (let row = 0; row < 2; row++) {
+      for (let book = 0; book < 6; book++) {
+        R(c, nook + 9 + book * 6, shelfY + 9 + row * 17, 4, 13, L.spines[(book + row * 2) % 6]!);
+      }
+    }
+  }
+  plant(c, nook + 22, y1 - 46, P);
+  if (y1 - y0 > 300) plant(c, nook + 22, (y0 + y1) / 2 + 30, P);
+  plant(c, x0 - 2, y1 - 30, P);
 }
 
 /** Where each room's floor runs, in tiles down from the back wall, and its walls in pixels. */

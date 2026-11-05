@@ -3,7 +3,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { blk, buildBg, ell, PAL, R, RACKS, rrect } from './background.ts';
+import { blk, buildBg, ell, loungeProps, PAL, R, RACKS, rrect } from './background.ts';
 import {
   clampView,
   homeView,
@@ -682,6 +682,61 @@ export class OfficeScene {
     }
   }
 
+  /**
+   * The lounge's small motions: steam from the coffee machine, the floor lamp's warm glow, and
+   * fish and bubbles in the tank. With reduced motion, t stays at 0 and they hold still.
+   */
+  private drawLoungeLife(theme: 'dark' | 'light', t: number): void {
+    const props = loungeProps(this.floor);
+    if (!props) return;
+    const c = this.context;
+    // A soft pool of light under the lamp, breathing slowly.
+    c.save();
+    c.globalAlpha = (theme === 'dark' ? 0.1 : 0.16) + Math.sin(t / 1800) * 0.02;
+    c.fillStyle = '#FFE7A8';
+    c.beginPath();
+    c.ellipse(props.lamp.x + 1, props.lamp.y + 30, 30, 18, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    // Steam rising from the machine.
+    c.fillStyle = theme === 'dark' ? 'rgba(255,255,255,.35)' : 'rgba(120,120,128,.35)';
+    for (let puff = 0; puff < 3; puff++) {
+      const rise = ((t / 40 + puff * 9) % 27) / 27;
+      const px = props.machine.x + 1 + Math.sin(t / 300 + puff * 2) * 2;
+      const py = props.machine.y - 2 - rise * 16;
+      c.globalAlpha = 1 - rise;
+      c.fillRect(Math.round(px), Math.round(py), 2, 2);
+    }
+    c.globalAlpha = 1;
+    // Fish and bubbles in the tank.
+    const tank = props.tank;
+    if (!tank) return;
+    const fish = [
+      { colour: theme === 'dark' ? '#8FC1CF' : '#3E7C8F', speed: 9000, depth: 0.3, phase: 0 },
+      { colour: theme === 'dark' ? '#C9D6DF' : '#6B7F8F', speed: 13000, depth: 0.6, phase: 0.45 },
+    ];
+    for (const one of fish) {
+      const lap = ((t / one.speed + one.phase) % 1) * 2;
+      const forward = lap < 1;
+      const along = forward ? lap : 2 - lap;
+      const fx = tank.x + 4 + along * (tank.w - 14);
+      const fy = tank.y + 3 + one.depth * (tank.h - 10) + Math.sin(t / 700 + one.phase * 9);
+      c.fillStyle = one.colour;
+      c.fillRect(Math.round(fx), Math.round(fy), 5, 3);
+      c.fillRect(Math.round(forward ? fx - 2 : fx + 5), Math.round(fy), 2, 3);
+    }
+    c.fillStyle = 'rgba(255,255,255,.55)';
+    for (let bubble = 0; bubble < 3; bubble++) {
+      const rise = ((t / 60 + bubble * 7) % 20) / 20;
+      c.fillRect(
+        Math.round(tank.x + tank.w - 10 + Math.sin(t / 400 + bubble) * 1.5),
+        Math.round(tank.y + tank.h - 5 - rise * (tank.h - 7)),
+        1,
+        1,
+      );
+    }
+  }
+
   private drawTeamOffices(walkers: Walker[], t: number, inView: (w: Walker) => boolean): void {
     const c = this.context;
     for (const lead of walkers) {
@@ -901,6 +956,7 @@ export class OfficeScene {
     c.setTransform(m.a, 0, 0, m.a, m.e, m.f);
     c.drawImage(officeBackground(theme, floor), 0, 0);
     this.drawMotes(theme, t, dt);
+    this.drawLoungeLife(theme, t);
 
     const walkers = [...this.walkers.values()];
     const inView = (walker: Walker) => inScope(walker, ui, agents);

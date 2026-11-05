@@ -51,6 +51,10 @@ export function gridColumns(desks: number): number {
 
 /** How far apart lounge seats are. */
 export const LOUNGE_PITCH = { x: 144, y: 108 };
+/** The strip at the lounge's right end with the lamp, the bookshelf and a big plant. */
+export const LOUNGE_NOOK = 72;
+/** The lounge is drawn at least this many rows deep, so its furniture fits. */
+const LOUNGE_MIN_ROWS = 2;
 /** The lounge's rows of armchairs. It grows a column at a time, to the right. */
 export const LOUNGE_ROWS = 5;
 /** Where an area's floor label sits, and where its first row starts. */
@@ -146,7 +150,7 @@ export function floorFor(
       rows,
       seats: residents,
     };
-    cursor += loungeColumns * LOUNGE_PITCH.x + GAP;
+    cursor += loungeColumns * LOUNGE_PITCH.x + LOUNGE_NOOK + GAP;
   }
   const rooms = ROOMS.filter((room) => inUse.includes(room));
   // The rooms move along whole tiles, as the floor's tiles are drawn on that grid.
@@ -178,13 +182,24 @@ export const BASE_FLOOR = floorFor();
 export function loungeArea(
   floor: Floor,
 ): { x0: number; y0: number; x1: number; y1: number } | null {
+  const box = loungeBox(floor);
+  if (!box) return null;
+  return { x0: box.x0 + 22, y0: box.y0 + 52, x1: box.x1 - LOUNGE_NOOK - 16, y1: box.y1 - 14 };
+}
+
+/**
+ * The lounge's rug, in world pixels: as wide as its seats plus the nook, and at least two rows
+ * deep. Null when nobody rests.
+ */
+export function loungeBox(floor: Floor): { x0: number; y0: number; x1: number; y1: number } | null {
   const lounge = floor.lounge;
   if (!lounge) return null;
+  const rows = Math.max(lounge.rows, LOUNGE_MIN_ROWS);
   return {
-    x0: lounge.x + 22,
-    y0: LABEL_Y + 64,
-    x1: lounge.x + lounge.columns * LOUNGE_PITCH.x - 22,
-    y1: lounge.first.y + (lounge.rows - 1) * LOUNGE_PITCH.y + 20,
+    x0: lounge.x,
+    y0: LABEL_Y + 12,
+    x1: lounge.x + lounge.columns * LOUNGE_PITCH.x + LOUNGE_NOOK,
+    y1: lounge.first.y + (rows - 1) * LOUNGE_PITCH.y + 34,
   };
 }
 

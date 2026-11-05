@@ -212,3 +212,60 @@ for (const theme of ['light', 'dark'] as const) {
     ).toEqual([]);
   });
 }
+
+test('every control is a target of at least 24 by 24 px', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Explore a demo office' }).click();
+  await expect(page.locator('h1')).toHaveText('Agents');
+  // The board's Minimise is on this page while an approval waits.
+  await expect(page.locator('#board .bx')).toBeVisible();
+  const small: string[] = [];
+  let measured = 0;
+  for (const route of SCREENS.filter((name) => name !== '#components')) {
+    await page.evaluate((hash) => {
+      window.location.hash = hash;
+    }, route);
+    await page.waitForTimeout(300);
+    const found = await page.evaluate(() => {
+      const label = (element: Element) =>
+        element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 24) || '';
+      const targets = [
+        ...document.querySelectorAll<HTMLElement>(
+          'button, a[href], input, select, textarea, [role="button"]',
+        ),
+      ].filter((element) => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.visibility !== 'hidden' &&
+          !element.classList.contains('sr') &&
+          !element.closest('.sr, canvas, [hidden]')
+        );
+      });
+      return targets.map((element) => {
+        // A box you tick or choose is hit through its label, which is part of the target.
+        const ticked =
+          element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type);
+        const labelled = ticked ? element.labels?.[0] : undefined;
+        const box = (labelled ?? element).getBoundingClientRect();
+        return {
+          name: `${element.tagName.toLowerCase()} "${label(element)}"`,
+          width: box.width,
+          height: box.height,
+        };
+      });
+    });
+    measured += found.length;
+    for (const item of found) {
+      if (item.width < 24 || item.height < 24) {
+        small.push(
+          `${route} ${item.name} is ${item.width.toFixed(1)} by ${item.height.toFixed(1)} px`,
+        );
+      }
+    }
+  }
+  expect(measured, 'something was measured').toBeGreaterThan(50);
+  expect(small).toEqual([]);
+});

@@ -283,6 +283,10 @@ textarea.in {
   gap: 10px;
   cursor: pointer;
   font-weight: 700;
+  /* The label is the target: 24 px tall once the pages' 0.88 zoom is applied. The negative margin
+     takes the padding back out, so rows keep their spacing. */
+  padding-block: 3px;
+  margin-block: -3px;
 }
 .switch input {
   appearance: none;

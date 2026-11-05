@@ -228,17 +228,19 @@ func TestDiffShowsOnlyTheChange(t *testing.T) {
 
 func TestOnlyMabariHooksCountAsOurs(t *testing.T) {
 	cases := map[string]bool{
-		`{"command":"/opt/mabari","args":["hook","PreToolUse"]}`: true,
-		`{"command":"C:\\mabari.exe","args":["hook","Stop"]}`:    true,
-		`{"command":"/opt/mabari","args":["serve"]}`:             false,
-		`{"command":"/opt/other","args":["hook","PreToolUse"]}`:  false,
-		`{"command":"mabari hook PreToolUse"}`:                   false,
+		`{"command":"/opt/mabari","args":["hook","--port","4317","PreToolUse"]}`: true,
+		`{"command":"C:\\mabari.exe","args":["hook","--port","4317","Stop"]}`:    true,
+		`{"command":"/opt/mabari","args":["serve"]}`:                             false,
+		`{"command":"/opt/other","args":["hook","--port","4317","PreToolUse"]}`:  false,
+		`{"command":"mabari hook PreToolUse"}`:                                   false,
 		// A copy or wrapper of the binary under another name still starts with mabari, such as the
 		// bin/mabari-run a login service runs.
-		`{"command":"/code/mabari/bin/mabari-run","args":["hook","Stop"]}`: true,
-		`{"command":"C:\\Mabari-Run.EXE","args":["hook","Stop"]}`:          true,
-		`{"command":"/code/mabari/bin/mabari-run","args":["serve"]}`:       false,
-		`{"command":"/opt/mabari-notes/other","args":["hook","Stop"]}`:     false,
+		`{"command":"/code/mabari/bin/mabari-run","args":["hook","--port","4317","Stop"]}`: true,
+		`{"command":"C:\\Mabari-Run.EXE","args":["hook","--port","4317","Stop"]}`:          true,
+		`{"command":"/code/mabari/bin/mabari-run","args":["serve"]}`:                       false,
+		`{"command":"/opt/mabari-notes/other","args":["hook","--port","4317","Stop"]}`:     false,
+		// With a token file, which Mabari in Docker writes.
+		`{"command":"/opt/mabari","args":["hook","--port","4317","--token-file","/h/hook_token","Stop"]}`: true,
 	}
 	for handler, want := range cases {
 		if got := isOurs(json.RawMessage(handler)); got != want {
@@ -247,9 +249,62 @@ func TestOnlyMabariHooksCountAsOurs(t *testing.T) {
 	}
 }
 
+// A stranger's program whose name starts with mabari, and that takes "hook" as its first argument,
+// is not Mabari's unless the rest of the command is Mabari's too: the port, the optional token
+// file, and one of the events Mabari listens to. Anything less is left exactly as it is (rule 5).
+func TestAStrangersMabariNamedHookIsNotOurs(t *testing.T) {
+	strangers := []string{
+		// The reviewer's example: a linter that happens to be called mabari-lint.
+		`{"command":"/usr/local/bin/mabari-lint","args":["hook","pre-commit"]}`,
+		`{"command":"/usr/local/bin/mabari-lint","args":["hook","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari-lint","args":["hook","--strict"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","abc","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","-1","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","99999","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","pre-commit"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","--token-file","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","--token-file","","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","--other","x","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","Stop","--extra"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","--port","4317","Stop","Stop"]}`,
+		`{"command":"/usr/local/bin/mabari","args":["hook","Stop","--port","4317"]}`,
+	}
+	for _, handler := range strangers {
+		if isOurs(json.RawMessage(handler)) {
+			t.Errorf("%s was taken for Mabari's", handler)
+		}
+		// Even the configured binary is not enough without the shape.
+		var h struct{ Command string }
+		_ = json.Unmarshal([]byte(handler), &h)
+		if isOurs(json.RawMessage(handler), h.Command) {
+			t.Errorf("%s was taken for Mabari's because its program was configured", handler)
+		}
+	}
+}
+
+// Every event Mabari registers is recognised, with and without a token file, so no hook it wrote
+// can be left behind.
+func TestEveryHookMabariWritesIsOurs(t *testing.T) {
+	for _, hook := range []Hook{
+		testHook, runHook, {Binary: "/usr/local/bin/mb", Port: 1},
+		{Binary: "/usr/local/bin/mabari", Port: 65535, TokenFile: "/Users/a/.mabari/hook_token"},
+	} {
+		for _, event := range hookEvents {
+			handler := mustJSON(map[string]any{"type": "command", "command": hook.Binary, "args": hook.args(event)})
+			if !isOurs(handler, hook.Binary) {
+				t.Errorf("%s %v was not recognised", hook.Binary, hook.args(event))
+			}
+		}
+	}
+}
+
 // A binary that doesn't start with mabari is still Mabari's when it is the one configured.
 func TestTheConfiguredBinaryIsOurs(t *testing.T) {
-	handler := json.RawMessage(`{"command":"/usr/local/bin/mb","args":["hook","Stop"]}`)
+	handler := json.RawMessage(`{"command":"/usr/local/bin/mb","args":["hook","--port","4317","Stop"]}`)
 	if isOurs(handler) {
 		t.Error("an unknown binary was taken for Mabari's")
 	}
@@ -417,6 +472,48 @@ func TestOtherPeoplesHooksStayAsWritten(t *testing.T) {
 	}
 	if got := read(t, filepath.Join(dir, "settings.json")); got != settings {
 		t.Errorf("detach did not restore the original:\n%s", got)
+	}
+}
+
+// REV-2: a program called mabari-lint that takes "hook" as its first argument is someone else's.
+// Attaching keeps it, a detach keeps it, and it never makes Mabari look attached.
+func TestAMabariNamedStrangerSurvivesAttachAndDetach(t *testing.T) {
+	theirs := `{"command": "/usr/local/bin/mabari-lint", "args": ["hook", "pre-commit"], "timeout": 30}`
+	settings := `{
+  "hooks": {
+    "Stop": [
+      {"hooks": [` + theirs + `]}
+    ]
+  }
+}
+`
+	dir := scratch(t, settings)
+	path := filepath.Join(dir, "settings.json")
+	if Attached(dir) {
+		t.Fatal("mabari-lint hook pre-commit made Mabari look attached")
+	}
+	plan, err := PlanAttach(dir, runHook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(compact(t, string(plan.After)), compact(t, theirs)) {
+		t.Fatalf("attaching dropped the stranger's hook:\n%s", plan.After)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := countOurs(t, path); got != len(hookEvents) {
+		t.Errorf("%d Mabari hooks, want %d, with the stranger's not among them", got, len(hookEvents))
+	}
+	detach, err := PlanDetach(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(detach); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, path); got != settings {
+		t.Errorf("detaching did not leave the stranger's file as it was:\n%s", got)
 	}
 }
 

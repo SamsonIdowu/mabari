@@ -284,16 +284,22 @@ func HookWaits(configDir string, binaries ...string) bool {
 	return false
 }
 
-// isOurs reports whether a hook handler runs `mabari hook`: its first argument is "hook", and it
-// runs either one of the binaries given, the one Mabari is configured to write, or a program whose
-// name starts with "mabari". The second covers a copy or wrapper of the binary, such as the
-// bin/mabari-run a login service runs, and hooks written by an older install under another path.
+// isOurs reports whether a hook handler is one Mabari wrote. Both halves must hold, because
+// settings.json holds other people's hooks too, and those stay exactly as written (rule 5):
+//
+//   - The command is Mabari's whole: `hook --port <number>`, then `--token-file <path>` when there
+//     is one, then one of the events Mabari listens to, and nothing else. This is what Hook.args
+//     writes, and what every earlier version wrote. A stranger's program that takes "hook" as its
+//     first argument, such as `mabari-lint hook pre-commit`, has another shape.
+//   - The program is one of the binaries given, the one Mabari is configured to write, or one whose
+//     name starts with "mabari". The second covers a copy or wrapper of the binary, such as the
+//     bin/mabari-run a login service runs, and hooks written by an older install under another path.
 func isOurs(handler json.RawMessage, binaries ...string) bool {
 	var h struct {
 		Command string   `json:"command"`
 		Args    []string `json:"args"`
 	}
-	if json.Unmarshal(handler, &h) != nil || len(h.Args) == 0 || h.Args[0] != "hook" {
+	if json.Unmarshal(handler, &h) != nil || !isHookArgs(h.Args) {
 		return false
 	}
 	if h.Command != "" && slices.Contains(binaries, h.Command) {
@@ -302,6 +308,25 @@ func isOurs(handler json.RawMessage, binaries ...string) bool {
 	// Settings written on Windows use backslashes, whichever system reads them.
 	name := h.Command[strings.LastIndexAny(h.Command, `/\`)+1:]
 	return strings.HasPrefix(strings.ToLower(name), "mabari")
+}
+
+// isHookArgs reports whether args are what Hook.args writes: hook, --port and a port number, an
+// optional --token-file and its path, then a hook event.
+func isHookArgs(args []string) bool {
+	if len(args) < 4 || args[0] != "hook" || args[1] != "--port" {
+		return false
+	}
+	if _, err := strconv.ParseUint(args[2], 10, 16); err != nil {
+		return false
+	}
+	rest := args[3:]
+	if len(rest) == 3 {
+		if rest[0] != "--token-file" || rest[1] == "" {
+			return false
+		}
+		rest = rest[2:]
+	}
+	return len(rest) == 1 && slices.Contains(hookEvents, rest[0])
 }
 
 // withoutOurHooks returns the settings' hooks object with every Mabari handler removed, dropping

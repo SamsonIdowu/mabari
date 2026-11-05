@@ -389,7 +389,7 @@ func TestAnAnswerNobodyHearsIsRefused(t *testing.T) {
 // Hooks attached before questions were answered in Mabari time out too soon to wait for one.
 func TestOldHooksLeaveQuestionsToClaudeCode(t *testing.T) {
 	dir := t.TempDir()
-	old := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"/bin/mabari","args":["hook","PreToolUse"],"timeout":5}]}]}}`
+	old := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"/bin/mabari","args":["hook","--port","4317","PreToolUse"],"timeout":5}]}]}}`
 	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}

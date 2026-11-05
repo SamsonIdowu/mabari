@@ -32,6 +32,13 @@ type claudeOffice struct {
 // the real ~/.claude.
 func newClaudeOffice(t *testing.T) *claudeOffice {
 	t.Helper()
+	return newClaudeOfficeRunning(t, "/opt/mabari/mabari")
+}
+
+// newClaudeOfficeRunning is the same with Mabari running as the given binary, which hooks are
+// written to run.
+func newClaudeOfficeRunning(t *testing.T, binary string) *claudeOffice {
+	t.Helper()
 	ctx := context.Background()
 	s, err := store.Open(ctx, ":memory:")
 	if err != nil {
@@ -53,7 +60,7 @@ func newClaudeOffice(t *testing.T) *claudeOffice {
 	sim := simulator.New(engine, simulator.Mulberry32(7), 0)
 	handler := New(Options{Engine: engine, Simulator: sim, Claude: &ClaudeOptions{
 		Connector: connector, Secrets: vault, ConfigDir: dir,
-		Hook: claudecode.Hook{Binary: "/opt/mabari/mabari", Port: 4317},
+		Hook: claudecode.Hook{Binary: binary, Port: 4317},
 	}})
 	return &claudeOffice{office: &office{handler: handler, engine: engine, simulator: sim}, vault: vault, dir: dir}
 }
@@ -170,6 +177,44 @@ func TestWipeDetachesClaudeCode(t *testing.T) {
 	settings, _ := os.ReadFile(filepath.Join(o.dir, "settings.json"))
 	if !strings.Contains(string(settings), "claude-opus-4-1") {
 		t.Errorf("the user's settings were lost: %s", settings)
+	}
+}
+
+// The login service runs bin/mabari-run. Connecting from it must read as connected, show no diff
+// afterwards, replace its own hooks when connecting again, and a wipe must take every hook out and
+// give back the user's file. Scratch settings only, never the real ~/.claude.
+func TestConnectAndWipeFromABinaryNamedMabariRun(t *testing.T) {
+	o := newClaudeOfficeRunning(t, "/code/mabari/bin/mabari-run")
+	path := filepath.Join(o.dir, "settings.json")
+	original, _ := os.ReadFile(path)
+
+	before := decode[claudeStatus](t, o.do(t, http.MethodGet, "/api/accounts/claude", ""))
+	if before.Attached || len(before.Diff) == 0 {
+		t.Fatalf("before connecting = attached %v, %d diff lines", before.Attached, len(before.Diff))
+	}
+	for range 2 { // connecting again must not stack a second set
+		if response := o.do(t, http.MethodPost, "/api/accounts/claude/connect", `{"confirm":true}`); response.Code != http.StatusOK {
+			t.Fatalf("connect = %d %s", response.Code, response.Body)
+		}
+	}
+	after := decode[claudeStatus](t, o.do(t, http.MethodGet, "/api/accounts/claude", ""))
+	if !after.Attached || after.Outdated || len(after.Diff) != 0 {
+		t.Errorf("after connecting = attached %v, outdated %v, %d diff lines", after.Attached, after.Outdated, len(after.Diff))
+	}
+	connected, _ := os.ReadFile(path)
+	if got := strings.Count(string(connected), "mabari-run"); got != 11 {
+		t.Errorf("%d hooks in settings.json after connecting twice, want 11", got)
+	}
+
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d %s", response.Code, response.Body)
+	}
+	wiped, _ := os.ReadFile(path)
+	if strings.Contains(string(wiped), "mabari-run") || claudecode.Attached(o.dir, "/code/mabari/bin/mabari-run") {
+		t.Errorf("a wipe left hooks in settings.json:\n%s", wiped)
+	}
+	if string(wiped) != string(original) {
+		t.Errorf("a wipe did not give back the user's file:\n%s", wiped)
 	}
 }
 

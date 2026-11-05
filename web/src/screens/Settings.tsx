@@ -1,36 +1,62 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { create } from 'zustand';
+import {
+  ACCOUNT_LABEL,
+  DEFAULTS_KEY,
+  chooseableModels,
+  connectedModels,
+  modelOptions,
+} from '../data/accountInfo.ts';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
-import type { Settings as SettingsModel, Snapshot } from '../gen/models.ts';
+import type { AccountKind, Settings as SettingsModel, Snapshot } from '../gen/models.ts';
 import { playDing } from '../office/ding.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
+import { DemoNote } from './DemoNote.tsx';
 import { PageHead } from './parts.tsx';
 
-const DEFAULTS: [key: string, label: string, kind: string][] = [
-  ['claude', 'Claude Code', 'claude_code'],
-  ['codex', 'ChatGPT (Codex)', 'codex'],
-  ['anthropic', 'Anthropic API key', 'anthropic_key'],
-  ['openai', 'OpenAI API key', 'openai_key'],
-];
+/** The accounts whose default model can be set, in the order Settings lists them. */
+const DEFAULT_KINDS: AccountKind[] = ['claude_code', 'codex', 'anthropic_key', 'openai_key'];
+
+const SAVED_MS = 2200;
+const useSaved = create<{ shown: boolean }>(() => ({ shown: false }));
+let hideSaved: ReturnType<typeof setTimeout> | undefined;
+
+/** Shows the quiet "Saved" for a moment, so a change that took effect can be told from one that didn't. */
+function markSaved() {
+  clearTimeout(hideSaved);
+  useSaved.setState({ shown: true });
+  hideSaved = setTimeout(() => useSaved.setState({ shown: false }), SAVED_MS);
+}
+
+/** Sits low on the page, whichever card was changed, and says nothing until something is stored. */
+function SavedCue() {
+  const shown = useSaved((state) => state.shown);
+  return (
+    <span id="savedCue" className={shown ? 'savedcue on' : 'savedcue'} role="status">
+      {shown ? 'Saved' : ''}
+    </span>
+  );
+}
 
 const save = (patch: Partial<SettingsModel>) => {
-  api.updateSettings(patch).catch((error: Error) => {
-    useOfficeStore.getState().toast(error.message);
-  });
+  api
+    .updateSettings(patch)
+    .then(markSaved)
+    .catch((error: Error) => {
+      useOfficeStore.getState().toast(error.message);
+    });
 };
-
-function connectedModels(office: Snapshot): string[] {
-  const models = office.accounts
-    .filter((account) => account.status === 'connected')
-    .flatMap((account) => account.models);
-  return [...new Set(models)];
-}
 
 function QueryCard({ office }: { office: Snapshot }) {
   const models = connectedModels(office);
+  // The select shows the model that is stored, always, even when the account that gives it isn't
+  // connected, because that is the one in use.
+  const stored = office.settings.queryModel;
+  const options = modelOptions(models, stored);
   return (
     <div className="card">
       <h2>Answering queries</h2>
@@ -44,22 +70,19 @@ function QueryCard({ office }: { office: Snapshot }) {
             id="pQuery"
             style={{ maxWidth: 360 }}
             disabled={models.length === 0}
-            value={
-              models.includes(office.settings.queryModel)
-                ? office.settings.queryModel
-                : (models[0] ?? '')
-            }
+            value={stored}
             onChange={(event) => save({ queryModel: event.target.value })}
           >
-            {models.length ? (
-              models.map((model) => <option key={model}>{model}</option>)
-            ) : (
-              <option value="">Connect an account first</option>
-            )}
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
           <span className="help">
             Queries are answered from Mabari&apos;s own log, so they never interrupt an agent. A
             small, fast model is usually enough.
+            {models.length === 0 ? ' Connect an account to choose another model.' : ''}
           </span>
         </div>
       </div>
@@ -77,25 +100,34 @@ function DefaultsCard({ office }: { office: Snapshot }) {
         decide the model its subagents use.
       </p>
       <div className="kv">
-        {DEFAULTS.map(([key, label, kind]) => [
-          <label className="flabel" htmlFor={`def-${key}`} key={`${key}-label`}>
-            {label}
-          </label>,
-          <select
-            className="in"
-            id={`def-${key}`}
-            key={key}
-            style={{ maxWidth: 320 }}
-            value={defaults[key] ?? ''}
-            onChange={(event) => save({ defaults: { ...defaults, [key]: event.target.value } })}
-          >
-            {office.accounts
-              .find((account) => account.kind === kind)
-              ?.models.map((model) => (
-                <option key={model}>{model}</option>
+        {DEFAULT_KINDS.map((kind) => {
+          const key = DEFAULTS_KEY[kind] ?? kind;
+          const account = office.accounts.find((item) => item.kind === kind);
+          const stored = defaults[key] ?? '';
+          return [
+            <label className="flabel" htmlFor={`def-${key}`} key={`${key}-label`}>
+              {ACCOUNT_LABEL[kind]}
+            </label>,
+            <select
+              className="in"
+              id={`def-${key}`}
+              key={key}
+              style={{ maxWidth: 320 }}
+              value={stored}
+              onChange={(event) => save({ defaults: { ...defaults, [key]: event.target.value } })}
+            >
+              {modelOptions(
+                account ? chooseableModels(account) : [],
+                stored,
+                "this account doesn't offer it",
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
-          </select>,
-        ])}
+            </select>,
+          ];
+        })}
       </div>
     </div>
   );
@@ -271,7 +303,10 @@ function RunAtLogin() {
           onChange={(event) =>
             void api
               .setLoginService(event.target.checked)
-              .then((next) => queryClient.setQueryData(['loginService'], next))
+              .then((next) => {
+                queryClient.setQueryData(['loginService'], next);
+                markSaved();
+              })
               .catch((error: Error) => useOfficeStore.getState().toast(error.message))
           }
         />
@@ -436,16 +471,26 @@ function WipeCard() {
   return (
     <div className="card" style={{ borderColor: 'var(--red)' }}>
       <h2>Wipe all data</h2>
-      <p className="muted">
-        Removes every account connection, token, API key, event and log entry, and restores your
-        Claude Code settings from the backup. Your agents and their folders are not touched.
-      </p>
+      <div className="muted" data-testid="wipeLists">
+        <p>
+          <b>Goes:</b> every project, agent, message, event and log entry; every account connection;
+          your API keys, hub token and access key; and, if you attached Claude Code, Mabari&apos;s
+          hooks in its settings, which are taken out again.
+        </p>
+        <p>
+          <b>Stays:</b> your settings, except that auto approve and LAN access are turned off; your
+          agent files; your own folders; and everything else in Claude Code&apos;s settings.
+        </p>
+      </div>
       {confirming ? (
-        <div className="banner red">
+        <div className="banner red" role="alert">
           <Icon>
             <path d="M12 8v5M12 16h.01" />
           </Icon>
-          <span className="grow">This cannot be undone. Wipe everything now?</span>
+          <span className="grow">
+            This cannot be undone. The projects, agents, history, accounts, keys and tokens listed
+            above go now. Your settings stay.
+          </span>
           <button type="button" className="btn" onClick={() => setConfirming(false)}>
             Cancel
           </button>
@@ -471,6 +516,10 @@ export function Settings() {
     <section data-screen="preferences">
       <div className="page">
         <PageHead title="Settings" description="Everything here stays on this computer." />
+        <DemoNote office={office}>
+          The accounts and the models they give are pretend while the demo runs, so the lists below
+          include models from accounts you haven&apos;t connected.
+        </DemoNote>
         <QueryCard office={office} />
         <DefaultsCard office={office} />
         <ApprovalsCard settings={office.settings} />
@@ -479,6 +528,7 @@ export function Settings() {
         <WipeCard />
       </div>
       <AutoApproveDialog office={office} />
+      <SavedCue />
     </section>
   );
 }

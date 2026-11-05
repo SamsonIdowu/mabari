@@ -48,6 +48,8 @@ type Connector struct {
 	replies map[string]func(any) // approval replies, by agent id
 	changes map[string][]change  // proposed file changes, by item id
 	loginID string
+	// missing is set when Launch found no codex command, and cleared if one starts later.
+	missing bool
 }
 
 type change struct {
@@ -66,10 +68,24 @@ func New(engine *events.Engine, version string) *Connector {
 	}
 }
 
+// Missing reports whether Launch found no codex command on this computer. Accounts shows it on the
+// ChatGPT card, with the install step, instead of leaving it to a message that fades. It takes
+// only the connector's own lock, so the office can ask while it describes the accounts.
+func (c *Connector) Missing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.missing
+}
+
 // Launch starts `codex app-server` as a child process, if Codex is installed.
 func (c *Connector) Launch(ctx context.Context) error {
 	path, err := exec.LookPath("codex")
+	c.mu.Lock()
+	c.missing = err != nil
+	c.mu.Unlock()
 	if err != nil {
+		// Show it on the account now, so a page already open learns what is missing.
+		_ = c.engine.Do(c.touchAccount)
 		return ErrNotInstalled
 	}
 	cmd := exec.CommandContext(ctx, path, "app-server") // #nosec G204 -- the user's own codex
@@ -179,6 +195,8 @@ func (c *Connector) refreshAccount(ctx context.Context) error {
 			}
 			c.engine.SetAccount(existing)
 		}
+		// The models Codex really offers decide which default is valid.
+		c.engine.CorrectModels()
 	})
 }
 
@@ -208,6 +226,15 @@ func (c *Connector) Logout() error {
 		return err
 	}
 	return c.refreshAccount(context.Background())
+}
+
+// touchAccount tells every page the Codex account again, as it now reads. Call inside Do.
+func (c *Connector) touchAccount() {
+	for _, account := range c.engine.StoredAccounts() {
+		if account.Kind == models.AccountCodex {
+			c.engine.SetAccount(account)
+		}
+	}
 }
 
 // setStatus changes the Codex account's status. Call inside Do.

@@ -112,7 +112,7 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A wipe also takes Mabari's hooks out of Claude Code's settings.
-	if a.claude != nil && claudecode.Attached(a.claude.ConfigDir) {
+	if a.claude != nil && a.claudeAttached() {
 		if err := a.detachClaude(); err != nil {
 			internalError(w, err)
 			return
@@ -498,21 +498,49 @@ func (a *api) connected(kind models.AccountKind) bool {
 }
 
 // realRunner says why an agent on this account can't be started from Mabari outside the demo,
-// or "" when it can. Call inside Do.
+// or "" when it can. The answer is also what the account's StartNote says, so the New agent
+// dialog and the server's refusal never disagree. It takes no locks of the engine's, so it can run
+// inside Do or while the office is described.
 func (a *api) realRunner(kind models.AccountKind) string {
 	switch kind {
 	case models.AccountCodex:
-		if a.codex != nil {
-			return ""
+		switch {
+		case a.codex == nil:
+			return "Codex isn't running here. Install the Codex CLI and restart Mabari."
+		case a.codex.Missing():
+			return "The Codex CLI isn't installed. Install it, then restart Mabari."
 		}
-		return "Codex isn't running here. Install the Codex CLI and restart Mabari."
+		return ""
 	case models.AccountClaudeCode:
 		return "Claude Code sessions start in your terminal: run claude in the agent's folder and it takes a desk."
 	case models.AccountAnthropicKey, models.AccountOpenAIKey:
-		return "Agents that run on an API key aren't ready yet. Use Claude Code or Codex for now."
+		return "Agents that run on an API key aren't ready yet. Attach Claude Code or sign in with ChatGPT to run agents."
 	default:
 		return "Agents on this account report by themselves."
 	}
+}
+
+// accountNotes says, for each account, whether Mabari can start an agent on it and, if not, what
+// to do instead, and what its program is missing. The engine adds these when it describes an
+// account, so every page, and the New agent dialog's choice of form or instruction, reads one
+// answer.
+func (a *api) accountNotes(account models.Account, demo bool) models.Account {
+	if account.Kind == models.AccountCodex && a.codex != nil && a.codex.Missing() {
+		account.Missing = "codex"
+	}
+	connected := account.Status == models.AccountConnected
+	switch {
+	// The demo's agents are simulated, so any connected account of a kind it plays can start one.
+	case demo && connected && (account.Kind == models.AccountCodex || account.Kind == models.AccountClaudeCode):
+		account.CanStart = true
+	default:
+		account.StartNote = a.realRunner(account.Kind)
+		if account.StartNote == "" && !connected {
+			account.StartNote = "Sign in with ChatGPT first."
+		}
+		account.CanStart = account.StartNote == ""
+	}
+	return account
 }
 
 // startAgent starts an agent from a checked body, or says why it can't. Call inside Do.
@@ -685,7 +713,16 @@ func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 		// Auto approve has its own route, which records the change and asks for an acknowledgement.
 		settings.AutoApprove = current.AutoApprove
 		if problem = validSettings(settings); problem == "" {
+			// A model no account offers is never kept, so the pages show what is used.
+			var changes []string
+			settings, changes = models.CorrectModels(settings, a.engine.StoredAccounts())
 			a.engine.SaveSettings(settings)
+			for _, change := range changes {
+				a.engine.Log("Everyone", models.LogSession, "Corrected a model setting", change, "")
+			}
+			if len(changes) > 0 {
+				a.engine.Toast(strings.Join(changes, " "))
+			}
 		}
 	})
 	if err != nil {

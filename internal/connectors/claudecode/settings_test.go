@@ -3,6 +3,7 @@
 package claudecode
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -232,11 +233,224 @@ func TestOnlyMabariHooksCountAsOurs(t *testing.T) {
 		`{"command":"/opt/mabari","args":["serve"]}`:             false,
 		`{"command":"/opt/other","args":["hook","PreToolUse"]}`:  false,
 		`{"command":"mabari hook PreToolUse"}`:                   false,
+		// A copy or wrapper of the binary under another name still starts with mabari, such as the
+		// bin/mabari-run a login service runs.
+		`{"command":"/code/mabari/bin/mabari-run","args":["hook","Stop"]}`: true,
+		`{"command":"C:\\Mabari-Run.EXE","args":["hook","Stop"]}`:          true,
+		`{"command":"/code/mabari/bin/mabari-run","args":["serve"]}`:       false,
+		`{"command":"/opt/mabari-notes/other","args":["hook","Stop"]}`:     false,
 	}
 	for handler, want := range cases {
 		if got := isOurs(json.RawMessage(handler)); got != want {
 			t.Errorf("%s = %v", handler, got)
 		}
+	}
+}
+
+// A binary that doesn't start with mabari is still Mabari's when it is the one configured.
+func TestTheConfiguredBinaryIsOurs(t *testing.T) {
+	handler := json.RawMessage(`{"command":"/usr/local/bin/mb","args":["hook","Stop"]}`)
+	if isOurs(handler) {
+		t.Error("an unknown binary was taken for Mabari's")
+	}
+	if !isOurs(handler, "/usr/local/bin/mb") {
+		t.Error("the configured binary was not recognised")
+	}
+	if isOurs(json.RawMessage(`{"command":"/usr/local/bin/mb","args":["run"]}`), "/usr/local/bin/mb") {
+		t.Error("the configured binary doing something else was taken for a hook")
+	}
+}
+
+var runHook = Hook{Binary: "/code/mabari/bin/mabari-run", Port: 4317}
+
+func countOurs(t *testing.T, path string) int {
+	t.Helper()
+	var settings struct {
+		Hooks map[string][]struct {
+			Hooks []json.RawMessage `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(read(t, path)), &settings); err != nil {
+		t.Fatal(err)
+	}
+	var ours int
+	for _, groups := range settings.Hooks {
+		for _, group := range groups {
+			for _, handler := range group.Hooks {
+				if isOurs(handler) {
+					ours++
+				}
+			}
+		}
+	}
+	return ours
+}
+
+// The login service runs bin/mabari-run, so that is the name written into settings.json. Attaching
+// reports attached, attaching again changes nothing, and a detach gives back the original bytes.
+func TestAttachWithABinaryNamedMabariRun(t *testing.T) {
+	dir := scratch(t, existing)
+	path := filepath.Join(dir, "settings.json")
+	plan, err := PlanAttach(dir, runHook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if !Attached(dir) {
+		t.Fatal("hooks written by mabari-run are not reported as attached")
+	}
+	if !HookWaits(dir) {
+		t.Error("the mabari-run hooks are called outdated")
+	}
+	if got := countOurs(t, path); got != len(hookEvents) {
+		t.Fatalf("%d hooks after attaching, want %d", got, len(hookEvents))
+	}
+	again, err := PlanAttach(dir, runHook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Changed() || len(again.Diff) != 0 {
+		t.Errorf("attaching again changes the file or shows a diff:\n%s", again.After)
+	}
+	detach, err := PlanDetach(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(detach); err != nil {
+		t.Fatal(err)
+	}
+	if Attached(dir) {
+		t.Error("still attached after detaching")
+	}
+	if got := read(t, path); got != existing {
+		t.Errorf("the original bytes did not come back:\n%s", got)
+	}
+}
+
+// Hooks left by an older install, under another path, are replaced when the hooks are attached,
+// never added to, even when earlier attaches had stacked up.
+func TestStaleHooksAreReplacedNotStacked(t *testing.T) {
+	// Every event holds the user's own hook and then two stale sets of Mabari's, by older paths.
+	events := map[string]any{}
+	for _, event := range hookEvents {
+		groups := []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "./mine.sh"}}}}
+		for _, binary := range []string{"/old/place/mabari", "/old/place/mabari-run"} {
+			groups = append(groups, map[string]any{"hooks": []any{map[string]any{
+				"type": "command", "command": binary, "args": Hook{Port: 4317}.args(event), "timeout": 5,
+			}}})
+		}
+		events[event] = groups
+	}
+	stacked, err := json.MarshalIndent(map[string]any{"model": "claude-sonnet-4-5", "hooks": events}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := scratch(t, string(stacked)+"\n")
+	path := filepath.Join(dir, "settings.json")
+	if got := countOurs(t, path); got != 2*len(hookEvents) {
+		t.Fatalf("the scratch file has %d Mabari hooks, want two sets", got)
+	}
+	plan, err := PlanAttach(dir, runHook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := countOurs(t, path); got != len(hookEvents) {
+		t.Errorf("%d Mabari hooks after reattaching, want %d", got, len(hookEvents))
+	}
+	after := read(t, path)
+	if strings.Contains(after, "/old/place/") {
+		t.Errorf("a stale path is still in settings.json:\n%s", after)
+	}
+	if got := strings.Count(after, `"./mine.sh"`); got != len(hookEvents) {
+		t.Errorf("the user's own hook appears %d times, want %d", got, len(hookEvents))
+	}
+}
+
+func compact(t *testing.T, text string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := json.Compact(&out, []byte(text)); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+// Other people's hooks stay exactly as written, whatever they are called and wherever they sit:
+// the same keys in the same order with the same values, and, on detaching, the same file.
+func TestOtherPeoplesHooksStayAsWritten(t *testing.T) {
+	// Not the shape of a Mabari hook in any way that matters, though it takes "hook" as an argument
+	// and sits in the same event.
+	theirs := `{"matcher": "Bash", "hooks": [{"type": "command", "command": "/opt/linter/lint", "args": ["hook", "--strict"], "timeout": 9}]}`
+	settings := `{
+  "hooks": {
+    "PreToolUse": [
+      ` + theirs + `
+    ]
+  }
+}
+`
+	dir := scratch(t, settings)
+	plan, err := PlanAttach(dir, runHook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(compact(t, string(plan.After)), compact(t, theirs)) {
+		t.Errorf("their hook changed:\n%s", plan.After)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	detach, err := PlanDetach(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(compact(t, string(detach.After)), compact(t, theirs)) {
+		t.Errorf("their hook changed on detach:\n%s", detach.After)
+	}
+	if err := Apply(detach); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(dir, "settings.json")); got != settings {
+		t.Errorf("detach did not restore the original:\n%s", got)
+	}
+}
+
+// The configured binary, even one not called mabari, is recognised when it is given, and replaced
+// by an attach and removed by a detach.
+func TestAConfiguredBinaryWithAnyName(t *testing.T) {
+	dir := scratch(t, existing)
+	hook := Hook{Binary: "/usr/local/bin/mb", Port: 4317}
+	plan, err := PlanAttach(dir, hook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if Attached(dir) {
+		t.Fatal("an unknown name was recognised without being told it")
+	}
+	if !Attached(dir, hook.Binary) {
+		t.Fatal("the configured binary was not recognised")
+	}
+	again, _ := PlanAttach(dir, hook)
+	if again.Changed() {
+		t.Error("attaching again changed the file")
+	}
+	detach, err := PlanDetach(dir, hook.Binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(detach); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(dir, "settings.json")); got != existing {
+		t.Errorf("the original bytes did not come back:\n%s", got)
 	}
 }
 

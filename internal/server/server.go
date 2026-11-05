@@ -94,6 +94,7 @@ func New(options Options) http.Handler {
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
 	}
+	a.engine.SetAccountNotes(a.accountNotes)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": options.Version})

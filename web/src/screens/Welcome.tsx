@@ -32,8 +32,8 @@ export function Welcome() {
               <div>
                 <b>1</b>
                 <span>
-                  <strong>Connect an account.</strong> Sign in with ChatGPT, attach the Claude Code
-                  you already use, or add an API key.
+                  <strong>Connect an account.</strong> Sign in with ChatGPT, or attach the Claude
+                  Code you already use.
                 </span>
               </div>
               <div>

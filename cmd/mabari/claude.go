@@ -148,7 +148,8 @@ func disconnectClaude(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	plan, err := claudecode.PlanDetach(dir)
+	binary, _ := hookBinary() // hooks it wrote under another name are found too
+	plan, err := claudecode.PlanDetach(dir, binary)
 	if err != nil {
 		return err
 	}
@@ -208,6 +209,7 @@ func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
 	if err != nil {
 		binary = ""
 	}
+	o.claude.HookBinary = binary
 	return &server.ClaudeOptions{
 		Connector: o.claude, Secrets: o.secrets, ConfigDir: dir,
 		Hook: claudecode.Hook{Binary: binary, Port: cfg.Port},

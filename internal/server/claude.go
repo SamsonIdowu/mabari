@@ -91,6 +91,12 @@ func (c *ClaudeOptions) token() (string, error) {
 	return c.Secrets.Get(claudecode.TokenName)
 }
 
+// claudeAttached reports whether Mabari's hooks are in Claude Code's settings, whatever the binary
+// that wrote them was called: the one Mabari runs as now, or any program named mabari….
+func (a *api) claudeAttached() bool {
+	return claudecode.Attached(a.claude.ConfigDir, a.claude.Hook.Binary)
+}
+
 // HostCommand is what to run on the host when Mabari is in Docker.
 const HostCommand = "mabari connect claude --token-file ~/.mabari/hook_token"
 
@@ -114,10 +120,10 @@ func (a *api) claudePlan(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	attached := claudecode.Attached(a.claude.ConfigDir)
+	attached := a.claudeAttached()
 	writeJSON(w, http.StatusOK, claudeStatus{
 		Attached: attached,
-		Outdated: attached && !claudecode.HookWaits(a.claude.ConfigDir),
+		Outdated: attached && !claudecode.HookWaits(a.claude.ConfigDir, a.claude.Hook.Binary),
 		Path:     plan.Path,
 		Diff:     plan.Diff,
 		Backup:   plan.Path + claudecode.BackupSuffix,
@@ -199,7 +205,7 @@ func (a *api) detachClaude() error {
 	if a.claude.TokenFile != "" {
 		return nil // the settings are on the host, and the token is the person's own file
 	}
-	plan, err := claudecode.PlanDetach(a.claude.ConfigDir)
+	plan, err := claudecode.PlanDetach(a.claude.ConfigDir, a.claude.Hook.Binary)
 	if err != nil {
 		return err
 	}

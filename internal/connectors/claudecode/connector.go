@@ -110,6 +110,9 @@ type Connector struct {
 	// ConfigDir is Claude Code's settings folder on this computer, checked before a question is
 	// shown. Empty, as in Docker where the settings are on the host, skips the check.
 	ConfigDir string
+	// HookBinary is the program Mabari writes into those settings as its hook, so hooks from a
+	// binary with any name are known as Mabari's. Empty leaves only names starting with mabari.
+	HookBinary string
 	// asking are the questions hooks are waiting on, by question id.
 	asking map[string]*asked
 }

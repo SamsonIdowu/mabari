@@ -47,6 +47,24 @@ func accountStatus(t *testing.T, o *office, kind models.AccountKind) models.Acco
 	return ""
 }
 
+// A key that doesn't fit is refused with the shape it should have, so the page can say it beside
+// the field instead of leaving a guess.
+func TestAKeyThatDoesNotFitSaysWhatShapeToPaste(t *testing.T) {
+	o, vault := newKeyOffice(t)
+	for kind, want := range map[string]string{
+		"anthropic_key": "an Anthropic API key. It starts with sk-ant- and has at least 20 more",
+		"openai_key":    "an OpenAI API key. It starts with sk- and has at least 20 more",
+	} {
+		response := o.do(t, http.MethodPut, "/api/accounts/"+kind+"/key", `{"key":"hello"}`)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), want) {
+			t.Errorf("%s = %d %s, want it to say %q", kind, response.Code, response.Body, want)
+		}
+		if _, err := vault.Get(kind); err == nil {
+			t.Errorf("a key that doesn't fit was stored for %s", kind)
+		}
+	}
+}
+
 func TestKeysAreStoredButNeverShown(t *testing.T) {
 	o, vault := newKeyOffice(t)
 	key := "sk-ant-api03-" + strings.Repeat("a", 40)

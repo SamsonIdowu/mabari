@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -87,11 +88,77 @@ func DefaultSettings() Settings {
 		Defaults: map[string]string{
 			"claude":    "claude-sonnet-4-5",
 			"codex":     "gpt-5-codex",
-			"anthropic": "claude-sonnet-4-5",
+			"anthropic": "claude-sonnet-5-5",
 			"openai":    "gpt-5",
 		},
 		AutoApprove: AutoApprove{Scope: "safe"},
 	}
+}
+
+// DefaultsKey is the key each account kind has in Settings.Defaults.
+var DefaultsKey = map[AccountKind]string{
+	AccountClaudeCode: "claude", AccountCodex: "codex",
+	AccountAnthropicKey: "anthropic", AccountOpenAIKey: "openai",
+}
+
+// AccountLabel is how the pages name each account kind, and so how a message about it should.
+var AccountLabel = map[AccountKind]string{
+	AccountClaudeCode: "Claude Code", AccountCodex: "ChatGPT (Codex)",
+	AccountAnthropicKey: "Anthropic API key", AccountOpenAIKey: "OpenAI API key",
+}
+
+// CorrectModels returns the settings with every model choice valid, and a plain sentence for each
+// one it had to change. A default must be one of its account's own models, and the query model one
+// of any account's. Settings show what is stored, so a value that no list offers would otherwise be
+// shown as something else while another is used. The hub's placeholder is not a model. A choice
+// that isn't valid becomes the standard one if that is valid, or else the first model offered.
+func CorrectModels(settings Settings, accounts []Account) (Settings, []string) {
+	settings = settings.Clone()
+	if settings.Defaults == nil {
+		settings.Defaults = map[string]string{}
+	}
+	offered := map[AccountKind][]string{}
+	var every []string
+	for _, account := range accounts {
+		if account.Kind == AccountHub {
+			continue
+		}
+		offered[account.Kind] = account.Models
+		every = append(every, account.Models...)
+	}
+	standard := DefaultSettings()
+	var changes []string
+	pick := func(valid []string, preferred string) string {
+		if slices.Contains(valid, preferred) {
+			return preferred
+		}
+		return valid[0]
+	}
+	for _, kind := range AccountKinds {
+		key, list := DefaultsKey[kind], offered[kind]
+		if key == "" || len(list) == 0 {
+			continue
+		}
+		current, has := settings.Defaults[key]
+		if has && slices.Contains(list, current) {
+			continue
+		}
+		replacement := pick(list, standard.Defaults[key])
+		settings.Defaults[key] = replacement
+		if has && current != "" {
+			changes = append(changes, "The "+AccountLabel[kind]+" default was "+current+
+				", which that account doesn't offer, so it is now "+replacement+".")
+		}
+	}
+	if len(every) > 0 && !slices.Contains(every, settings.QueryModel) {
+		replacement := pick(every, standard.QueryModel)
+		if settings.QueryModel != "" {
+			changes = append(changes, "The model that answers queries was "+settings.QueryModel+
+				", which no account offers, so it is now "+replacement+".")
+		}
+		settings.QueryModel = replacement
+	}
+	return settings, changes
 }
 
 // NeedsMe reports whether the state asks for the user's attention.

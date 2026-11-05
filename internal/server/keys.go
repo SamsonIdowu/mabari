@@ -20,9 +20,17 @@ const (
 var keyRules = map[models.AccountKind]struct {
 	pattern *regexp.Regexp
 	label   string
+	// shape says in words what the pattern accepts, so a refusal can tell what to paste.
+	shape string
 }{
-	models.AccountAnthropicKey: {regexp.MustCompile(`^sk-ant-[A-Za-z0-9_-]{20,200}$`), "Anthropic API key"},
-	models.AccountOpenAIKey:    {regexp.MustCompile(`^sk-[A-Za-z0-9_-]{20,200}$`), "OpenAI API key"},
+	models.AccountAnthropicKey: {
+		regexp.MustCompile(`^sk-ant-[A-Za-z0-9_-]{20,200}$`), "Anthropic API key",
+		"It starts with sk-ant- and has at least 20 more letters, digits, dashes or underscores.",
+	},
+	models.AccountOpenAIKey: {
+		regexp.MustCompile(`^sk-[A-Za-z0-9_-]{20,200}$`), "OpenAI API key",
+		"It starts with sk- and has at least 20 more letters, digits, dashes or underscores.",
+	},
 }
 
 func (a *api) keyRoutes(mux *http.ServeMux) {
@@ -48,7 +56,7 @@ func (a *api) saveKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !rule.pattern.MatchString(body.Key) {
-		writeError(w, http.StatusBadRequest, "that doesn't look like an "+rule.label)
+		writeError(w, http.StatusBadRequest, "that doesn't look like an "+rule.label+". "+rule.shape)
 		return
 	}
 	if err := a.secrets.Set(string(kind), body.Key); err != nil {

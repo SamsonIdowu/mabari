@@ -1,0 +1,40 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Connecting and settings: the quiet cue after a setting is saved, and the New agent dialog's
+   instruction for accounts that can't start an agent from here. */
+
+/* Fixed to the top right of the page, under the top bar, so it is in view whichever card was
+   changed and never sits over a control or the toasts at the bottom. */
+.savedcue {
+  position: fixed;
+  right: 26px;
+  top: 58px;
+  z-index: 55;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.savedcue.on {
+  opacity: 1;
+}
+
+.cantstart {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cantstart .card {
+  background: var(--surface2);
+  padding: 16px 18px;
+  gap: 8px;
+}
+.cantstart h3 {
+  font-size: 15px;
+}

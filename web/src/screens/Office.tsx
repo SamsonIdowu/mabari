@@ -517,7 +517,12 @@ function AccountBanners({ office }: { office: Snapshot }) {
 }
 
 function FloorMessage({ office }: { office: Snapshot }) {
-  const connected = office.accounts.some((account) => account.status !== 'off');
+  const live = office.accounts.filter((account) => account.status !== 'off');
+  // An API key alone can't run an agent yet, so it doesn't make the office connected.
+  const keysOnly =
+    live.length > 0 &&
+    live.every((account) => account.kind === 'anthropic_key' || account.kind === 'openai_key');
+  const connected = live.length > 0 && !keysOnly;
   if (office.agents.length) return null;
   const loadDemo = () => void api.loadDemo();
   return (
@@ -531,12 +536,19 @@ function FloorMessage({ office }: { office: Snapshot }) {
               and take a desk.
             </p>
           </>
+        ) : keysOnly ? (
+          <>
+            <h2>Only an API key is saved</h2>
+            <p className="muted">
+              Agents can&apos;t run on an API key yet. Attach Claude Code or sign in with ChatGPT,
+              and your agents will take a desk here.
+            </p>
+          </>
         ) : (
           <>
             <h2>No accounts connected</h2>
             <p className="muted">
-              Connect ChatGPT, attach Claude Code or add an API key, and your agents will take a
-              desk here.
+              Connect ChatGPT or attach Claude Code, and your agents will take a desk here.
             </p>
           </>
         )}

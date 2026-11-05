@@ -12,6 +12,7 @@ import { useVee } from '../office/veeStore.ts';
 import { whereWorking } from '../office/where.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
+import { ConnectPrompt } from './ConnectPrompt.tsx';
 import { HomeDock } from './HomeDock.tsx';
 
 const LOOK_EASE = 0.08;
@@ -443,6 +444,7 @@ function HomeScreen({ office }: { office: Snapshot }) {
             <span id="homeGreet">{greeting(new Date().getHours())}</span>
           </h1>
           <Summary office={office} />
+          <ConnectPrompt office={office} />
         </div>
         <div className="h2stage">
           <canvas

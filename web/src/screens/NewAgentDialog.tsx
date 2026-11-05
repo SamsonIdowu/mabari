@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { defaultModel } from '../data/accountInfo.ts';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
-import type { AccountKind, Snapshot } from '../gen/models.ts';
+import type { Account, AccountKind, Snapshot } from '../gen/models.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { DialogFrame } from './AgentDialogs.tsx';
@@ -62,6 +63,8 @@ const ROLES: Role[] = [
 const ACCOUNT_LABELS: Partial<Record<AccountKind, string>> = {
   codex: 'ChatGPT (Codex)',
   claude_code: 'Claude Code on this computer',
+  anthropic_key: 'Anthropic API key',
+  openai_key: 'OpenAI API key',
 };
 
 /** Adds a number when the name is taken, so a role can be used twice. */
@@ -73,12 +76,25 @@ function freeName(name: string, office: Snapshot): string {
   return `${name} ${number}`;
 }
 
+/** The accounts an agent can be started on from here: connected, and the server says it can. */
+function startableAccounts(office: Snapshot): Account[] {
+  return office.accounts.filter(
+    (item) => item.status === 'connected' && ACCOUNT_LABELS[item.kind] && item.canStart,
+  );
+}
+
+/** Where the server's own refusals about the name belong: beside the Name field. */
+const NAME_PROBLEM = /^(Give the agent a name|There is already an agent called)/;
+
 function Form({ office, desk, project }: { office: Snapshot; desk?: number; project?: string }) {
   const set = useOfficeUi((state) => state.set);
   const scope = useOfficeUi((state) => state.project);
-  const accounts = office.accounts.filter(
-    (item) => item.status === 'connected' && ACCOUNT_LABELS[item.kind],
+  const accounts = startableAccounts(office);
+  // Connected accounts that can't start an agent here are named, so nobody wonders where they went.
+  const elsewhere = office.accounts.filter(
+    (item) => item.status === 'connected' && ACCOUNT_LABELS[item.kind] && !item.canStart,
   );
+  const nameBox = useRef<HTMLInputElement>(null);
   const leads = office.agents.filter((agent) => !agent.leadId);
   const [name, setName] = useState('');
   const [task, setTask] = useState('');
@@ -89,8 +105,10 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const [account, setAccount] = useState<AccountKind | ''>(accounts[0]?.kind ?? '');
   const [model, setModel] = useState('');
   const [cap, setCap] = useState(String(DEFAULT_CAP));
+  // The project the office is showing, or none. Never another one: an agent filed under a
+  // project nobody chose is lost in it. Opened from a project's own card, it is that project.
   const [projectId, setProjectId] = useState(
-    project ?? (scope === 'all' ? office.projects[0]?.id : scope) ?? '',
+    project ?? (scope === 'all' || !office.projects.some((item) => item.id === scope) ? '' : scope),
   );
   const [lead, setLead] = useState('');
   const folderOf = (id: string) =>
@@ -136,14 +154,22 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
       })
       .catch((failure: Error) => setFolderNote({ text: failure.message, bad: true }));
   const [error, setError] = useState('');
+  // Shown beside the Name field, which is also given focus, so it is never out of sight.
+  const [nameError, setNameError] = useState('');
   const close = () => set({ newAgent: null });
   const models = accounts.find((item) => item.kind === account)?.models ?? [];
   const leader = office.agents.find((agent) => agent.id === lead);
+  // The default is looked up by the settings key, not the account kind, so Settings is obeyed.
   const preset = leader
     ? leader.subModel && leader.subModel !== 'inherit'
       ? leader.subModel
       : leader.model
-    : (office.settings.defaults[account] ?? models[0] ?? '');
+    : defaultModel(office.settings, account) || (models[0] ?? '');
+  const nameProblem = (message: string) => {
+    setNameError(message);
+    setError('');
+    nameBox.current?.focus();
+  };
 
   const applyRole = (choice: Role) => {
     setRole(choice.label);
@@ -163,9 +189,10 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) {
-      setError('Give the agent a name.');
+      nameProblem('Give the agent a name.');
       return;
     }
+    setNameError('');
     api
       .createAgent({
         name,
@@ -182,7 +209,10 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
         close();
         window.location.hash = '#office';
       })
-      .catch((failure: Error) => setError(failure.message));
+      .catch((failure: Error) => {
+        if (NAME_PROBLEM.test(failure.message)) nameProblem(failure.message);
+        else setError(failure.message);
+      });
   };
 
   return (
@@ -197,17 +227,6 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
       close={close}
       onSubmit={submit}
     >
-      {accounts.length ? null : (
-        <div className="banner amber">
-          <Icon>
-            <path d="M12 8v5M12 16h.01" />
-          </Icon>
-          <span className="grow">Connect ChatGPT or add an API key first.</span>
-          <a className="btn sm" href="#accounts" onClick={close}>
-            Go to Accounts
-          </a>
-        </div>
-      )}
       <div className="field">
         <span className="flabel">Role</span>
         <div className="roles" role="group" aria-label="Role">
@@ -231,15 +250,30 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
           <input
             className="in"
             id="naName"
+            ref={nameBox}
             autoFocus
             maxLength={20}
             placeholder="For example: Juniper"
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? 'naNameError' : undefined}
+            style={nameError ? { borderColor: 'var(--red)' } : undefined}
             value={name}
             onChange={(event) => {
               setName(event.target.value);
               setFilled({ ...filled, name: false });
+              setNameError('');
             }}
           />
+          {nameError ? (
+            <span
+              className="help"
+              id="naNameError"
+              role="alert"
+              style={{ color: 'var(--red)', fontWeight: 700 }}
+            >
+              {nameError}
+            </span>
+          ) : null}
         </div>
         <div className="field">
           <label htmlFor="naAcc">Account</label>
@@ -258,6 +292,17 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
               </option>
             ))}
           </select>
+          {elsewhere.length ? (
+            <span className="help" data-testid="startElsewhere">
+              {elsewhere
+                .map((item) =>
+                  item.kind === 'claude_code'
+                    ? 'Claude Code agents start in your terminal.'
+                    : `${ACCOUNT_LABELS[item.kind]} can't start agents here yet.`,
+                )
+                .join(' ')}
+            </span>
+          ) : null}
         </div>
         <div className="field">
           <label htmlFor="naModel">Model</label>
@@ -411,9 +456,85 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
         <button type="button" className="btn" onClick={close}>
           Cancel
         </button>
-        <button type="submit" className="btn primary" disabled={!accounts.length}>
+        <button type="submit" className="btn primary">
           Create agent
         </button>
+      </div>
+    </DialogFrame>
+  );
+}
+
+/**
+ * Shown instead of the form when no connected account can start an agent from here, so nobody
+ * fills in a form that can't succeed. It says what to do instead, with the command.
+ */
+function CannotStart({ office }: { office: Snapshot }) {
+  const set = useOfficeUi((state) => state.set);
+  const close = () => set({ newAgent: null });
+  const connected = office.accounts.filter(
+    (item) => item.status === 'connected' && item.kind !== 'hub',
+  );
+  const claude = connected.find((item) => item.kind === 'claude_code');
+  const others = connected.filter((item) => item.kind !== 'claude_code');
+  return (
+    <DialogFrame
+      id="naTitle"
+      wide
+      titleSize={22}
+      title={<>Create a new agent</>}
+      help={
+        connected.length
+          ? "Mabari can't start an agent on the accounts you have connected. Here is what to do instead."
+          : 'An agent needs an account to run on.'
+      }
+      close={close}
+      onSubmit={(event) => event.preventDefault()}
+    >
+      <div className="cantstart" data-testid="cantStart">
+        {connected.length ? null : (
+          <div className="banner amber">
+            <Icon>
+              <path d="M12 8v5M12 16h.01" />
+            </Icon>
+            <span className="grow">
+              Connect an account first: sign in with ChatGPT or attach Claude Code.
+            </span>
+          </div>
+        )}
+        {claude ? (
+          <div className="card">
+            <h3>Claude Code agents start in your terminal</h3>
+            <p className="help">
+              Run this in the agent&apos;s folder. The session takes the next free desk.
+            </p>
+            <div className="codebox" data-testid="startCommand">
+              <span className="ctx">claude</span>
+            </div>
+            <p className="help">
+              Want a named, reusable agent? Make one in the agent builder, then start it from the
+              free desk on the office floor.
+            </p>
+            <div>
+              <a className="btn sm" href="#builder" onClick={close}>
+                Open the agent builder
+              </a>
+            </div>
+          </div>
+        ) : null}
+        {others.map((item) => (
+          <div className="card" key={item.kind}>
+            <h3>{ACCOUNT_LABELS[item.kind] ?? item.kind}</h3>
+            <p className="help">{item.startNote}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn" onClick={close}>
+          Close
+        </button>
+        <a className="btn primary" href="#accounts" onClick={close}>
+          Go to Accounts
+        </a>
       </div>
     </DialogFrame>
   );
@@ -424,5 +545,6 @@ export function NewAgentDialog() {
   const office = useOfficeStore((state) => state.office);
   const request = useOfficeUi((state) => state.newAgent);
   if (!office || !request) return null;
+  if (!startableAccounts(office).length) return <CannotStart office={office} />;
   return <Form office={office} {...request} />;
 }

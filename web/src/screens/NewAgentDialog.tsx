@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { AccountKind, Snapshot } from '../gen/models.ts';
@@ -93,7 +93,48 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
     project ?? (scope === 'all' ? office.projects[0]?.id : scope) ?? '',
   );
   const [lead, setLead] = useState('');
-  const [folder, setFolder] = useState(DEFAULT_FOLDER);
+  const folderOf = (id: string) =>
+    office.projects.find((item) => item.id === id)?.repository?.path ?? '';
+  const [typed, setFolder] = useState('');
+  // The folder follows the project until someone types or picks one themselves.
+  const [folderChosen, setFolderChosen] = useState(false);
+  const folder = folderChosen ? typed : folderOf(projectId) || DEFAULT_FOLDER;
+  const [folderNote, setFolderNote] = useState<{ text: string; bad: boolean } | null>(null);
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    api
+      .recentFolders()
+      .then(setRecent)
+      .catch(() => setRecent([]));
+  }, []);
+  /** Checks the folder on this computer, and says what's in it or what's wrong with it. */
+  const checkFolder = (path: string, chosen: boolean) => {
+    if (!path.trim()) {
+      setFolderNote(null);
+      return;
+    }
+    api
+      .checkFolder(path.trim(), false)
+      .then((check) => {
+        if (check.error) {
+          setFolderNote({ text: check.error, bad: true });
+          return;
+        }
+        // A path typed or picked is tidied, as the server reads it.
+        if (chosen) setFolder(check.path);
+        setFolderNote({ text: check.hint || `Works in ${check.name}.`, bad: false });
+      })
+      .catch((failure: Error) => setFolderNote({ text: failure.message, bad: true }));
+  };
+  const browse = () =>
+    api
+      .pickFolder()
+      .then(({ path }) => {
+        setFolderChosen(true);
+        setFolder(path);
+        checkFolder(path, true);
+      })
+      .catch((failure: Error) => setFolderNote({ text: failure.message, bad: true }));
   const [error, setError] = useState('');
   const close = () => set({ newAgent: null });
   const models = accounts.find((item) => item.kind === account)?.models ?? [];
@@ -329,13 +370,37 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
       </div>
       <div className="field">
         <label htmlFor="naDir">Working folder</label>
-        <input
-          className="in mono"
-          id="naDir"
-          placeholder="~/code/my-project"
-          value={folder}
-          onChange={(event) => setFolder(event.target.value)}
-        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="in mono"
+            id="naDir"
+            list="naRecentDirs"
+            placeholder="~/code/my-project"
+            value={folder}
+            onChange={(event) => {
+              setFolderChosen(true);
+              setFolder(event.target.value);
+              setFolderNote(null);
+            }}
+            onBlur={() => checkFolder(folder, folderChosen)}
+          />
+          <button type="button" className="btn" onClick={() => void browse()}>
+            Browse…
+          </button>
+        </div>
+        <datalist id="naRecentDirs">
+          {recent.map((path) => (
+            <option key={path} value={path} />
+          ))}
+        </datalist>
+        <span
+          className="help"
+          role={folderNote?.bad ? 'alert' : undefined}
+          style={folderNote?.bad ? { color: 'var(--red)', fontWeight: 700 } : undefined}
+        >
+          {folderNote?.text ??
+            'A folder on this computer: pick it with Browse…, or type or paste its path.'}
+        </span>
       </div>
       {error ? (
         <p role="alert" style={{ color: 'var(--red)', fontWeight: 700 }} className="help">

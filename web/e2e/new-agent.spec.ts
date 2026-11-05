@@ -186,6 +186,21 @@ test('from the free desk you can make a new agent instead', async ({ page }) => 
   await expect(page.locator('.tag .nt', { hasText: 'Deskmate' })).toBeVisible();
 });
 
+test('the working folder can be picked from this computer with Browse…', async ({ page }) => {
+  const folder = process.env.MABARI_E2E_CLAUDE_DIR!;
+  // The system's own folder picker can't be driven in a test, so it answers with a folder.
+  await page.route('**/api/folders/pick', (route) => route.fulfill({ json: { path: folder } }));
+  await loadDemo(page);
+  await openNewAgent(page);
+  const form = dialog(page);
+  await form.getByRole('button', { name: 'Browse…' }).click();
+  await expect(form.getByLabel('Working folder')).toHaveValue(folder);
+  // A folder that isn't there is said so, before the agent is made.
+  await form.getByLabel('Working folder').fill('/no/such/folder/here');
+  await form.getByLabel('Working folder').blur();
+  await expect(form.getByRole('alert')).toBeVisible();
+});
+
 test('the model starts on the agent settings and follows a lead', async ({ page }) => {
   await loadDemo(page);
   await openNewAgent(page);

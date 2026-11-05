@@ -10,7 +10,7 @@ const (
 	// BenchColumns is how many seats a row of benches has.
 	BenchColumns = 4
 	// BenchPitchX is the space between bench seats in a row, in world pixels.
-	BenchPitchX = 144
+	BenchPitchX = 160
 	// BenchPitchY is the space between rows of benches, in world pixels.
 	BenchPitchY = 112
 )

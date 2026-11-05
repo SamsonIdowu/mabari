@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Converted mechanically from design/mabari-prototype.html, so the pixels match exactly.
-import { DESKS, H, W } from './layout.ts';
+import { BenchColumns, BenchPitchX, BenchPitchY } from '../gen/models.ts';
+import { BASE_FLOOR, BENCH_WIDTH, deskTile, LOUNGE_PITCH, type Floor } from './layout.ts';
 
 export const PAL = {
   dark: {
@@ -152,10 +153,93 @@ function plant(c: Ctx, x: number, y: number, P: Palette) {
 }
 /** The back wall's height in world pixels. */
 export const WALL = 44;
-/** Where the server racks stand, in world pixels. */
+/** Where the server racks stand, in world pixels, before the rooms move along. */
 export const RACKS = [966, 996, 1026, 1080, 1110, 1140];
 
-export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
+/** The fabric of the lounge's armchairs: the library sofa's, so the rooms match. */
+export function sofaColours(theme: 'dark' | 'light') {
+  return theme === 'dark'
+    ? { top: '#2E2E33', front: '#1A1A1D', cushion: '#3A3A40' }
+    : { top: '#2B2B2D', front: '#141414', cushion: '#4A4A4E' };
+}
+
+/** A label painted on the floor, letter spaced, in the prototype's style. */
+export function floorLabel(c: Ctx, text: string, x: number, y: number, P: Palette) {
+  c.font = '800 12px Nunito, sans-serif';
+  c.fillStyle = P.label;
+  c.fillText(text.split('').join(String.fromCharCode(8202)), x, y);
+}
+
+/** A desk: white top, dark monitor, a mug and a chair. x and y are its corner. */
+function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette, top = true) {
+  if (top) blk(c, x + 4, y + 2, 60, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
+  R(c, x + 8, y + 34, 2, 6, P.chair);
+  R(c, x + 58, y + 34, 2, 6, P.chair);
+  R(c, x + 29, y + 4, 6, 5, '#111113');
+  R(c, x + 18, y - 12, 28, 18, '#111113');
+  R(c, x + 20, y - 10, 24, 14, theme === 'dark' ? '#1C2430' : '#26303D');
+  R(c, x + 20, y + 12, 22, 4, theme === 'dark' ? '#0E0E10' : '#1A1A1C');
+  R(c, x + 48, y + 8, 8, 8, P.paper);
+  R(c, x + 49, y + 9, 6, 6, theme === 'dark' ? '#3A3A40' : '#E7E6E3');
+  blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
+}
+
+/** The workflow sub-agents' hot desks: long benches, four seats a row, each with a monitor. */
+function drawBenches(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
+  const bench = floor.bench!;
+  const lower = floor.lower!;
+  const bottom = bench.y + (bench.rows - 1) * BenchPitchY + 74;
+  R(c, bench.x - 24, lower + 32, BENCH_WIDTH + 48, bottom - lower - 32, P.carpet);
+  R(c, bench.x - 18, lower + 38, BENCH_WIDTH + 36, bottom - lower - 44, P.carpetB);
+  floorLabel(c, 'Workflow sub-agents', bench.x - 16, lower + 24, P);
+  for (let row = 0; row < bench.rows; row++) {
+    const y = bench.y + row * BenchPitchY;
+    blk(c, bench.x + 4, y + 2, BENCH_WIDTH - 8, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
+    for (let seat = 0; seat < BenchColumns; seat++) {
+      desk(c, bench.x + seat * BenchPitchX, y, theme, P, false);
+    }
+  }
+}
+
+/** One armchair's back and arms. The seat front is drawn over the sitter, in the scene. */
+function armchair(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette) {
+  const sofa = sofaColours(theme);
+  blk(c, x - 20, y - 38, 40, 12, 14, sofa.top, sofa.front, P);
+  blk(c, x - 25, y - 24, 7, 10, 12, sofa.top, sofa.front, P);
+  blk(c, x + 18, y - 24, 7, 10, 12, sofa.top, sofa.front, P);
+  R(c, x - 18, y - 14, 36, 8, sofa.cushion);
+}
+
+/** The lounge: soft rugs with a row of armchairs each, side tables and plants. */
+function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
+  const lounge = floor.lounge!;
+  const lower = floor.lower!;
+  const width = lounge.columns * LOUNGE_PITCH.x;
+  floorLabel(c, 'Lounge', lounge.x, lower + 24, P);
+  for (let row = 0; row < lounge.rows; row++) {
+    const y = lounge.first.y + row * LOUNGE_PITCH.y;
+    R(c, lounge.x - 4, y - 50, width + 8, 64, P.rug);
+    R(c, lounge.x + 2, y - 44, width - 4, 52, P.rugB);
+    for (let column = 0; column < lounge.columns; column++) {
+      const x = lounge.first.x + column * LOUNGE_PITCH.x;
+      armchair(c, x, y, theme, P);
+      if (column < lounge.columns - 1) {
+        blk(c, x + LOUNGE_PITCH.x / 2 - 9, y - 22, 18, 10, 8, P.wood, P.woodD, P);
+        if ((row + column) % 3 === 0) R(c, x + LOUNGE_PITCH.x / 2 - 3, y - 26, 6, 5, P.paper);
+      }
+    }
+  }
+  plant(c, lounge.x + width - 4, lower + 6, P);
+}
+
+export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTMLCanvasElement {
+  const W = floor.width;
+  const H = floor.height;
+  const shift = floor.shift;
+  const cs = shift / 32;
+  const lowerTile = floor.lower === null ? Infinity : floor.lower / 32;
+  /* the rooms end where the lower floor starts, behind a wall like the ones between them */
+  const roomsEnd = floor.lower === null ? H : floor.lower - 16;
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;
@@ -163,18 +247,20 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   const P: Palette = PAL[theme];
   /* floor: large calm tiles, darker server room, soft carpet in meeting room, pale pantry. The
      floor starts under the back wall, so it shows from the wall's foot at y 44. */
-  for (let ty = 1; ty < 22; ty++)
-    for (let tx = 0; tx < 38; tx++) {
+  for (let ty = 1; ty < Math.ceil(H / 32); ty++)
+    for (let tx = 0; tx < Math.ceil(W / 32); tx++) {
       const n = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
       const v = (n % 4) / 250;
+      const rx = tx - cs;
+      const rooms = rx >= 30 && ty < lowerTile;
       let col: string = P.floorA;
-      if (tx >= 30 && ty >= 1 && ty <= 6) col = P.server;
-      else if (tx >= 30 && ty >= 8 && ty <= 11) col = P.carpet;
-      else if (tx >= 30 && ty >= 13) col = (tx + ty) % 2 ? P.pantA : P.pantB;
+      if (rooms && ty >= 1 && ty <= 6) col = P.server;
+      else if (rooms && ty >= 8 && ty <= 11) col = P.carpet;
+      else if (rooms && ty >= 13) col = (tx + ty) % 2 ? P.pantA : P.pantB;
       R(c, tx * 32, ty * 32, 32, 32, col);
       c.fillStyle = 'rgba(0,0,0,' + v + ')';
       c.fillRect(tx * 32, ty * 32, 32, 32);
-      if (tx < 29) {
+      if (rx < 29 || ty >= lowerTile) {
         if (ty % 2 === 0) R(c, tx * 32, ty * 32, 32, 1, P.plank);
         if (tx % 2 === 0) R(c, tx * 32, ty * 32, 1, 32, P.plank);
       }
@@ -193,20 +279,26 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     }
   }
   plant(c, 6, 104, P);
+  /* the rooms on the right, moved along by the grid's extra columns */
+  c.save();
+  c.translate(shift, 0);
   /* glass partition between the work floor and the rooms */
-  R(c, 29 * 32 + 12, WALL, 8, H - WALL, P.glass);
-  R(c, 29 * 32 + 12, WALL, 1, H - WALL, P.wallLow);
-  R(c, 29 * 32 + 19, WALL, 1, H - WALL, P.wallLow);
+  R(c, 29 * 32 + 12, WALL, 8, roomsEnd - WALL, P.glass);
+  R(c, 29 * 32 + 12, WALL, 1, roomsEnd - WALL, P.wallLow);
+  R(c, 29 * 32 + 19, WALL, 1, roomsEnd - WALL, P.wallLow);
   [5, 10, 15, 19].forEach(function (gy) {
-    R(c, 29 * 32 + 10, gy * 32 - 10, 12, 58, P.floorA);
+    if (gy * 32 + 48 < roomsEnd) R(c, 29 * 32 + 10, gy * 32 - 10, 12, 58, P.floorA);
   });
-  [7, 12].forEach(function (ry) {
-    const Y = ry * 32 + 6;
+  const divider = (Y: number, gap: string) => {
     R(c, 30 * 32, Y, 8 * 32, 4, P.wallTop);
     R(c, 30 * 32, Y + 4, 8 * 32, 10, P.wallLow);
     R(c, 30 * 32, Y + 14, 8 * 32, 2, 'rgba(0,0,0,.12)');
-    R(c, 32 * 32, Y, 48, 16, ry === 7 ? P.carpet : P.pantA);
+    R(c, 32 * 32, Y, 48, 16, gap);
+  };
+  [7, 12].forEach(function (ry) {
+    divider(ry * 32 + 6, ry === 7 ? P.carpet : P.pantA);
   });
+  if (floor.lower !== null) divider(roomsEnd, P.floorA);
   /* server racks: six, in two groups of three, inside the walls */
   for (const x2 of RACKS) {
     blk(
@@ -251,6 +343,7 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
   R(c, 36 * 32 + 26, 12 * 32 + 30, 2, 10, P.metal);
   blk(c, 33 * 32, 15 * 32, 40, 18, 10, P.wood, P.woodD, P);
   blk(c, 33 * 32, 18 * 32, 40, 18, 10, P.wood, P.woodD, P);
+  c.restore();
   /* library corner: soft rug, shelves with muted spines, sofa */
   R(c, 1 * 32, 16 * 32 + 14, 5 * 32, 4 * 32, P.rug);
   R(c, 1 * 32 + 6, 16 * 32 + 20, 5 * 32 - 12, 4 * 32 - 12, P.rugB);
@@ -267,42 +360,26 @@ export function buildBg(theme: 'dark' | 'light'): HTMLCanvasElement {
     }
   }
   R(c, 0, 17 * 32 + 6, 10, 48, P.frame);
-  blk(
-    c,
-    4 * 32 + 8,
-    18 * 32 + 6,
-    36,
-    14,
-    16,
-    theme === 'dark' ? '#2E2E33' : '#2B2B2D',
-    theme === 'dark' ? '#1A1A1D' : '#141414',
-    P,
-  );
+  const sofa = sofaColours(theme);
+  blk(c, 4 * 32 + 8, 18 * 32 + 6, 36, 14, 16, sofa.top, sofa.front, P);
   plant(c, 24, 19 * 32 + 6, P);
-  /* desks: white tops, black chairs, dark monitors */
-  DESKS.forEach(function (dk) {
-    const x = dk.x * 32,
-      y = dk.y * 32;
-    blk(c, x + 4, y + 2, 60, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
-    R(c, x + 8, y + 34, 2, 6, P.chair);
-    R(c, x + 58, y + 34, 2, 6, P.chair);
-    R(c, x + 29, y + 4, 6, 5, '#111113');
-    R(c, x + 18, y - 12, 28, 18, '#111113');
-    R(c, x + 20, y - 10, 24, 14, theme === 'dark' ? '#1C2430' : '#26303D');
-    R(c, x + 20, y + 12, 22, 4, theme === 'dark' ? '#0E0E10' : '#1A1A1C');
-    R(c, x + 48, y + 8, 8, 8, P.paper);
-    R(c, x + 49, y + 9, 6, 6, theme === 'dark' ? '#3A3A40' : '#E7E6E3');
-    blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
-  });
+  /* desks: white tops, black chairs, dark monitors, as many as the grid has */
+  for (let index = 0; index < floor.side * floor.side; index++) {
+    const dk = deskTile(index);
+    desk(c, dk.x * 32, dk.y * 32, theme, P);
+  }
   [
-    [27, 3],
-    [27, 19],
+    [27 + cs, 3],
+    [27 + cs, 19],
     [5, 9],
     [5, 12],
   ].forEach(function (p) {
-    plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
+    if (floor.lower === null || p[1]! * 32 + 30 < floor.lower)
+      plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
   });
-  R(c, 18 * 32, H - 8, 64, 8, P.base);
-  R(c, 18 * 32 + 4, H - 20, 56, 12, P.wallLow);
+  if (floor.bench) drawBenches(c, floor, theme, P);
+  if (floor.lounge) drawLounge(c, floor, theme, P);
+  R(c, W / 2 - 32, H - 8, 64, 8, P.base);
+  R(c, W / 2 - 28, H - 20, 56, 12, P.wallLow);
   return cv;
 }

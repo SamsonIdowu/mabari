@@ -48,7 +48,7 @@ func TestGridSide(t *testing.T) {
 }
 
 func TestBenchSeat(t *testing.T) {
-	cases := []struct{ index, x, y int }{{0, 0, 0}, {3, 432, 0}, {4, 0, 112}, {9, 144, 224}}
+	cases := []struct{ index, x, y int }{{0, 0, 0}, {3, 480, 0}, {4, 0, 112}, {9, 160, 224}}
 	for _, c := range cases {
 		if x, y := BenchSeat(c.index); x != c.x || y != c.y {
 			t.Errorf("BenchSeat(%d) = %d, %d, want %d, %d", c.index, x, y, c.x, c.y)

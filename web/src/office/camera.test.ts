@@ -11,7 +11,7 @@ import {
   type Size,
   type View,
 } from './camera.ts';
-import { H, W } from './layout.ts';
+import { BASE_H as H, BASE_W as W, deskCorner, floorFor } from './layout.ts';
 
 const whole: View = { cx: W / 2, cy: H / 2, s: 1 };
 
@@ -69,9 +69,41 @@ describe('clampView', () => {
 
 describe('teamView', () => {
   it('frames a lead and its subagent, and never zooms past 210%', () => {
-    const view = teamView([2, 6]);
+    const corners = [2, 6].map((desk) => deskCorner({ desk, bench: false }, floorFor(0, 0, 0)));
+    const view = teamView(corners);
     expect(view.s).toBeLessThanOrEqual(2.1);
     expect(view.s).toBeGreaterThan(1);
+  });
+});
+
+describe('a bigger office', () => {
+  const floor = floorFor(40, 8, 30);
+  const world = { width: floor.width, height: floor.height };
+
+  it('still fits whole at 100%, zooming out further', () => {
+    const size = { width: 1200, height: 760 };
+    const fit = fitScale(size, world);
+    expect(fit).toBeLessThan(fitScale(size));
+    expect(floor.width * fit).toBeLessThanOrEqual(size.width * 1.1);
+    expect(floor.height * fit).toBeLessThanOrEqual(size.height * 1.1);
+    const matrix = viewMatrix({ cx: floor.width / 2, cy: floor.height / 2, s: 1 }, size, world);
+    const corner = toScreen({ x: floor.width, y: floor.height }, matrix);
+    expect(corner.x).toBeLessThanOrEqual(size.width + 1);
+    expect(corner.y).toBeLessThanOrEqual(size.height * 1.1);
+  });
+
+  it('pans over the whole floor when zoomed in', () => {
+    expect(clampView({ cx: 99999, cy: 99999, s: 2 }, world)).toEqual({
+      cx: (floor.width * 3) / 4,
+      cy: (floor.height * 3) / 4,
+      s: 2,
+    });
+  });
+
+  it('frames a team at the workflow benches', () => {
+    const corners = [0, 1].map((desk) => deskCorner({ desk, bench: true }, floor));
+    const view = teamView(corners, world);
+    expect(view.cy).toBeGreaterThan(floor.lower!);
   });
 });
 

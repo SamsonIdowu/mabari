@@ -129,6 +129,13 @@
 .tag.sel .nt {
   box-shadow: 0 0 0 2px var(--accent);
 }
+/* An agent file resting in the lounge: a quieter tag, as nothing is running from it. */
+.tag.rest .nt {
+  background: rgba(14, 13, 18, 0.55);
+  color: #c9c9ce;
+  font-weight: 700;
+  border-left-width: 3px;
+}
 .tag.attn .nt {
   box-shadow: 0 0 0 2px var(--red);
 }

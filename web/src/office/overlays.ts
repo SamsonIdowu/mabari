@@ -5,7 +5,7 @@ import { decisionColors, decisionLabels, providers, type ProviderName } from '..
 import { useOfficeStore } from '../data/officeStore.ts';
 import { R } from './background.ts';
 import { drawChar } from './character.ts';
-import { H, W } from './layout.ts';
+import { restingLook } from './resting.ts';
 import type { OfficeScene, Walker } from './scene.ts';
 import { chipFor } from './talk.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
@@ -129,6 +129,37 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   }
 }
 
+/**
+ * Quiet name tags for the agent definitions resting in the lounge. They aren't agents, so they
+ * have no model, bubble or message chip, and a search or filter doesn't pick them out.
+ */
+function renderResting(layer: HTMLElement, scene: OfficeScene): void {
+  const { width, height } = scene.size;
+  const shown = scene.restingShown();
+  const seen = new Set<string>();
+  for (const { def, walker } of scene.resting) {
+    seen.add(walker.id);
+    let element = layer.querySelector<HTMLElement>(`[data-r="${CSS.escape(walker.id)}"]`);
+    if (!element) {
+      const look = restingLook(def);
+      element = document.createElement('div');
+      element.dataset.r = walker.id;
+      element.className = `tag rest ${providers[look.provider].cssClass}`;
+      element.innerHTML = `<span class="nt"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(def.name)}</b></span>`;
+      element.style.setProperty('--ac', look.hue);
+      layer.appendChild(element);
+    }
+    element.hidden = !shown;
+    if (!shown) continue;
+    const point = scene.screenOf(walker);
+    element.style.left = `${(point.x / width) * 100}%`;
+    element.style.top = `${(point.y / height) * 100}%`;
+  }
+  for (const element of [...layer.querySelectorAll<HTMLElement>('[data-r]')]) {
+    if (!seen.has(element.dataset.r!)) element.remove();
+  }
+}
+
 function renderReadout(readout: HTMLElement, agents: LiveAgent[], selected: LiveAgent | null) {
   const ui = useOfficeUi.getState();
   let rows: [string, string][];
@@ -144,7 +175,7 @@ function renderReadout(readout: HTMLElement, agents: LiveAgent[], selected: Live
     const finish = Math.max(0, ...scoped.map((agent) => agent.estimate?.finishAt ?? 0));
     rows = [
       ['Agents', String(scoped.length)],
-      ['Working', String(scoped.filter((agent) => agent.estimate).length)],
+      ['Working', String(scoped.filter((agent) => agent.working).length)],
       ['Finish', finish ? `~${clockText(finish)}` : '–'],
     ];
   }
@@ -311,8 +342,9 @@ function placeQueueNote(note: HTMLElement, scene: OfficeScene, agents: LiveAgent
   const waiting = agents.find((agent) => (agent.queued?.length ?? 0) > 0);
   const walker = waiting ? scene.walkers.get(waiting.id) : undefined;
   if (!walker) return;
-  note.style.left = `${Math.max(1, Math.min(70, (walker.x / W) * 100 - 14))}%`;
-  note.style.top = `${Math.min(80, (walker.y / H) * 100 + 9)}%`;
+  const { width, height } = scene.floor;
+  note.style.left = `${Math.max(1, Math.min(70, (walker.x / width) * 100 - 14))}%`;
+  note.style.top = `${Math.min(80, (walker.y / height) * 100 + 9)}%`;
 }
 
 /** Everything drawn in HTML over the canvas, updated once a frame. */
@@ -325,6 +357,7 @@ export function renderOverlays(
   const walker = ui.selected ? (scene.walkers.get(ui.selected) ?? null) : null;
   const shown = walker && inScope(walker, ui, agents) && matches(walker, ui) ? walker : null;
   renderTags(elements.tags, scene, agents);
+  renderResting(elements.tags, scene);
   scaleTags(elements.tags, scene);
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());

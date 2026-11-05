@@ -19,7 +19,7 @@ export const BenchColumns = 4;
 /**
  * BenchPitchX is the space between bench seats in a row, in world pixels.
  */
-export const BenchPitchX = 144;
+export const BenchPitchX = 160;
 /**
  * BenchPitchY is the space between rows of benches, in world pixels.
  */

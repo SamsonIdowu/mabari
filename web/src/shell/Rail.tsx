@@ -15,13 +15,35 @@ const LIVE_MS = 6000;
 function NeedsBadge() {
   const count = useOfficeStore((state) => whoNeedsYou(state.office?.agents ?? []).length);
   const tone = useOfficeStore((state) => needsTone(whoNeedsYou(state.office?.agents ?? [])));
-  return count ? <span className={tone === 'red' ? 'badge' : `badge ${tone}`}>{count}</span> : null;
+  if (!count) return null;
+  // A screen reader would say "Agents 2". The digits are for the eye, and the words follow the
+  // link's name, so it reads "Agents, 2 need you".
+  return (
+    <>
+      <span className={tone === 'red' ? 'badge' : `badge ${tone}`} aria-hidden="true">
+        {count}
+      </span>
+      <span className="sr">
+        , {count} {count === 1 ? 'needs' : 'need'} you
+      </span>
+    </>
+  );
 }
 
 /** Replies Mabari relayed while you were on another page. */
 function UnreadBadge() {
   const unread = useVee((state) => state.unread);
-  return unread ? <span className="badge">{unread > 9 ? '9+' : unread}</span> : null;
+  if (!unread) return null;
+  return (
+    <>
+      <span className="badge" aria-hidden="true">
+        {unread > 9 ? '9+' : unread}
+      </span>
+      <span className="sr">
+        , {unread} new {unread === 1 ? 'reply' : 'replies'}
+      </span>
+    </>
+  );
 }
 
 /** True for a few seconds after agents last talked, for the Chats link's "live" badge. */

@@ -181,7 +181,44 @@ test('the collapsed rail still shows the badge for what needs you, with the link
   expect(badgeBox!.y).toBeGreaterThanOrEqual(linkBox!.y - 1);
   expect(badgeBox!.y + badgeBox!.height).toBeLessThan(linkBox!.y + linkBox!.height / 2 + 6);
   // With its label hidden, the link is still named for what it is, not "2".
-  await expect(link).toHaveAccessibleName(/^Agents \d+$/);
+  await expect(link).toHaveAccessibleName(/^Agents ?, \d+ needs? you$/);
+});
+
+// A screen reader said "Agents 2" and left the person to work out what the 2 counted (NEW-8).
+test('the Agents link in the rail says how many need you, in words', async ({ page, request }) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#projects');
+  const rail = page.getByRole('complementary', { name: 'Main' });
+  // The demo has an approval and an error waiting: two.
+  // The browser puts a space where the hidden words begin, before the comma. Speech is the same.
+  await expect(rail).toMatchAriaSnapshot(`
+    - navigation "Work":
+      - link /^Agents ?, 2 need you$/
+  `);
+  // The words follow the visible label, and the digit is not read a second time.
+  const link = rail.getByRole('link', { name: /^Agents/ });
+  await expect(link).toHaveAccessibleName(/^Agents ?, 2 need you$/);
+  await expect(link.locator('.badge')).toHaveText('2');
+  await expect(link.locator('.badge')).toHaveAttribute('aria-hidden', 'true');
+
+  // One waiting is "needs", and the words stay when the rail is folded and its labels are hidden.
+  await request.post('/api/wipe', { data: { confirm: true } });
+  const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
+    token: string;
+  };
+  const sent = await request.post(
+    `http://127.0.0.1:${process.env.MABARI_API_PORT ?? '4327'}/hub/v1/events`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { agent: 'e1', name: 'Echo', state: 'error', error: 'Lost the build server' },
+    },
+  );
+  expect(sent.status()).toBe(200);
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.reload();
+  await expect(page.locator('.app')).toHaveClass(/collapsed/);
+  await expect(page.locator('.rail .lbl').first()).toBeHidden();
+  await expect(link).toHaveAccessibleName(/^Agents ?, 1 needs you$/);
 });
 
 test('the app fills the window with no margins', async ({ page }) => {

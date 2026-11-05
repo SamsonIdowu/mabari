@@ -22,6 +22,8 @@ type veeResult struct {
 func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Text string `json:"text"`
+		// ProjectID is the project picked next to the chat box, "any", or empty for Mabari to choose.
+		ProjectID string `json:"projectId"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -32,9 +34,19 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var result veeResult
+	var route *projectRoute
 	err := a.engine.Do(func() {
-		result.Reply = vee.Answer(text, a.engine.Agents(), a.engine.Now())
+		office := vee.Office{Agents: a.engine.Agents(), Projects: a.engine.Projects(), InView: body.ProjectID, Router: a.router}
+		result.Reply = vee.AnswerIn(text, office, a.engine.Now())
 		switch send := result.Reply.Send; {
+		case result.Reply.Route != nil:
+			route = a.routeForVee(*result.Reply.Route)
+			if route == nil {
+				result.Reply = vee.Say("That project isn't open any more.", a.engine.Agents(), a.engine.Now())
+				return
+			}
+			result.Message = &route.result
+			result.Reply = vee.SentToProject(route.sent, a.engine.Agents(), a.engine.Now())
 		case result.Reply.Dispatch:
 			result = a.dispatchForVee(text)
 		case send != nil && send.Mode == models.ModeInstruct:
@@ -52,10 +64,46 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if result.Message != nil && result.Message.Routed != nil {
+	if route != nil && route.sent.Opening != nil {
+		a.openForVee(route, &result)
+	}
+	if result.Message != nil && result.Message.Routed != nil || route != nil && route.sent.Problem == "" {
 		a.dispatched()
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// routeForVee sends a message to the project Mabari settled on. Call inside Do.
+func (a *api) routeForVee(to vee.Route) *projectRoute {
+	project := a.engine.Project(to.ProjectID)
+	if project == nil || project.Done != nil {
+		return nil
+	}
+	if problem := promptProblem(to.Text); problem != "" {
+		return &projectRoute{sent: vee.ProjectSent{Project: project, Problem: problem}, result: messageResult{Agents: []string{}}}
+	}
+	copied := *project
+	route := a.toProject(&copied, to.Text, to.Why)
+	return &route
+}
+
+// openForVee opens Claude Code for Mabari's reply. Mabari answers straight away, so the terminal
+// opens in the background and a toast reports a failure. Without a launcher nothing can open, so
+// the prompt is taken back and the reply says what to run.
+func (a *api) openForVee(route *projectRoute, result *veeResult) {
+	if a.launcher == nil {
+		_ = a.open(route)
+		_ = a.engine.Do(func() { result.Reply = vee.SentToProject(route.sent, a.engine.Agents(), a.engine.Now()) })
+		return
+	}
+	route.sent.Opened = true
+	_ = a.engine.Do(func() { result.Reply = vee.SentToProject(route.sent, a.engine.Agents(), a.engine.Now()) })
+	background := *route
+	go func() {
+		if notice := a.open(&background); !background.sent.Opened {
+			_ = a.engine.Do(func() { a.engine.Toast(notice) })
+		}
+	}()
 }
 
 // dispatchForVee hands a task to the agent the dispatcher picks, using its local scoring only.

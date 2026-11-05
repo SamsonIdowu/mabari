@@ -188,6 +188,11 @@ export interface Project {
    * Estimate is when the project's working agents should finish, or null if none are working.
    */
   estimate: Estimate | null;
+  /**
+   * Opening are prompts waiting for a Claude Code session Mabari opened in the project's folder.
+   * The first session to start there takes the oldest, as if it had been sent to it.
+   */
+  opening: Instruction[];
 }
 /**
  * ProjectStatus says where a project stands.
@@ -425,6 +430,16 @@ export const InstructionWaiting: InstructionStatus = "waiting_for_checkpoint";
  * Instruction statuses.
  */
 export const InstructionAnswered: InstructionStatus = "answered";
+/**
+ * InstructionRemoved is an instruction the user took back before it was delivered.
+ */
+export const InstructionRemoved: InstructionStatus = "removed";
+/**
+ * OpeningKept is how long a prompt waits for the Claude Code session Mabari opened for it, in
+ * milliseconds. A session that never reports, say because its window was closed, doesn't keep
+ * the prompt for ever.
+ */
+export const OpeningKept = 30 * 60 * 1000;
 /**
  * Instruction is a message from the user.
  */

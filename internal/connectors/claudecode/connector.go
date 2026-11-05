@@ -198,6 +198,13 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	c.engine.AddAgent(agent)
 	c.engine.Log(agent.Name, models.LogSession, "Claude Code session started in "+in.Cwd,
 		"Took desk "+strconv.Itoa(desk+1), "ok")
+	// A session Mabari opened for a prompt was started with it, so it counts as sent to this
+	// session, and its reply is passed on like any other.
+	if c.engine.TakeOpening(agent) {
+		c.mu.Lock()
+		c.delivered[agent.ID] = time.Now()
+		c.mu.Unlock()
+	}
 	c.connected()
 	return agent
 }
@@ -532,7 +539,7 @@ func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 		if !ok {
 			break
 		}
-		lines = append(lines, instruction.Text)
+		lines = append(lines, asCommand(instruction.Text))
 		c.engine.AddEvent(agent, "instruction", "Received: "+clip(instruction.Text, 120), nil)
 	}
 	if len(lines) == 0 {
@@ -542,6 +549,24 @@ func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 	c.delivered[agent.ID] = time.Now()
 	c.mu.Unlock()
 	return "The user sent this from Mabari while you were working: " + strings.Join(lines, " Also: ")
+}
+
+// slashCommand is a Claude Code command or skill at the start of a message, such as /ux-audit.
+var slashCommand = regexp.MustCompile(`^/([A-Za-z0-9][A-Za-z0-9:_.-]*)(?:\s+(.*))?$`)
+
+// asCommand rewords a slash command for a running session. A hook's text reaches Claude as
+// context, not as typed input, so Claude Code won't run "/ux-audit x" itself; Claude can, though,
+// run a skill or custom command with its Skill tool when asked to in words.
+func asCommand(text string) string {
+	match := slashCommand.FindStringSubmatch(strings.TrimSpace(text))
+	if match == nil {
+		return text
+	}
+	said := "run the /" + match[1] + " command"
+	if args := strings.TrimSpace(match[2]); args != "" {
+		said += " with: " + args
+	}
+	return said + " (a slash command; use the Skill tool for it)."
 }
 
 func (c *Connector) takePause(session string) bool {

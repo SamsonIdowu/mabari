@@ -535,3 +535,41 @@ func TestSessionsAreNamedAfterTheirFolder(t *testing.T) {
 		t.Errorf("renamed = %q", got)
 	}
 }
+
+// A hook can't make Claude Code run a slash command, so a queued one is asked for in words.
+func TestQueuedSlashCommandsAreAskedForInWords(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "/ux-audit https://example.com/Issue/1") })
+	reply := string(hook(t, c, "PostToolUse", map[string]any{"tool_name": "Read"}))
+	if !strings.Contains(reply, "run the /ux-audit command with: https://example.com/Issue/1 (a slash command; use the Skill tool for it).") {
+		t.Errorf("reply = %s", reply)
+	}
+	for text, want := range map[string]string{
+		"/review":         "run the /review command (a slash command; use the Skill tool for it).",
+		"/plugin:cmd a b": "run the /plugin:cmd command with: a b (a slash command; use the Skill tool for it).",
+		"fix /etc/hosts":  "fix /etc/hosts",
+		"/ not a command": "/ not a command",
+	} {
+		if got := asCommand(text); got != want {
+			t.Errorf("%q = %q", text, got)
+		}
+	}
+}
+
+// The session Mabari opened for a prompt starts with it, so the prompt counts as sent to it and
+// its reply is kept with it.
+func TestAnOpenedSessionTakesItsPrompt(t *testing.T) {
+	c, engine := newConnector(t)
+	var opening models.Instruction
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "p1", Name: "Shop", Repository: &models.Repository{Path: "/home/me/shop"}})
+		opening = engine.Opening(engine.Project("p1"), "/ux-audit #130")
+	})
+	hook(t, c, "SessionStart", map[string]any{"source": "startup"})
+	hook(t, c, "Stop", map[string]any{"last_assistant_message": "Audit done: 3 findings."})
+	agent := agentOf(t, engine)
+	if len(agent.Asked) != 1 || agent.Asked[0].ID != opening.ID || agent.Asked[0].Reply != "Audit done: 3 findings." {
+		t.Errorf("asked = %+v", agent.Asked)
+	}
+}

@@ -855,15 +855,17 @@ func TestVeeDispatchesToTheTeam(t *testing.T) {
 	office := newOffice(t)
 	office.do(t, http.MethodPost, "/api/demo/load", "")
 	result := askVee(t, office, `{"text":"the invoice rounding is wrong"}`)
-	if result.Message == nil || result.Message.Routed == nil || result.Message.Routed.Name != "Ledger" {
+	ledger := agentNamed(t, office, "Ledger")
+	if result.Message == nil || len(result.Message.Agents) != 1 || result.Message.Agents[0] != ledger.ID {
 		t.Fatalf("got %+v", result)
 	}
-	if !strings.HasPrefix(result.Reply.Text, "On it, sent to Ledger (Claude). ") ||
-		!strings.HasSuffix(result.Reply.Text, ". I'll read you the reply the moment it lands.") {
+	// Mabari works out the project from what its agents are doing, then the agent there.
+	if result.Reply.Project == nil || result.Reply.Project.Name != "Checkout revamp" ||
+		!strings.HasPrefix(result.Reply.Text, "On it, sent to Ledger (Claude) in Checkout revamp. I picked Checkout revamp because ") ||
+		!strings.HasSuffix(result.Reply.Text, " I'll read you the reply the moment it lands.") {
 		t.Errorf("reply = %q", result.Reply.Text)
 	}
 	relay := result.Reply.Relay
-	ledger := agentNamed(t, office, "Ledger")
 	if relay == nil || relay.AgentID != ledger.ID || relay.InstructionID == "" || relay.AI != "Claude" {
 		t.Fatalf("relay = %+v", relay)
 	}
@@ -873,14 +875,19 @@ func TestVeeDispatchesToTheTeam(t *testing.T) {
 	}
 }
 
-// Commands that share words with office questions still go to the team.
+// Commands that share words with office questions still go to the team: to the project they
+// fit, or Mabari asks which project when none clearly does.
 func TestVeeDispatchesCommandsThatLookLikeQuestions(t *testing.T) {
 	office := newOffice(t)
 	office.do(t, http.MethodPost, "/api/demo/load", "")
-	for _, text := range []string{"update the README", "finish the login page", "Point the API to staging"} {
+	for text, want := range map[string]string{
+		"update the README":        "On it, sent to Rune (ChatGPT) in Docs site.",
+		"finish the login page":    "Which project is this for?",
+		"Point the API to staging": "On it, sent to ",
+	} {
 		quoted, _ := json.Marshal(text)
 		result := askVee(t, office, `{"text":`+string(quoted)+`}`)
-		if result.Reply.Relay == nil || !strings.HasPrefix(result.Reply.Text, "On it, sent to ") {
+		if !strings.HasPrefix(result.Reply.Text, want) {
 			t.Errorf("%q: got %q", text, result.Reply.Text)
 		}
 	}

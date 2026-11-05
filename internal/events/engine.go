@@ -427,6 +427,10 @@ func (e *Engine) RemoveAgent(id string) {
 	for index, agent := range e.agents {
 		if agent.ID == id {
 			e.CancelApproval(agent)
+			// Nothing will deliver what it was still waiting for.
+			for _, instruction := range agent.Queued {
+				e.settle(instruction)
+			}
 			e.agents = append(e.agents[:index:index], e.agents[index+1:]...)
 			break
 		}
@@ -575,6 +579,95 @@ func (e *Engine) Delivered(agent *models.LiveAgent, text string) models.Instruct
 	e.record(e.store.SaveInstruction(context.Background(), instruction))
 	e.remember(agent, instruction)
 	return instruction
+}
+
+// Unqueue takes back an instruction that hasn't been delivered: one waiting for its agent's next
+// checkpoint, or a prompt waiting for the Claude Code session opened for it. It returns who held
+// it, an agent's name or a project's, and false when nothing holds it any more, because it was
+// delivered or never existed. Call inside Do, where delivery happens too, so the two can't race.
+func (e *Engine) Unqueue(id string) (string, bool) {
+	for _, agent := range e.agents {
+		for index, instruction := range agent.Queued {
+			if instruction.ID == id {
+				agent.Queued = append(agent.Queued[:index:index], agent.Queued[index+1:]...)
+				e.Touch(agent)
+				e.settle(instruction)
+				return agent.Name, true
+			}
+		}
+	}
+	for _, project := range e.projects {
+		for index, instruction := range project.Opening {
+			if instruction.ID == id {
+				saved := *project
+				saved.Opening = append(project.Opening[:index:index], project.Opening[index+1:]...)
+				e.SaveProject(saved)
+				e.settle(instruction)
+				return project.Name, true
+			}
+		}
+	}
+	return "", false
+}
+
+// settle marks an instruction as taken back, so it never comes back after a restart, and takes
+// the amber off its activity row.
+func (e *Engine) settle(instruction models.Instruction) {
+	instruction.Status = models.InstructionRemoved
+	e.record(e.store.SaveInstruction(context.Background(), instruction))
+	e.UpdateLog(instruction.LogID, "Removed before delivery", "")
+}
+
+// Opening holds a prompt for the Claude Code session Mabari is opening in the project's folder.
+// Call inside Do.
+func (e *Engine) Opening(project *models.Project, text string) models.Instruction {
+	entry := e.Log(project.Name, models.LogInstruction, text, "Opening Claude Code", "")
+	instruction := models.Instruction{
+		ID: newID("ins-"), Text: text, Mode: models.ModeInstruct,
+		Status: models.InstructionWaiting, Time: e.now().UnixMilli(), LogID: entry.ID,
+	}
+	saved := *project
+	saved.Opening = append(project.Opening[:len(project.Opening):len(project.Opening)], instruction)
+	e.SaveProject(saved)
+	return instruction
+}
+
+// TakeOpening gives a session that just started in a project's folder the oldest prompt Mabari
+// opened it with, as if it had been sent to it, so its reply is kept with it. Prompts older than
+// OpeningKept are dropped. It reports false when nothing was waiting. Call inside Do.
+func (e *Engine) TakeOpening(agent *models.LiveAgent) bool {
+	if agent.Project == nil {
+		return false
+	}
+	project := e.Project(*agent.Project)
+	if project == nil || len(project.Opening) == 0 {
+		return false
+	}
+	now := e.now().UnixMilli()
+	saved := *project
+	saved.Opening = nil
+	var taken *models.Instruction
+	for _, instruction := range project.Opening {
+		switch {
+		case now-instruction.Time > models.OpeningKept:
+			e.settle(instruction)
+		case taken == nil:
+			copied := instruction
+			taken = &copied
+		default:
+			saved.Opening = append(saved.Opening, instruction)
+		}
+	}
+	e.SaveProject(saved)
+	if taken == nil {
+		return false
+	}
+	id := agent.ID
+	taken.Agent, taken.Status = &id, models.InstructionDelivered
+	e.record(e.store.SaveInstruction(context.Background(), *taken))
+	e.UpdateLog(taken.LogID, "Delivered when the session started", "ok")
+	e.remember(agent, *taken)
+	return true
 }
 
 // remember keeps a delivered instruction on the agent, for its panel, dropping the oldest.
@@ -805,6 +898,9 @@ func (e *Engine) SaveProject(project models.Project) models.Project {
 	}
 	if project.Files == nil {
 		project.Files = []string{}
+	}
+	if project.Opening == nil {
+		project.Opening = []models.Instruction{}
 	}
 	if existing := e.Project(project.ID); existing != nil {
 		*existing = project

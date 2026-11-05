@@ -88,6 +88,12 @@ type Reply struct {
 	Target string `json:"target"`
 	// Relay is set when Mabari passed an instruction on and will relay the reply.
 	Relay *Relay `json:"relay"`
+	// Project is the project a message went to.
+	Project *ProjectChoice `json:"project"`
+	// Projects are the choices when Mabari asks which project a message is for.
+	Projects []ProjectChoice `json:"projects"`
+	// Route is set when the message is for a project.
+	Route *Route `json:"-"`
 	// Send is set when the reply passes a message to a named agent.
 	Send *Send `json:"-"`
 	// Dispatch is set when the message is a task for the dispatcher, not something Mabari answers.
@@ -207,14 +213,30 @@ func short(q string) bool {
 	return false
 }
 
-// Answer works out Mabari's reply. Messages to a named agent come first, so that "tell Scout to
-// fix the endpoint" is an instruction and not a request for the point gesture. Mabari answers
-// questions about the office itself; everything else is a task, and Dispatch is set.
+// Answer works out Mabari's reply in an office with no projects. See AnswerIn.
 func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
-	office := look(agents, now)
+	return AnswerIn(text, Office{Agents: agents}, now)
+}
+
+// AnswerIn works out Mabari's reply. Messages to a named agent come first, so that "tell Scout to
+// fix the endpoint" is an instruction and not a request for the point gesture, then messages to a
+// named project. Mabari answers questions about the office itself; everything else is a task for
+// a project (Route), a question about which project (KindPickProject), or, in an office with no
+// projects, a task for the dispatcher (Dispatch).
+func AnswerIn(text string, in Office, now time.Time) Reply {
+	office := look(in.Agents, now)
 	q := strings.TrimSpace(strings.ToLower(text))
-	if reply, ok := office.passOn(text, q); ok {
+	reply, ok := office.passOn(text, q)
+	if ok && (reply.Send != nil || in.Projects == nil) {
 		return reply
+	}
+	if project, body := namedProject(text, open(in.Projects)); project != nil && body != "" {
+		routed := office.reply("", "nod", KindPlain)
+		routed.Route = &Route{ProjectID: project.ID, Text: body}
+		return routed
+	}
+	if ok {
+		return office.unknown(q, in.Projects)
 	}
 	isQ, small := IsQuestion(q), short(q)
 	if small {
@@ -262,9 +284,30 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 		"responses", "answers"):
 		return office.replies()
 	}
-	reply := office.reply("", "nod", KindPlain)
-	reply.Dispatch = true
-	return reply
+	if route, ask := office.forProject(text, in); ask != nil {
+		return *ask
+	} else if route != nil {
+		routed := office.reply("", "nod", KindPlain)
+		routed.Route = route
+		return routed
+	}
+	dispatched := office.reply("", "nod", KindPlain)
+	dispatched.Dispatch = true
+	return dispatched
+}
+
+// unknown is the reply to "tell X to …" when X is neither an agent nor a project.
+func (o view) unknown(q string, projects []*models.Project) Reply {
+	name := strings.TrimSpace(message.FindStringSubmatch(q)[2])
+	names := make([]string, 0, 6)
+	for _, candidate := range o.agents[:min(4, len(o.agents))] {
+		names = append(names, candidate.Name)
+	}
+	for _, project := range open(projects)[:min(3, len(open(projects)))] {
+		names = append(names, project.Name)
+	}
+	return o.reply("I couldn't find an agent or project called "+name+". Try one of: "+strings.Join(names, ", ")+".",
+		"shrug", KindPlain)
 }
 
 // named finds an agent the message mentions by name, longest name first.

@@ -64,31 +64,49 @@ func briefFor(name string, body startBody) string {
 	return b.String()
 }
 
-// openClaude opens Claude Code in a project's folder and says what happened, in words for a toast.
-// Call outside Do: it waits for the terminal to open.
-func (a *api) openClaude(name, folder, prompt string, plan bool) string {
+// openClaude opens Claude Code in a project's folder and says what happened, in words for a toast,
+// and whether a session is on its way. Call outside Do: it waits for the terminal to open.
+func (a *api) openClaude(name, folder, prompt string, plan bool) (string, bool) {
 	// Without a launcher, as in Docker and in tests, Mabari only says how to start.
 	if a.launcher == nil {
-		return "Run claude in " + folder + ". The session joins " + name + " when it starts."
+		return "Run claude in " + folder + ". The session joins " + name + " when it starts.", false
 	}
 	path, err := projectFolder(folder)
 	if err != nil {
-		return "Couldn't make the folder " + folder + ": " + err.Error()
+		return "Couldn't make the folder " + folder + ": " + err.Error(), false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), launchWait)
 	defer cancel()
 	err = a.launcher.Claude(ctx, launch.Request{Folder: path, Name: name, Prompt: prompt, Plan: plan})
 	switch {
 	case errors.Is(err, launch.ErrNoTerminal):
-		return "Run claude in " + folder + ". The session joins " + name + " when it starts."
+		return "Run claude in " + folder + ". The session joins " + name + " when it starts.", false
 	case err != nil:
-		return "Couldn't open Claude Code (" + err.Error() + "). Run claude in " + folder + "."
+		return "Couldn't open Claude Code (" + err.Error() + "). Run claude in " + folder + ".", false
 	}
 	_ = a.engine.Do(func() {
 		a.engine.Log(name, models.LogSession, "claude in "+folder, "Opened Claude Code", "ok")
 	})
-	return "Opened Claude Code in " + folder + ". It joins " + name + " as soon as it starts."
+	return "Opened Claude Code in " + folder + ". It joins " + name + " as soon as it starts.", true
 }
+
+// promptProblem says what is wrong with a prompt for Claude Code, or "" when it is fine.
+func promptProblem(prompt string) string {
+	switch {
+	case prompt == "":
+		return "A message needs some text."
+	// The prompt follows "--"; refusing a leading dash as well means it can't be a flag even if
+	// Claude Code ever read options after "--".
+	case strings.HasPrefix(prompt, "-"):
+		return "A prompt can't start with a dash."
+	case len(prompt) > maxPrompt:
+		return "That's too long to send. Keep it under 20,000 characters."
+	}
+	return ""
+}
+
+// maxPrompt is the longest prompt Mabari passes on, in bytes.
+const maxPrompt = 20000
 
 // openProjectClaude opens Claude Code in an existing project's folder.
 func (a *api) openProjectClaude(w http.ResponseWriter, r *http.Request) {
@@ -114,10 +132,8 @@ func (a *api) openProjectClaude(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prompt := strings.TrimSpace(body.Prompt)
-	// The prompt already follows "--"; refusing a leading dash as well means it can't be a flag
-	// even if Claude Code ever read options after "--".
-	if strings.HasPrefix(prompt, "-") {
-		writeError(w, http.StatusBadRequest, "A prompt can't start with a dash.")
+	if problem := promptProblem(prompt); prompt != "" && problem != "" {
+		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
 	if prompt == "" {
@@ -127,7 +143,7 @@ func (a *api) openProjectClaude(w http.ResponseWriter, r *http.Request) {
 		}
 		prompt += "\n\nLook around this folder and say what you find, then wait for instructions."
 	}
-	notice := a.openClaude(project.Name, project.Repository.Path, prompt, false)
+	notice, _ := a.openClaude(project.Name, project.Repository.Path, prompt, false)
 	writeJSON(w, http.StatusOK, map[string]string{"notice": notice})
 }
 

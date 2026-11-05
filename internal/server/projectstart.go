@@ -331,13 +331,13 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 		// The session opens once the repository is cloned.
 		go func() {
 			if a.cloneFor(project, lead, url, body.Branch, folder) {
-				notice := a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
+				notice, _ := a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
 				_ = a.engine.Do(func() { a.engine.Toast(notice) })
 			}
 		}()
 		notice = "Cloning into " + folder + ". Claude Code opens there when it's done."
 	case realClaude:
-		notice = a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
+		notice, _ = a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
 	case url != "":
 		go a.cloneFor(project, lead, url, body.Branch, folder)
 	default:

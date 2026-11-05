@@ -17,6 +17,9 @@ type Decision struct {
 	Name    string `json:"name"`
 	Hue     string `json:"hue"`
 	Reason  string `json:"reason"`
+	// Fit is how well the message matches the agent itself: its name, its work and its files,
+	// leaving out how busy it is. Zero means the agent was picked only for being free.
+	Fit int `json:"-"`
 }
 
 // Router picks an agent for a message. Rules is the default, and a model based router can replace
@@ -60,7 +63,7 @@ func onTopic(text, profile string) bool {
 	return false
 }
 
-func score(text string, agent *models.LiveAgent, queued int) (int, []string) {
+func score(text string, agent *models.LiveAgent, queued int) (int, int, []string) {
 	total := 0
 	var why []string
 	profile := strings.ToLower(agent.Task + " " + strings.Join(agent.Files, " "))
@@ -77,6 +80,7 @@ func score(text string, agent *models.LiveAgent, queued int) (int, []string) {
 			total += 3
 		}
 	}
+	fit := total
 	switch {
 	case agent.State == models.StateIdle || agent.State == models.StateDone:
 		total += 4
@@ -90,22 +94,22 @@ func score(text string, agent *models.LiveAgent, queued int) (int, []string) {
 	if agent.Lead == nil {
 		total++
 	}
-	return total, why
+	return total, fit, why
 }
 
 // Route returns the best agent, or nil if nobody can take the message.
 func (Rules) Route(text string, agents []*models.LiveAgent) *Decision {
 	lower := strings.ToLower(text)
 	var best *models.LiveAgent
-	var bestScore int
+	var bestScore, bestFit int
 	var bestWhy []string
 	for _, agent := range agents {
 		if agent.Leaving || agent.State == models.StateError || agent.State == models.StatePaused {
 			continue
 		}
-		total, why := score(lower, agent, len(agent.Queued))
+		total, fit, why := score(lower, agent, len(agent.Queued))
 		if best == nil || total > bestScore {
-			best, bestScore, bestWhy = agent, total, why
+			best, bestScore, bestFit, bestWhy = agent, total, fit, why
 		}
 	}
 	if best == nil {
@@ -115,5 +119,5 @@ func (Rules) Route(text string, agents []*models.LiveAgent) *Decision {
 	if len(bestWhy) > 0 {
 		reason = strings.Join(bestWhy, " and ")
 	}
-	return &Decision{AgentID: best.ID, Name: best.Name, Hue: best.Hue, Reason: reason}
+	return &Decision{AgentID: best.ID, Name: best.Name, Hue: best.Hue, Reason: reason, Fit: bestFit}
 }

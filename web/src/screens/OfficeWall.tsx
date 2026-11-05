@@ -2,10 +2,11 @@
 // The fixed bar along the top of the office floor, which never zooms or pans: noise filters on the
 // left; project panels, a live clock and the approval bell on the right. Also the Mabari updates
 // button and panel that full screen adds to the header.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { clockText } from '../format.ts';
 import type { Snapshot } from '../gen/models.ts';
 import { approvalSummary } from '../office/approvalText.ts';
+import { agentFootprint, BOARD_TOP, clearTop, type Rect } from '../office/boardPlace.ts';
 import { isQuiet, LAYERS, useLayers } from '../office/layers.ts';
 import { counted, inScope, needsTone, needsYou, useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
@@ -188,6 +189,79 @@ const BELL = (
   </Icon>
 );
 
+/** How often the card checks that it is not over an agent, and how many checks in a row it takes to move. */
+const BOARD_CHECK_MS = 700;
+const BOARD_MOVE_AFTER = 2;
+/** The gap between the card and the floor's right edge, as `.board` has it. */
+const BOARD_GAP = 14;
+
+/** Puts the card at a top, or back where its style sheet has it. It is a DOM element React does not draw the top of. */
+function setBoardTop(card: HTMLElement, top: number | null) {
+  card.style.top = top === null ? '' : `${top}px`;
+}
+
+/**
+ * Keeps the open approvals card off the agents. It sits at the top right under the wall bar, where
+ * agents resting in the lounge stand, so when it would cover a name tag, a bubble or a character it
+ * slides down the right edge to a clear place (RT-10). It settles at once when it opens, and after
+ * that waits out an agent walking past before it moves, and never hops back.
+ */
+function useClearOfAgents(card: RefObject<HTMLDivElement | null>, open: boolean) {
+  useEffect(() => {
+    const board = card.current;
+    const stage = board?.closest<HTMLElement>('.stage');
+    if (!open || !board || !stage) return undefined;
+    let current = BOARD_TOP;
+    let hits = 0;
+    let first = true;
+    const check = () => {
+      const origin = stage.getBoundingClientRect();
+      const scale = Number(stage.querySelector<HTMLElement>('.ovl')?.dataset.oz ?? 1) || 1;
+      const inStage = (element: Element): Rect | null => {
+        const box = element.getBoundingClientRect();
+        if (!box.width || !box.height) return null;
+        return {
+          left: box.left - origin.left,
+          right: box.right - origin.left,
+          top: box.top - origin.top,
+          bottom: box.bottom - origin.top,
+        };
+      };
+      const obstacles: Rect[] = [];
+      for (const tag of stage.querySelectorAll('.tag')) {
+        const box = inStage(tag);
+        if (box) obstacles.push(agentFootprint(box, scale));
+      }
+      for (const bubble of stage.querySelectorAll('.bub:not([hidden])')) {
+        const box = inStage(bubble);
+        if (box) obstacles.push(box);
+      }
+      const next = clearTop({
+        current,
+        width: board.offsetWidth,
+        height: board.offsetHeight,
+        gap: BOARD_GAP,
+        stage: { width: stage.clientWidth, height: stage.clientHeight },
+        obstacles,
+      });
+      hits = next === current ? 0 : hits + 1;
+      if (next !== current && (first || hits >= BOARD_MOVE_AFTER)) {
+        current = next;
+        hits = 0;
+        setBoardTop(board, next);
+      }
+      first = false;
+    };
+    check();
+    const timer = window.setInterval(check, BOARD_CHECK_MS);
+    return () => {
+      window.clearInterval(timer);
+      // Closed to the bell, or gone: the bell and the next card start from the usual place.
+      setBoardTop(board, null);
+    };
+  }, [card, open]);
+}
+
 /**
  * The approval bell in the top right corner. With nothing waiting it is a grey bell. When an
  * approval arrives the card pops open; × minimises it back to the bell with a red count, and the
@@ -197,6 +271,7 @@ export function ApprovalBell({ office }: { office: Snapshot }) {
   const ui = useOfficeUi();
   const [minimised, setMinimised] = useState(false);
   const [seen, setSeen] = useState(0);
+  const card = useRef<HTMLDivElement>(null);
   const waiting = office.agents.filter(
     (agent) => agent.state === 'approval' && inScope(agent, ui, office.agents),
   );
@@ -205,13 +280,15 @@ export function ApprovalBell({ office }: { office: Snapshot }) {
     if (waiting.length > seen) setMinimised(false);
     setSeen(waiting.length);
   }
+  const mini = !waiting.length || minimised || ui.team !== null;
+  useClearOfAgents(card, !mini);
   if (ui.team) return null;
-  const mini = !waiting.length || minimised;
   const count = waiting.length;
   return (
     <div
       className={mini ? 'board is-mini' : 'board'}
       id="board"
+      ref={card}
       role="region"
       aria-label="Approvals"
       style={mini ? undefined : { width: 'min(280px, calc(100% - 28px))' }}

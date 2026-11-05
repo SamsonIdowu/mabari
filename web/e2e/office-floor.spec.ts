@@ -499,6 +499,73 @@ for (const [width, height] of SMALL) {
   });
 }
 
+/** The names of the agents the open approvals card covers: their tag, bubble or the character over the tag. */
+function agentsUnderTheBoard(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const board = document.querySelector('#board')!.getBoundingClientRect();
+    const scale = Number(document.querySelector<HTMLElement>('#stage .ovl')?.dataset.oz ?? 1) || 1;
+    const hits = (box: { left: number; right: number; top: number; bottom: number }) =>
+      box.left < board.right &&
+      board.left < box.right &&
+      box.top < board.bottom &&
+      board.top < box.bottom;
+    const covered: string[] = [];
+    for (const wrap of document.querySelectorAll<HTMLElement>('#stage [data-o]')) {
+      if (wrap.hidden) continue;
+      const name = wrap.querySelector('.tag .nn b')?.textContent ?? '?';
+      const tag = wrap.querySelector('.tag')!.getBoundingClientRect();
+      const bubble = wrap.querySelector<HTMLElement>('.bub:not([hidden])');
+      const boxes = [
+        { left: tag.left, right: tag.right, top: tag.top - 56 * scale, bottom: tag.bottom },
+      ];
+      if (bubble) boxes.push(bubble.getBoundingClientRect());
+      if (boxes.some(hits)) covered.push(name);
+    }
+    return covered;
+  });
+}
+
+// RT-10: the open card sat at the top right, where agents resting in the lounge stand, and hid
+// their heads and bubbles. It now slides down the right edge to a place that covers no one. The
+// lounge moves right as the floor grows, so the demo office alone does not put anyone under the
+// card at 1440x900: nine more agents at work and two resting do, as the re-test found.
+test('the approvals card covers no agent at 1440x900, with agents resting in the lounge', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
+    token: string;
+  };
+  for (let index = 1; index <= 11; index++) {
+    const sent = await request.post(`http://127.0.0.1:${apiPort}/hub/v1/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { agent: `rt10-${index}`, name: `Hub${index}`, state: index > 2 ? 'thinking' : 'idle' },
+    });
+    expect(sent.status()).toBe(200);
+  }
+  await page.goto('/#office');
+  await expect(page.locator('.tag .nt').first()).toBeVisible();
+  const board = page.locator('#board:not(.is-mini)');
+  await expect(board).toBeVisible();
+  // Agents are resting in the lounge, which is what the card used to cover.
+  await expect(list(page).getByRole('group', { name: /^Lounge/ })).toBeVisible();
+  // Once it has settled (it slides, and agents walk), no tag, bubble or character is under it.
+  await expect.poll(() => agentsUnderTheBoard(page), { timeout: 10_000 }).toEqual([]);
+
+  // It stays under the wall bar, whose project cards stay clickable, and off the readout below.
+  const box = (await board.boundingBox())!;
+  const stage = (await page.locator('#stage').boundingBox())!;
+  const cards = await projectCards(page);
+  for (const card of cards) expect(card.box.y + card.box.height).toBeLessThanOrEqual(box.y + 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(stage.y + stage.height - 90);
+  // Minimised, it goes back to the bell where it always was, and opens at the top again.
+  await board.getByRole('button', { name: 'Minimise' }).click();
+  const bell = page.locator('#board.is-mini');
+  await expect(bell).toBeVisible();
+  expect((await bell.boundingBox())!.y).toBeLessThan(stage.y + 40);
+});
+
 // RT-8: at 200% zoom the floor fills most of the view, and a wheel over it always zoomed it, so a
 // trackpad could not scroll the page from there. Where the page scrolls, a plain wheel scrolls it
 // and Ctrl or a pinch zooms. Where it fits, the wheel zooms as it always did.

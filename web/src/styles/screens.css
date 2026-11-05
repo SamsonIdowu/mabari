@@ -448,6 +448,8 @@
 }
 .board:not(.is-mini) {
   animation: bpop 0.22s ease-out;
+  /* It slides down the right edge when it would cover an agent, rather than jumping. */
+  transition: top 0.3s ease;
 }
 @keyframes bpop {
   from {
@@ -3631,6 +3633,7 @@ section[data-screen='home'] {
 @media (prefers-reduced-motion: reduce) {
   .board:not(.is-mini) {
     animation: none;
+    transition: none;
   }
 }
 

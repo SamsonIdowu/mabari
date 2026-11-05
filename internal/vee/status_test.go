@@ -191,3 +191,24 @@ func TestStatusCountAndListReconcile(t *testing.T) {
 		t.Errorf("one needing: %q", got)
 	}
 }
+
+// The floor lists an agent with a queued instruction under Queued, not Working, so Mabari's count
+// matches the header beside it. Its work still counts towards when everything finishes.
+func TestAQueuedAgentCountsOnceAndStillFinishes(t *testing.T) {
+	ledger := agent("Ledger", models.StateEditing)
+	sage := agent("Sage", models.StateEditing)
+	sage.Queued = []models.Instruction{{Text: "add a test"}}
+	agents := []*models.LiveAgent{ledger, sage}
+
+	status := Answer("status?", agents, now)
+	if status.Working != 1 || status.Text != "1 agent is working." || len(status.Lines) != 1 {
+		t.Errorf("status = %d working, %q, %d listed", status.Working, status.Text, len(status.Lines))
+	}
+	if eta := Answer("how long until done?", agents, now); eta.Kind != KindWhen || eta.Estimate == nil {
+		t.Errorf("the queued agent's work should still count: %+v", eta)
+	}
+	alone := Answer("how long until done?", []*models.LiveAgent{sage}, now)
+	if alone.Kind != KindWhen || !strings.Contains(alone.Text, "Sage will be last") {
+		t.Errorf("only a queued agent is working: %+v", alone)
+	}
+}

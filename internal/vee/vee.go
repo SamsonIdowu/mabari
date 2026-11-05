@@ -185,9 +185,11 @@ type view struct {
 	scopeID string
 	agents  []*models.LiveAgent
 	working []*models.LiveAgent
-	need    []*models.LiveAgent
-	finish  *models.Estimate
-	now     time.Time
+	// busy is everyone doing work, including agents with an instruction queued.
+	busy   []*models.LiveAgent
+	need   []*models.LiveAgent
+	finish *models.Estimate
+	now    time.Time
 }
 
 func estimate(a *models.LiveAgent, now time.Time) *models.Estimate {
@@ -200,8 +202,13 @@ func look(agents []*models.LiveAgent, now time.Time) view {
 	for _, agent := range agents {
 		// An agent asking a question waits on you, so it needs you rather than works.
 		if agent.State.Active() && !agent.Asking() {
-			office.working = append(office.working, agent)
+			office.busy = append(office.busy, agent)
 			estimates = append(estimates, estimate(agent, now))
+			// A queued instruction has its own group on the floor, so an agent counts once and
+			// this number matches the header. It still finishes when it finishes.
+			if len(agent.Queued) == 0 {
+				office.working = append(office.working, agent)
+			}
 		}
 		if agent.State.NeedsMe() || agent.Asking() {
 			office.need = append(office.need, agent)
@@ -548,7 +555,7 @@ func (o view) when() Reply {
 	if o.finish == nil {
 		return o.reply("Nothing is in progress"+o.in()+", so there's nothing to wait for.", "shrug", KindPlain)
 	}
-	slowest := slices.Clone(o.working)
+	slowest := slices.Clone(o.busy)
 	slices.SortStableFunc(slowest, func(a, b *models.LiveAgent) int {
 		return cmp.Compare(seconds(b, o.now), seconds(a, o.now))
 	})

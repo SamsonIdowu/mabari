@@ -376,7 +376,11 @@ function TypeField({ shown, hide }: { shown: boolean; hide: () => void }) {
     const message = text.trim();
     if (!message) return;
     setText('');
-    void hear(message);
+    // If nothing reached Mabari, the words go back in the box to send again, unless something
+    // new has been typed there since.
+    void hear(message).then((sent) => {
+      if (!sent) setText((current) => current || message);
+    });
   };
   const onKey = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {

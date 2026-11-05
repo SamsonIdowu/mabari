@@ -75,8 +75,11 @@ interface VeeStore {
    * replaces the last one about the same project, so the rounds never crowd out replies.
    */
   report: (about: string, text: string) => void;
-  /** Sends a message, to the project given or else the one picked next to the box. */
-  hear: (text: string, project?: string) => Promise<void>;
+  /**
+   * Sends a message, to the project given or else the one picked next to the box. False when the
+   * message never reached Mabari, so the words can be put back in the box.
+   */
+  hear: (text: string, project?: string) => Promise<boolean>;
   setOnHome: (on: boolean) => void;
   /** Mabari posts an update in the Home chat, read aloud with Voice on, counted when elsewhere. */
   post: (text: string, gesture?: string) => void;
@@ -230,8 +233,10 @@ export const useVee = create<VeeStore>((set, get) => ({
         set((state) => ({ relays: [...state.relays, result.reply.relay!] }));
         watch();
       }
+      return true;
     } catch (error) {
       get().say(fail(error as Error));
+      return false;
     }
   },
   setOnHome: (on) => set(on ? { onHome: true, unread: 0 } : { onHome: false }),

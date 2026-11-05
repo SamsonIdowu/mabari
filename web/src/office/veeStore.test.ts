@@ -80,6 +80,15 @@ describe('Mabari relays replies', () => {
     expect(useVee.getState().said.text).toBe('Ledger (Claude) replied: Got it.');
   });
 
+  it('says whether the message reached Mabari, so the words can go back in the box', async () => {
+    await expect(useVee.getState().hear('update the README')).resolves.toBe(true);
+    vi.spyOn(api, 'vee').mockRejectedValue(
+      new Error("Can't reach Mabari. Your message was not sent."),
+    );
+    await expect(useVee.getState().hear('update the README')).resolves.toBe(false);
+    expect(useVee.getState().said.text).toBe("Can't reach Mabari. Your message was not sent.");
+  });
+
   it("keeps one update from Mabari's rounds per project, so replies aren't crowded out", () => {
     const store = useVee.getState();
     store.report('shop', 'Shop: 2 working.');

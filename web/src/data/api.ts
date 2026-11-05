@@ -40,10 +40,37 @@ export interface AgentPatch {
 /** Sent on window when Mabari asks for the access key, so the sign in can show. */
 export const SIGN_IN_EVENT = 'mabari:sign-in';
 
+/**
+ * What a call says when it never got an answer. The browser's own text, such as "Failed to
+ * fetch", means nothing to most people and doesn't say whether the action happened. A decision
+ * on an approval says it was not sent, and the approval stays waiting.
+ */
+export function unreachableMessage(path: string, method = 'GET'): string {
+  if (method === 'GET') return "Can't reach Mabari.";
+  if (path.startsWith('/api/approvals/')) {
+    return "Can't reach Mabari. Your decision was not sent. The approval is still waiting.";
+  }
+  if (
+    path === '/api/vee' ||
+    path === '/api/messages' ||
+    /^\/api\/projects\/[^/]+\/send$/.test(path)
+  ) {
+    return "Can't reach Mabari. Your message was not sent.";
+  }
+  return "Can't reach Mabari. Your change was not saved.";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   for (const [name, value] of Object.entries(sessionHeaders())) headers.set(name, value);
-  const response = await fetch(path, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(path, { ...init, headers });
+  } catch (error) {
+    // A call someone cancelled isn't a failure to reach the server.
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new Error(unreachableMessage(path, init?.method?.toUpperCase()), { cause: error });
+  }
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;

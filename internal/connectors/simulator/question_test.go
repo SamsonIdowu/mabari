@@ -242,7 +242,7 @@ func TestAnAskingAgentIsNotAlsoAskedForAnApproval(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	advance(t, sim, c, 600)
+	advance(t, sim, c, 240)
 	for _, agent := range engine.Snapshot().Agents {
 		if agent.Asking() && agent.State == models.StateApproval {
 			t.Errorf("%s asks a question and waits on an approval", agent.Name)

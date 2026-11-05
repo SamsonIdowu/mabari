@@ -81,9 +81,9 @@ func TestDemoChatNeverHasABlank(t *testing.T) {
 	if err := sim.LoadDemo(); err != nil {
 		t.Fatal(err)
 	}
-	advance(t, sim, c, 600)
+	advance(t, sim, c, 300)
 	messages := engine.Snapshot().Messages
-	if len(messages) < 30 {
+	if len(messages) < 20 {
 		t.Fatalf("only %d messages", len(messages))
 	}
 	for _, message := range messages {

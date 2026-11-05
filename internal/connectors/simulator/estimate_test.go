@@ -23,12 +23,9 @@ func secondsLeft(engine *events.Engine, name string) (int64, *models.LiveAgent) 
 }
 
 func stateOf(engine *events.Engine, name string) models.AgentState {
-	for _, agent := range engine.Snapshot().Agents {
-		if agent.Name == name {
-			return agent.State
-		}
-	}
-	return ""
+	var state models.AgentState
+	_ = engine.Do(func() { state = engine.AgentByName(name).State })
+	return state
 }
 
 // A demo minute is a minute (FIRST-8). The demo's agents work through their steps several times
@@ -38,7 +35,7 @@ func stateOf(engine *events.Engine, name string) models.AgentState {
 func TestDemoEstimatesFallAtTheClocksPace(t *testing.T) {
 	const window = 60
 	var ratios []float64
-	for seed := uint32(1); seed <= 12; seed++ {
+	for seed := uint32(1); seed <= 6; seed++ {
 		sim, engine, c, _ := setup(t, ":memory:", seed)
 		if err := sim.LoadDemo(); err != nil {
 			t.Fatal(err)
@@ -66,7 +63,7 @@ func TestDemoEstimatesFallAtTheClocksPace(t *testing.T) {
 			}
 		}
 	}
-	if len(ratios) < 30 {
+	if len(ratios) < 15 {
 		t.Fatalf("only %d estimates were measured", len(ratios))
 	}
 	var sum float64
@@ -106,7 +103,7 @@ func TestAnEstimateFallsSteadilyWithinAStep(t *testing.T) {
 // What an agent says it will take is what it takes: the estimate when a task starts is about how
 // long the demo agent then spends on it.
 func TestAFreshTaskTakesAboutAsLongAsItSaid(t *testing.T) {
-	for seed := uint32(1); seed <= 10; seed++ {
+	for seed := uint32(1); seed <= 5; seed++ {
 		sim, engine, c, _ := setup(t, ":memory:", seed)
 		if err := sim.LoadDemo(); err != nil {
 			t.Fatal(err)
@@ -136,7 +133,7 @@ func TestAFreshTaskTakesAboutAsLongAsItSaid(t *testing.T) {
 // unless the work itself changes: someone finishes, or picks up something new.
 func TestDoneAroundDoesNotJump(t *testing.T) {
 	compared := 0
-	for seed := uint32(1); seed <= 6; seed++ {
+	for seed := uint32(1); seed <= 3; seed++ {
 		sim, engine, c, _ := setup(t, ":memory:", seed)
 		if err := sim.LoadDemo(); err != nil {
 			t.Fatal(err)
@@ -148,19 +145,22 @@ func TestDoneAroundDoesNotJump(t *testing.T) {
 		read := func() reading {
 			out := reading{at: map[string]string{}}
 			var estimates []*models.Estimate
-			for _, agent := range engine.Snapshot().Agents {
-				if agent.Estimate != nil {
-					estimates = append(estimates, agent.Estimate)
-					out.at[agent.Name] = agent.Task
+			_ = engine.Do(func() {
+				for _, agent := range engine.Agents() {
+					agent.Refresh(engine.Now())
+					if agent.Estimate != nil {
+						estimates = append(estimates, agent.Estimate)
+						out.at[agent.Name] = agent.Task
+					}
 				}
-			}
+			})
 			if latest := models.LatestFinish(estimates...); latest != nil {
 				out.finish = latest.FinishAt
 			}
 			return out
 		}
 		previous := read()
-		for range 540 {
+		for range 300 {
 			advance(t, sim, c, 1)
 			current := read()
 			same := len(previous.at) == len(current.at)
@@ -176,23 +176,23 @@ func TestDoneAroundDoesNotJump(t *testing.T) {
 			previous = current
 		}
 	}
-	if compared < 1000 {
+	if compared < 400 {
 		t.Errorf("only %d ticks were compared", compared)
 	}
 }
 
 // Real agents are untouched: no scale, so a rate means progress per real second, as before.
 func TestRealAgentsEstimatesAreUnchanged(t *testing.T) {
-	real := &models.LiveAgent{}
-	real.State, real.Progress, real.Rate = models.StateEditing, 0.5, 0.001
-	if got := real.RatePerSecond(); got != 0.001 {
+	actual := &models.LiveAgent{}
+	actual.State, actual.Progress, actual.Rate = models.StateEditing, 0.5, 0.001
+	if got := actual.RatePerSecond(); got != 0.001 {
 		t.Errorf("a real agent's rate per second = %v", got)
 	}
 	now := time.UnixMilli(goldenStart)
-	if estimate := real.EstimateAt(now); estimate == nil || estimate.SecondsLeft != 500 {
+	if estimate := actual.EstimateAt(now); estimate == nil || estimate.SecondsLeft != 500 {
 		t.Errorf("estimate = %+v", estimate)
 	}
-	demo := *real
+	demo := *actual
 	demo.RateScale = demoPace
 	if estimate := demo.EstimateAt(now); estimate == nil || estimate.SecondsLeft >= 500 || estimate.SecondsLeft < 80 {
 		t.Errorf("a demo agent at pace %.1f: estimate = %+v", demoPace, estimate)

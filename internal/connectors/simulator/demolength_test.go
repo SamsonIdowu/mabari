@@ -48,25 +48,28 @@ func TestTheDemoEndsWhenItSaysItWill(t *testing.T) {
 // new one.
 func TestLoadingTheDemoAgainRestartsItsTime(t *testing.T) {
 	sim, engine, c, _ := setup(t, ":memory:", 1)
-	sim.SetDemoLength(DemoLength)
+	// A shorter run than the real one, which TestTheDemoEndsWhenItSaysItWill pins down: what is
+	// tested here is only that loading again starts the time afresh.
+	length := time.Minute
+	sim.SetDemoLength(length)
 	if err := sim.LoadDemo(); err != nil {
 		t.Fatal(err)
 	}
 	first := engine.Snapshot().DemoEndsAt
-	advance(t, sim, c, 8*60)
+	advance(t, sim, c, 48)
 	if err := sim.LoadDemo(); err != nil {
 		t.Fatal(err)
 	}
 	second := engine.Snapshot().DemoEndsAt
-	if second != c.ms+DemoLength.Milliseconds() || second-first != 8*60*1000 {
+	if second != c.ms+length.Milliseconds() || second-first != 48*1000 {
 		t.Errorf("first ends at %d, second at %d, now %d", first, second, c.ms)
 	}
 	// It is still running when the first time would have come.
-	advance(t, sim, c, 2*60+5)
+	advance(t, sim, c, 13)
 	if !engine.Snapshot().Demo {
 		t.Error("the demo ended at its first time, though it was loaded again")
 	}
-	advance(t, sim, c, 8*60)
+	advance(t, sim, c, 48)
 	if engine.Snapshot().Demo {
 		t.Error("the demo outlived its second time")
 	}

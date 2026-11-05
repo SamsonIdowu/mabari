@@ -140,6 +140,14 @@ export function selectAgent(agent: Pick<LiveAgent, 'id' | 'state' | 'approval'>)
   });
 }
 
+/**
+ * What clicking an agent file resting in the lounge does, on the floor or in the list beside it:
+ * its panel opens, as any agent's does. Its key is restKey's, `def:` and the file's id.
+ */
+export function selectResting(key: string): void {
+  useOfficeUi.getState().set({ selected: key, follow: false, reviewing: null });
+}
+
 /** Agent files resting in the lounge belong to no project or team, so a filter on either hides them. */
 export function filesShown(filters: Pick<OfficeFilters, 'project' | 'team'>): boolean {
   return !filters.team && filters.project === 'all';

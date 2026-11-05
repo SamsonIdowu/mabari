@@ -144,18 +144,17 @@ export function floorFor(
   const gridEnd = Math.max((DeskX + (columns - 1) * 5) * TILE + 68, WORK_MIN_END);
   const rooms = ROOMS.filter((room) => inUse.includes(room));
   const loungeColumns = Math.ceil(residents / LOUNGE_ROWS);
-  // The office is two equal halves: the work area on the left, the open lounge on the right,
-  // each at least half the view. Whichever needs more room sets both.
+  // The office is the work area on the left and the open lounge on the right, each half the view
+  // at 100%, so they share the screen evenly whatever its size. Either grows past its half only
+  // when it needs more room, and then the office scrolls sideways; the other stays as it is.
   const workNeeds = gridEnd + 56;
   // The rooms' space is kept whether or not one is open, so opening one moves nothing else.
   const loungeNeeds =
     48 + (residents > 0 ? loungeColumns * LOUNGE_PITCH.x + LOUNGE_NOOK + GAP : 0) + ROOMS_W + 24;
   // A half the view sets is rounded down, so the floor never scrolls by a sliver.
-  const half = Math.max(
-    Math.floor(minWidth / 2 / TILE) * TILE,
-    Math.ceil(Math.max(workNeeds, loungeNeeds) / TILE) * TILE,
-  );
-  const width = half * 2;
+  const viewHalf = Math.floor(minWidth / 2 / TILE) * TILE;
+  const half = Math.max(viewHalf, Math.ceil(workNeeds / TILE) * TILE);
+  const width = half + Math.max(viewHalf, Math.ceil(loungeNeeds / TILE) * TILE);
   let lounge: Floor['lounge'] = null;
   if (residents > 0) {
     // Only as many armchairs as there are residents.

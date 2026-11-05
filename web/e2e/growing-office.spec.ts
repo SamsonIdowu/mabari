@@ -139,9 +139,15 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
     .toBe(true);
   expect((await world(page)).height).toBe(704);
 
-  // Clicking a resting agent file opens it in the builder.
+  // Clicking a resting agent file opens its panel, as clicking an agent does.
   const tag = (await resting.boundingBox())!;
   await page.mouse.click(tag.x + tag.width / 2, tag.y - 20);
+  await expect(page).toHaveURL(/#office$/);
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel).toContainText('lounge-reader');
+  await expect(panel).toContainText('Resting');
+  // Its Builder button is where the file is edited.
+  await panel.getByRole('button', { name: 'Edit in the Builder' }).click();
   await expect(page).toHaveURL(/#builder$/);
   await expect(page.locator('.defcard.open', { hasText: 'lounge-reader' })).toBeVisible();
 });

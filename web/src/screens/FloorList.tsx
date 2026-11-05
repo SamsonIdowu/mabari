@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../gen/models.ts';
-import { openRestingFile } from '../office/builderStore.tsx';
 import { floorGroups, type FloorEntry } from '../office/floorList.ts';
-import { selectAgent, useOfficeUi, type OfficeFilters } from '../office/uiStore.ts';
+import { selectAgent, selectResting, useOfficeUi, type OfficeFilters } from '../office/uiStore.ts';
 
 interface RowProps {
   entry: FloorEntry;
@@ -15,7 +14,7 @@ interface RowProps {
 
 function Row({ entry, selected, current, onFocus }: RowProps) {
   const isAgent = entry.kind === 'agent';
-  const on = isAgent && selected === entry.id;
+  const on = selected === entry.id;
   const where = isAgent ? entry.where : null;
   const dim = isAgent && entry.dim;
   const red = isAgent && entry.red;
@@ -25,10 +24,10 @@ function Row({ entry, selected, current, onFocus }: RowProps) {
       className={`flrow${on ? ' on' : ''}${dim ? ' dim' : ''}${red ? ' red' : ''}${isAgent ? '' : ' file'}`}
       data-entry={entry.id}
       tabIndex={current ? 0 : -1}
-      aria-pressed={isAgent ? on : undefined}
+      aria-pressed={on}
       title={`${entry.name}: ${entry.detail}${where ? ` (${where.name})` : ''}`}
       onFocus={onFocus}
-      onClick={() => (isAgent ? selectAgent(entry.agent) : openRestingFile(entry.def.id))}
+      onClick={() => (isAgent ? selectAgent(entry.agent) : selectResting(entry.id))}
     >
       <span
         className="fldot"

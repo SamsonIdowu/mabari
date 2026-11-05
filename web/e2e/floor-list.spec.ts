@@ -94,7 +94,10 @@ test('the Project filter narrows the list as it narrows the floor', async ({ pag
   await expect(entry(page, 'Scout')).toHaveCount(0);
 });
 
-test('a resting agent file in the list opens in the builder', async ({ page, request }) => {
+test('a resting agent file in the list opens its panel, as an agent does', async ({
+  page,
+  request,
+}) => {
   await request.post('/api/defs', {
     data: {
       def: {
@@ -114,8 +117,21 @@ test('a resting agent file in the list opens in the builder', async ({ page, req
   const file = lounge.getByRole('button', { name: /^list-reader Agent file/ });
   await expect(file).toContainText('Agent file');
   await file.click();
-  await expect(page).toHaveURL(/#builder$/);
-  await expect(page.locator('.defcard.open', { hasText: 'list-reader' })).toBeVisible();
+  await expect(page).toHaveURL(/#office$/);
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel).toContainText('list-reader');
+  await expect(panel).toContainText('Use to read the docs.');
+  await expect(panel).toContainText('Resting');
+  await expect(file).toHaveAttribute('aria-pressed', 'true');
+  // Giving it a task sits it down at a desk, and its panel becomes the working agent's.
+  await panel.getByLabel('What should it do?').fill('Read the setup guide');
+  await panel.getByRole('button', { name: 'Start at a desk' }).click();
+  await expect(panel.locator('.chip', { hasText: 'Resting' })).toHaveCount(0);
+  await expect(panel).toContainText('Read the setup guide');
+  // Once it works, it no longer rests in the lounge.
+  await page.keyboard.press('Escape');
+  const again = list(page).getByRole('group', { name: /Lounge/ });
+  await expect(again.getByRole('button', { name: /^list-reader/ })).toHaveCount(0);
 });
 
 test('the list can be hidden, and stays out of the way in full screen', async ({ page }) => {

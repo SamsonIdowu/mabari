@@ -125,27 +125,38 @@ describe('floorFor', () => {
     expect(floorFor(desksUpTo(16)).columns).toBe(5);
     const wide = floorFor(desksUpTo(17));
     expect(wide.columns).toBe(5);
-    // Each half grows with it, so another column of desks widens the office by two.
-    expect(floorFor(desksUpTo(20)).width).toBe(wide.width + 2 * 160);
+    // The work area grows with it, so another column of desks widens the office by one.
+    expect(floorFor(desksUpTo(20)).width).toBe(wide.width + 160);
     expect(wide.height).toBe(BASE_H);
     // The door stays below the middle of the work area.
     expect(wide.door).toBe(Math.round((64 + wide.workEnd) / 2));
   });
 
-  it('is two equal halves, the work area and the open lounge, at least as wide as the view', () => {
-    for (const floor of [
-      floorFor(desksUpTo(3), 2),
-      floorFor(desksUpTo(40), 9, ['meeting']),
-      floorFor(desksUpTo(2), 30),
-      floorFor(desksUpTo(2), 1, [], 1600),
-    ]) {
-      expect(workWalls(floor).right + 8).toBe(floor.width / 2);
-      expect(floor.lounge!.x).toBeGreaterThan(floor.width / 2);
-      expect(floor.width % 64).toBe(0);
+  it('gives the work area and the lounge half the view each, so they share the screen evenly', () => {
+    for (const view of [900, 1070, 1280, 1600, 2400]) {
+      // A quiet office, and a lounge with many agent files resting in it.
+      for (const residents of [1, 17]) {
+        const floor = floorFor(desksUpTo(2), residents, [], view);
+        const half = Math.floor(view / 2 / 32) * 32;
+        const work = workWalls(floor).right + 8;
+        expect(floor.lounge!.x).toBeGreaterThan(work);
+        if (work > half) continue; // a narrow view: the work area keeps room for its shelves
+        expect(work).toBe(half);
+        // What shows at 100% is half work area, half lounge; a lounge needing more scrolls on.
+        expect(floor.width).toBeGreaterThanOrEqual(2 * half);
+      }
     }
-    expect(floorFor(desksUpTo(2), 1, [], 1600).width).toBe(1600);
+    // A full lounge doesn't widen the work area, and many desks don't widen the lounge.
+    expect(workWalls(floorFor(desksUpTo(2), 30, [], 1600)).right).toBe(
+      workWalls(floorFor(desksUpTo(2), 1, [], 1600)).right,
+    );
+    const desks = floorFor(desksUpTo(60), 1, [], 1600);
+    expect(desks.width - (workWalls(desks).right + 8)).toBe(800);
     // A view that isn't a whole number of tiles doesn't leave the floor a sliver too wide.
     expect(floorFor(desksUpTo(2), 1, [], 1650).width).toBeLessThanOrEqual(1650);
+    for (const floor of [floorFor(desksUpTo(3), 2), floorFor(desksUpTo(40), 9, ['meeting'])]) {
+      expect(floor.width % 32).toBe(0);
+    }
   });
 
   it('opens a room only while someone is in it, at the right end of the office', () => {

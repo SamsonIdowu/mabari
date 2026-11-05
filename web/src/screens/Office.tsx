@@ -4,19 +4,19 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
-import { openRestingFile } from '../office/builderStore.tsx';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
-import { onFloor } from '../office/layout.ts';
+import { onFloor, restKey } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
 import {
   inScope,
   needsTone,
   needsYou,
   selectAgent,
+  selectResting,
   useOfficeUi,
   type StatusFilter,
 } from '../office/uiStore.ts';
@@ -26,6 +26,7 @@ import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
+import { RestingPanel } from './RestingPanel.tsx';
 import { FloorList } from './FloorList.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './OfficeWall.tsx';
@@ -807,10 +808,10 @@ function Stage({ office }: { office: Snapshot }) {
         useVee.setState({ unread: 0 });
         return;
       }
-      // An agent file resting in the lounge opens in the builder.
+      // An agent file resting in the lounge opens its panel, as an agent does.
       const def = scene.current.restingAt(pointIn(event));
       if (def) {
-        openRestingFile(def.id);
+        selectResting(restKey(def));
         return;
       }
       // The free desk starts a new agent there, with what it should do.
@@ -1012,6 +1013,7 @@ export function Office() {
   if (!office) return null;
 
   const selected = office.agents.find((agent) => agent.id === selectedId);
+  const resting = selected ? undefined : office.defs?.find((def) => restKey(def) === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
   const floor = onFloor(office.agents);
   const scoped = floor.filter((agent) => inScope(agent, filters, floor));
@@ -1031,6 +1033,7 @@ export function Office() {
           </div>
         </div>
         {selected ? <AgentPanel key={selected.id} office={office} agent={selected} /> : null}
+        {resting ? <RestingPanel key={resting.id} office={office} def={resting} /> : null}
       </div>
       <ApprovalCard office={office} />
       <AutoApproveDialog office={office} />

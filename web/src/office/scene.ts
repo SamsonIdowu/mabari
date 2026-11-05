@@ -1082,8 +1082,9 @@ export class OfficeScene {
           : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
     }));
     if (restingShown) {
-      for (const { walker } of this.resting) {
-        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, false) });
+      for (const { def, walker } of this.resting) {
+        const on = ui.selected === restKey(def);
+        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, on) });
       }
     }
     figures.sort((a, b) => a.y - b.y);

@@ -3894,3 +3894,14 @@ section[data-screen='components'] .page h1 {
 .hide-tags .mabtag:not(.away) {
   display: none;
 }
+
+/* Giving a resting agent file a task, in its panel. */
+.restform {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.restform .btn {
+  align-self: flex-end;
+}

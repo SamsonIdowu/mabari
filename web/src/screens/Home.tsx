@@ -81,11 +81,13 @@ function NeedLine({ line }: { line: VeeLine }) {
 
 function Lines({ reply }: { reply: VeeReply }) {
   const lines = reply.lines ?? [];
+  // A reply about the project picked in the dock says so, as its counts are for that project.
+  const where = reply.project ? ` in ${reply.project.name}` : '';
   if (reply.kind === 'needs') {
     return (
       <>
         <p>
-          {reply.need} thing{reply.need === 1 ? ' needs' : 's need'} you:
+          {reply.need} thing{reply.need === 1 ? ' needs' : 's need'} you{where}:
         </p>
         <ul className="hclist">
           {lines.map((line) => (
@@ -102,8 +104,9 @@ function Lines({ reply }: { reply: VeeReply }) {
     return (
       <>
         <p>
-          Everything should be done in about <b>{minsText(reply.estimate?.secondsLeft ?? 0)}</b>,
-          around <b>{clockText(reply.estimate?.finishAt ?? 0)}</b>.
+          Everything{where} should be done in about{' '}
+          <b>{minsText(reply.estimate?.secondsLeft ?? 0)}</b>, around{' '}
+          <b>{clockText(reply.estimate?.finishAt ?? 0)}</b>.
         </p>
         <ul className="hclist">
           {lines.map((line) => (
@@ -119,7 +122,7 @@ function Lines({ reply }: { reply: VeeReply }) {
   return (
     <>
       <p>
-        <b>{reply.working}</b> of {reply.total} agents are working
+        <b>{reply.working}</b> of {reply.total} agents{where} are working
         {reply.need ? (
           <>
             {' '}

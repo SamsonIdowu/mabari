@@ -549,3 +549,45 @@ test('a completed project counts who worked on it, and the office menu says it i
   await expect(item).toContainText('completed');
   await expect(item).not.toContainText('0 agents');
 });
+
+test('the Colour key describes what the floor shows now, and fits or shows that it scrolls', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  await expect(page.locator('.tag .nt').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Colour key' }).click();
+  const key = page.getByRole('region', { name: 'Colour key' });
+  await expect(key).toBeVisible();
+
+  // It says what the floor shows: message chips and the dashed links, not the curves and
+  // envelopes decision 37 took away, and it counts as the rest of the app does.
+  await expect(key).toContainText('↗ To');
+  await expect(key).toContainText('✉ From');
+  await expect(key).toContainText('Dashed curve: a lead and one of its subagents');
+  await expect(key).not.toContainText('Dashed curve and envelope');
+  await expect(key).toContainText('Only red and amber ask for attention');
+  await expect(key).toContainText('It counts as needing you');
+  await expect(key).toContainText('a question');
+  await expect(key).toContainText('it is not counted as needing you');
+
+  // On a tall window it fits whole, with nothing to scroll.
+  const fits = () => key.evaluate((menu) => ({ all: menu.scrollHeight, shown: menu.clientHeight }));
+  const tall = await fits();
+  expect(tall.all).toBeLessThanOrEqual(tall.shown);
+
+  // On a short one it scrolls, can be reached with the keyboard, and shows a shadow at the edge
+  // that says there is more, and the last row can be brought into view.
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await expect.poll(async () => (await fits()).all > (await fits()).shown).toBe(true);
+  await expect(key).toHaveAttribute('tabindex', '0');
+  expect(await key.evaluate((menu) => getComputedStyle(menu).backgroundImage)).toContain(
+    'radial-gradient',
+  );
+  await key.evaluate((menu) => menu.scrollTo(0, menu.scrollHeight));
+  const last = key.locator('.keyrow').last();
+  await expect(last).toContainText('Time the agent thinks it has left');
+  const [menuBox, rowBox] = [(await key.boundingBox())!, (await last.boundingBox())!];
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(menuBox.y + menuBox.height + 1);
+});

@@ -357,8 +357,10 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
         </button>
         {menu === 'key' ? (
           <div
-            className="menu right"
-            style={{ minWidth: 320 }}
+            className="menu right key"
+            role="region"
+            aria-label="Colour key"
+            tabIndex={0}
             dangerouslySetInnerHTML={{ __html: colourKey }}
           />
         ) : null}

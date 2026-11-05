@@ -7,17 +7,28 @@
   <span class="idot" style="--ac: #ff6b9a"></span><span class="idot" style="--ac: #5ce1e6"></span
   ><span class="idot" style="--ac: #ffb547"></span>Every agent has its own colour
 </div>
-<div class="mhead">Only these ask for you</div>
+<div class="mhead">Only red and amber ask for attention</div>
 <div class="keyrow">
-  <span class="chip red"><i></i>Red</span>Needs your approval, or stopped by an error
+  <span class="chip red"><i></i>Red</span>Needs your approval, or stopped by an error. It counts as
+  needing you
 </div>
 <div class="keyrow">
-  <span class="chip amber"><i></i>Amber</span>Your instruction is waiting for a checkpoint
+  <span class="chip"><i></i>Question</span>Asking you a question. It counts as needing you, but
+  waits calmly
+</div>
+<div class="keyrow">
+  <span class="chip amber"><i></i>Amber</span>Your instruction is waiting for a checkpoint. It is a
+  wait, so it is not counted as needing you
 </div>
 <div class="mhead">On the floor</div>
 <div class="keyrow">
-  <svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16v10H8l-4 4z" /></svg>Dashed curve and
-  envelope: two agents talking
+  <span class="chip">↗ To Rune</span>Sending a message to another agent. The other one shows &quot;✉
+  From&quot; and an envelope over its head
+</div>
+<div class="keyrow">
+  <svg class="ico" viewBox="0 0 24 24">
+    <path d="M4 18c3-12 13-12 16 0" stroke-dasharray="3 3" /></svg
+  >Dashed curve: a lead and one of its subagents
 </div>
 <div class="keyrow">
   <span

@@ -1813,6 +1813,27 @@ tr:last-child td {
   font-size: 13px;
   color: var(--fg2);
 }
+.keyrow > .chip,
+.keyrow > .pdot,
+.keyrow > .idot,
+.keyrow > b,
+.keyrow > span[style] {
+  flex: none;
+}
+/* The Colour key is longer than most menus. It takes the height the window has, and where it
+   still has to scroll, a shadow at the edge says there is more that way. */
+.menu.key {
+  min-width: 360px;
+  max-height: min(640px, calc(100vh - 150px));
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 28px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.22), transparent) top / 100% 12px
+      no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.22), transparent) bottom / 100% 12px
+      no-repeat scroll;
+  background-color: var(--surface);
+}
 .dialog.brief {
   width: min(1060px, 100%);
 }

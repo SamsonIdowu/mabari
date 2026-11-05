@@ -417,6 +417,12 @@
   box-shadow: none;
   overflow: visible;
 }
+/* The open stack sits under the wall bar (58px high), not over the project cards in it, so every
+   card stays readable and can be clicked while an approval waits. */
+.board:not(.is-mini) {
+  top: 66px;
+  max-height: calc(100% - 80px);
+}
 .board:not(.is-mini) {
   animation: bpop 0.22s ease-out;
 }

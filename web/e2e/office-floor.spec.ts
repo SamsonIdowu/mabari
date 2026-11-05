@@ -191,3 +191,85 @@ test('finished agents are listed under Done, and the header and the groups add u
     })
     .toEqual([true, true, true, true]);
 });
+
+/** A project that starts with the lead's plan waiting for approval: a second approval. */
+async function startProjectWaitingForItsPlan(request: APIRequestContext) {
+  const planned = await request.post('/api/planner', {
+    data: {
+      said: ['Build a landing page for our coffee shop'],
+      previous: null,
+      instructions: '',
+      files: [],
+      repo: null,
+    },
+  });
+  const { plan } = (await planned.json()) as { plan: unknown };
+  const started = await request.post('/api/projects/start', {
+    data: {
+      plan,
+      name: 'Bean counter',
+      instructions: '',
+      files: [],
+      folder: '',
+      branch: '',
+      mode: 'plan',
+      brief: 'Build a landing page for our coffee shop',
+    },
+  });
+  expect(started.ok()).toBe(true);
+}
+
+/** The project cards on the wall bar, as boxes, and whether a click at the middle of each lands on it. */
+async function projectCards(page: Page) {
+  return page.locator('#projWins .pwin:not(.empty)').evaluateAll((cards) =>
+    cards.map((card) => {
+      const box = card.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return {
+        name: card.querySelector('.pwn')!.textContent!,
+        box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        clickable: card.contains(hit),
+      };
+    }),
+  );
+}
+
+for (const [width, height] of [
+  [1280, 720],
+  [1440, 900],
+]) {
+  test(`the approval stack leaves the project cards readable and clickable at ${width} px`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await request.post('/api/demo/load');
+    await page.goto('/#office');
+    const stack = page.locator('#board:not(.is-mini)');
+    await expect(stack.locator('.bitem')).toHaveCount(1);
+
+    for (const approvals of [1, 2]) {
+      if (approvals === 2) {
+        await startProjectWaitingForItsPlan(request);
+        await expect(stack.locator('.bitem')).toHaveCount(2, { timeout: 15_000 });
+      }
+      const board = (await stack.boundingBox())!;
+      const cards = await projectCards(page);
+      expect(cards.map((card) => card.name)).toEqual([
+        'Checkout revamp',
+        'Docs site',
+        'Test coverage',
+        'Landing page',
+      ]);
+      for (const card of cards) {
+        const apart =
+          card.box.x + card.box.width <= board.x ||
+          board.x + board.width <= card.box.x ||
+          card.box.y + card.box.height <= board.y ||
+          board.y + board.height <= card.box.y;
+        expect(apart, `${card.name} is covered by ${approvals} approval(s)`).toBe(true);
+        expect(card.clickable, `${card.name} can be clicked`).toBe(true);
+      }
+    }
+  });
+}

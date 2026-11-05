@@ -432,6 +432,9 @@ func (c *Connector) Notify(method string, params json.RawMessage) {
 				agent.State, agent.Progress = models.StateDone, 1
 				c.engine.AddEvent(agent, "done", "Finished: "+agent.Task, nil)
 			}
+			// Whatever waited for a checkpoint gets it now, however the turn ended: this is the
+			// last one it will see, so it must not be left queued.
+			c.deliverQueued(agent)
 		}
 		c.engine.Touch(agent)
 	})
@@ -633,32 +636,47 @@ func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
 		decision := "decline"
 		if approval.Decision != nil && *approval.Decision == models.DecisionAllowed {
 			decision = "accept"
-			agent.State = models.StateThinking
 		}
 		go reply(map[string]string{"decision": decision})
+	}
+	// Codex carries on with its turn whichever way it went: a decline tells it the step was
+	// refused, and it chooses what to do next. So the agent is no longer waiting on you, and no
+	// longer counts as needing you, after a Deny as after an Allow (REV-1).
+	if agent.State == models.StateApproval {
+		agent.State = models.StateThinking
 	}
 	// What was sent while the turn waited on this decision reaches it now.
 	c.deliverQueued(agent)
 }
 
 // deliverQueued passes on, oldest first, the messages that waited for the agent to carry on. A
-// thread that has gone keeps them waiting. Call inside Do.
+// thread that has gone keeps them waiting. While a turn runs they all steer it. With no turn
+// running the first starts the next turn, and the rest wait for that one to end, so only one turn
+// is ever started. Call inside Do.
 func (c *Connector) deliverQueued(agent *models.LiveAgent) {
 	c.mu.Lock()
-	running := c.byAgent[agent.ID] != nil
+	t := c.byAgent[agent.ID]
 	c.mu.Unlock()
-	for running {
+	for t != nil {
+		c.mu.Lock()
+		idle := t.turnID == ""
+		c.mu.Unlock()
 		instruction, ok := c.engine.NextQueued(agent)
 		if !ok {
 			return
 		}
 		c.pass(agent, instruction.Text)
+		if idle {
+			return
+		}
 	}
 }
 
 // Instruct steers the running turn, or starts a new turn if the thread is idle. A turn waiting on
 // your approval can't read anything until you decide, so a message to it waits for the decision,
-// and isn't reported as delivered before then.
+// and isn't reported as delivered before then. Whether it waits is decided by the approval card
+// being open, not by the agent's state: after a decision there is no card, and nothing more to
+// wait for.
 func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 	c.mu.Lock()
 	running := c.byAgent[agent.ID] != nil
@@ -667,7 +685,7 @@ func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 		c.engine.Toast(agent.Name + " isn't running in Codex yet. Try again in a moment.")
 		return
 	}
-	if agent.State == models.StateApproval {
+	if agent.Approval != nil {
 		c.engine.Queue(agent, text)
 		return
 	}

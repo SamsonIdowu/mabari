@@ -284,3 +284,54 @@ test('a demo agent asks a question, and the answer in its panel lets it carry on
   await expect(panel).toContainText(/About \d+ min left|Under a minute left/);
   await expect(panel.getByRole('form', { name: /Sage is asking you/ })).toHaveCount(0);
 });
+
+// A tester's click on Sage missed while its question bubble showed (NEW-10). Bubbles, name tags
+// and chips are drawn over the floor with pointer-events off, so a click goes through them to the
+// floor, and the floor opens the agent under the click: its sprite, or the bubble just above it,
+// which reads as Sage's. This pins that down, because a bubble that took the click would make the
+// agent that is asking for you the hardest one to open. The name tag below the feet is on the edge
+// of what the floor counts as the sprite, as in the prototype, so only its being uncovered is
+// checked.
+test('a question bubble swallows no click: the agent opens from its sprite and its bubble', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  const asking = page.locator('.bub.ask', { hasText: 'Asking you a question' });
+  await expect(asking).toBeVisible({ timeout: 75_000 });
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+
+  for (const spot of ['sprite', 'bubble', 'name tag'] as const) {
+    // The spotlight on the last agent fades out a moment after its panel closes, and covers the
+    // floor until it has.
+    await expect(page.locator('#focusLayer')).toBeHidden();
+    // Where each is now: Sage keeps still while it waits, but the layout may still settle.
+    const point = await page.evaluate((which) => {
+      // The tag named Sage: other tags mention it too, in their message chips.
+      const name = [...document.querySelectorAll('.tag')].find(
+        (item) => item.querySelector('.nn b')?.textContent === 'Sage',
+      )!;
+      const tagBox = name.getBoundingClientRect();
+      const bubble = document.querySelector('.bub.ask')!.getBoundingClientRect();
+      const at = {
+        sprite: { x: tagBox.x + tagBox.width / 2, y: tagBox.y - 24 },
+        bubble: { x: bubble.x + bubble.width / 2, y: bubble.y + bubble.height / 2 },
+        'name tag': { x: tagBox.x + tagBox.width / 2, y: tagBox.y + tagBox.height / 2 },
+      }[which];
+      const top = document.elementFromPoint(at.x, at.y);
+      return { ...at, topmost: top?.id || `${top?.tagName}.${top?.className}` };
+    }, spot);
+    // Nothing is in the way: what a click meets is the floor.
+    expect(point.topmost, `what is at the ${spot}`).toBe('floor');
+    if (spot === 'name tag') continue;
+    await page.mouse.click(point.x, point.y);
+    await expect(
+      panel.getByRole('heading', { name: 'Sage', exact: true }),
+      `a click on the ${spot}`,
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+  }
+});

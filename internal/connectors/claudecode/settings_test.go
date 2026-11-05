@@ -90,7 +90,7 @@ func TestAttachKeepsEverythingAndBacksUp(t *testing.T) {
 	}
 	ours := pre[1].Hooks[0]
 	if pre[1].Matcher != "*" || ours.Command != testHook.Binary ||
-		strings.Join(ours.Args, " ") != "hook --port 4317 PreToolUse" || ours.Timeout != 5 {
+		strings.Join(ours.Args, " ") != "hook --port 4317 PreToolUse" || ours.Timeout <= PermissionWait {
 		t.Errorf("our hook = %+v", pre[1])
 	}
 	// Mabari never makes a failed hook block Claude Code.
@@ -105,6 +105,10 @@ func TestAttachKeepsEverythingAndBacksUp(t *testing.T) {
 	}
 	if parsed.Hooks["PermissionRequest"][0].Hooks[0].Timeout <= PermissionWait {
 		t.Error("the permission hook can time out before Mabari answers")
+	}
+	// Claude's questions are answered in PreToolUse, so it waits as long; other events stay quick.
+	if timeout := parsed.Hooks["PostToolUse"][0].Hooks[0].Timeout; timeout != 5 {
+		t.Errorf("PostToolUse timeout = %d", timeout)
 	}
 	info, _ := os.Stat(path)
 	if info.Mode().Perm() != 0o640 {

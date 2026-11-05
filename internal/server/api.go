@@ -59,6 +59,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/stop", a.agentAction(stopAgent))
 	mux.HandleFunc("POST /api/agents/{id}/retry", a.agentAction(retryAgent))
 	mux.HandleFunc("POST /api/agents/{id}/subagents", a.addSubagent)
+	mux.HandleFunc("POST /api/agents/{id}/answer", a.answerQuestion)
 
 	mux.HandleFunc("GET /api/accounts", a.listAccounts)
 

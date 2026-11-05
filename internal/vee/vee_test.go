@@ -233,6 +233,25 @@ func TestNeedsListsApprovalsAndErrors(t *testing.T) {
 	}
 }
 
+// An agent asking you a question needs you, and isn't counted as working while it waits.
+func TestNeedsListsAWaitingQuestion(t *testing.T) {
+	agents := office()
+	ledger := agents[2]
+	ledger.Question = &models.Question{ID: "q-1", Items: []models.QuestionItem{
+		{Question: "Which database?", Options: []models.QuestionOption{{Label: "Postgres"}}},
+		{Question: "Which checks?", Options: []models.QuestionOption{{Label: "Lint"}}},
+	}}
+	reply := Answer("who needs me?", agents, now)
+	if reply.Text != "3 things need you." || reply.Working != 1 || len(reply.Lines) != 3 {
+		t.Fatalf("reply = %q, %d working, lines %+v", reply.Text, reply.Working, reply.Lines)
+	}
+	line := reply.Lines[1]
+	if line.Name != "Ledger" || line.QuestionID != "q-1" || line.ApprovalID != "" ||
+		line.Summary != "is asking you: Which database? (and 1 more question)" {
+		t.Errorf("question line = %+v", line)
+	}
+}
+
 func TestEmptyOffice(t *testing.T) {
 	if reply := Answer("what's happening", nil, now); reply.Kind != KindEmpty {
 		t.Errorf("got %+v", reply)

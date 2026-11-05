@@ -84,10 +84,10 @@ type toolInput struct {
 }
 
 // Connector turns hook events into agents on the floor, and answers hooks with queued
-// instructions and the user's approval decisions.
+// instructions, the user's approval decisions and their answers to Claude's questions.
 type Connector struct {
 	engine *events.Engine
-	// wait is how long a permission hook waits for a click.
+	// wait is how long a permission or question hook waits for the person.
 	wait time.Duration
 
 	mu      sync.Mutex
@@ -103,6 +103,8 @@ type Connector struct {
 	delivered map[string]time.Time
 	// refused are the subagents already told there was no desk for them, by id.
 	refused map[string]bool
+	// asking are the questions hooks are waiting on, by question id.
+	asking map[string]*asked
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -118,10 +120,11 @@ func New(engine *events.Engine) *Connector {
 
 		delivered: map[string]time.Time{},
 		refused:   map[string]bool{},
+		asking:    map[string]*asked{},
 	}
 }
 
-// SetWait changes how long a permission hook waits, for tests.
+// SetWait changes how long a permission or question hook waits, for tests.
 func (c *Connector) SetWait(wait time.Duration) { c.wait = wait }
 
 var sessionChars = regexp.MustCompile(`[^A-Za-z0-9-]`)
@@ -151,6 +154,9 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 	}
 	if in.Event == "PermissionRequest" {
 		return c.permission(ctx, in)
+	}
+	if in.Event == "PreToolUse" && in.ToolName == AskTool {
+		return c.ask(ctx, in)
 	}
 	if in.Event == "MessageDisplay" {
 		c.display(in)
@@ -442,6 +448,8 @@ func summaryOf(tool string, raw json.RawMessage) string {
 	_ = json.Unmarshal(raw, &args)
 	text := tool
 	switch {
+	case tool == AskTool:
+		text = "Ask you: " + firstQuestion(raw)
 	case args.Command != "":
 		text = args.Command
 	case args.FilePath != "":
@@ -809,6 +817,11 @@ func diffOf(args toolInput) []models.DiffLine {
 // permission asks the user in Mabari. It answers nothing, so Claude Code shows its own prompt,
 // when nobody has Mabari open, when nobody clicks in time, or when the hook gives up.
 func (c *Connector) permission(ctx context.Context, in input) []byte {
+	// A question isn't a risk to approve: allowing it without answers would leave Claude with
+	// none. Mabari asks it through PreToolUse, so here it is left to Claude Code's own prompt.
+	if in.ToolName == AskTool {
+		return nil
+	}
 	decided := make(chan models.Approval, 1)
 	id := agentID(in.SessionID)
 	var (

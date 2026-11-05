@@ -153,6 +153,29 @@ func TestAMessageAfterADenyIsDeliveredAtOnce(t *testing.T) {
 	})
 }
 
+// The page is told, not left showing an agent waiting on an approval that has been decided: what
+// it hears about the agent after a Deny does not say it is still in the approval state.
+func TestThePageHearsAnAgentCarryOnAfterADeny(t *testing.T) {
+	engine, _, _, id := waitingOnApproval(t)
+	joined := engine.Subscribe(events.Resume{})
+	t.Cleanup(func() { engine.Unsubscribe(joined.Sub) })
+	_ = engine.Do(func() { engine.Decide(id, models.DecisionDenied) })
+	var last models.AgentState
+	for drained := false; !drained; {
+		select {
+		case message := <-joined.Sub.C:
+			if message.Agent != nil && message.Agent.ID == "cx-1" {
+				last = message.Agent.State
+			}
+		default:
+			drained = true
+		}
+	}
+	if last == "" || last == models.StateApproval || last.NeedsMe() {
+		t.Errorf("the last state the page was told after the Deny is %q", last)
+	}
+}
+
 // The same holds after an Allow, and a message sent while the card is still open waits for it.
 func TestAMessageSentBeforeADecisionIsNeverLeftWaiting(t *testing.T) {
 	for _, decision := range []string{models.DecisionAllowed, models.DecisionDenied} {

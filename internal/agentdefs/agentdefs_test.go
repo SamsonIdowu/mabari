@@ -378,3 +378,70 @@ func TestARepositorysAgentsLoadWithItsProject(t *testing.T) {
 		}
 	}
 }
+
+// An agent whose file name differs from its name is saved back to its own file, never over
+// another agent's file.
+func TestEditingWritesBackToTheAgentsOwnFile(t *testing.T) {
+	f := codexFolders(t)
+	if err := os.MkdirAll(f.Codex, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	write := func(file, name string) {
+		text := "name = \"" + name + "\"\ndescription = \"D\"\ndeveloper_instructions = \"I\"\n"
+		if err := os.WriteFile(filepath.Join(f.Codex, file), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.toml", "bb")
+	write("bb.toml", "cc")
+	library := New(f)
+	defs := scan(t, library)
+	var bb models.AgentDef
+	for _, def := range defs {
+		if def.Name == "bb" {
+			bb = def
+		}
+	}
+	bb.Instructions = "Changed."
+	if _, err := library.Save(bb, bb.ID); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := os.ReadFile(filepath.Join(f.Codex, "a.toml"))
+	other, _ := os.ReadFile(filepath.Join(f.Codex, "bb.toml"))
+	if !strings.Contains(string(a), "Changed.") || !strings.Contains(string(other), `name = "cc"`) {
+		t.Errorf("a.toml:\n%s\nbb.toml:\n%s", a, other)
+	}
+}
+
+// A project whose folder is the home folder doesn't read the account's agents a second time.
+func TestAHomeFolderProjectDoesNotRepeatAccountAgents(t *testing.T) {
+	f := folders(t)
+	t.Setenv("HOME", f.Home)
+	library := New(f)
+	library.SetProjects([]Project{{ID: "home", Folder: "~"}})
+	defs, report, err := library.Scan()
+	if err != nil || len(defs) != 1 || report.Projects["home"] != 0 {
+		t.Errorf("defs = %+v, report = %+v, %v", defs, report, err)
+	}
+}
+
+func TestCodexNamesMayHaveUnderscores(t *testing.T) {
+	f := codexFolders(t)
+	library := New(f)
+	scan(t, library)
+	def := reviewerForCodex()
+	def.Name = "pr_explorer"
+	if saved, err := library.Save(def, ""); err != nil || saved.Path != "~/.codex/agents/pr_explorer.toml" {
+		t.Errorf("saved = %+v, %v", saved, err)
+	}
+}
+
+// Control characters and broken text can't make a Codex file unreadable.
+func TestCodexFilesStayValidTOML(t *testing.T) {
+	def := reviewerForCodex()
+	def.Description = "bell\a here \x01 and \x7f and \xff"
+	def.Instructions = "tab\there\x00 and \x7f"
+	if _, err := ParseCodex(RenderCodex(def)); err != nil {
+		t.Errorf("not valid TOML: %v\n%s", err, RenderCodex(def))
+	}
+}

@@ -758,3 +758,74 @@ func TestContinueResumesTheExactState(t *testing.T) {
 		t.Errorf("step left = %v, want the 100 it had", left)
 	}
 }
+
+// Ending the demo keeps a real agent's waiting instructions, approval and steps in the database,
+// and the demo never made a real agent ask for approval or talk.
+func TestEndingTheDemoKeepsRealAgentsRecords(t *testing.T) {
+	sim, engine, c, s := setup(t, ":memory:", 1)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	var mine *models.LiveAgent
+	_ = engine.Do(func() {
+		mine = &models.LiveAgent{}
+		mine.ID, mine.Name, mine.Source, mine.Provider = "cc-real", "Shop", "claude", models.ProviderClaude
+		mine.State, mine.Desk = models.StateEditing, 20
+		engine.AddAgent(mine)
+		engine.AddEvent(mine, "Edit", "Edit cart.ts", nil)
+		engine.Queue(mine, "Also add a test")
+	})
+	advance(t, sim, c, 120)
+	if got := engine.Snapshot().Messages; slices.ContainsFunc(got, func(m models.Message) bool {
+		return m.From == "cc-real" || slices.Contains(m.To, "cc-real")
+	}) {
+		t.Error("the demo made the real agent talk")
+	}
+	_ = engine.Do(sim.StopDemo)
+	ctx := context.Background()
+	if waiting, _ := s.WaitingInstructions(ctx, "cc-real"); len(waiting) != 1 {
+		t.Errorf("waiting instructions = %+v", waiting)
+	}
+	if events, _ := s.Events(ctx, "cc-real", 10, 0); len(events) == 0 || events[0].Summary != "Edit cart.ts" {
+		t.Errorf("events = %+v", events)
+	}
+	// The next step's id carries on instead of repeating one.
+	_ = engine.Do(func() {
+		event := engine.AddEvent(mine, "Read", "Read cart.ts", nil)
+		if event.ID == mine.Feed[1].ID {
+			t.Errorf("repeated id %s", event.ID)
+		}
+	})
+	// A tick that arrives after the end does nothing.
+	advance(t, sim, c, 10)
+	if after := engine.Snapshot(); len(after.Agents) != 1 || after.Agents[0].State != models.StateEditing {
+		t.Errorf("after: %+v", after.Agents)
+	}
+}
+
+// The demo only shows its pretend sign ins; the stored accounts stay as they really are.
+func TestTheDemoOnlyShowsItsSignIns(t *testing.T) {
+	sim, engine, _, _ := setup(t, ":memory:", 1)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	_ = engine.Do(func() {
+		for _, account := range engine.Accounts() {
+			if (account.Kind == models.AccountCodex || account.Kind == models.AccountClaudeCode) &&
+				account.Status != models.AccountConnected {
+				t.Errorf("%s isn't shown as connected in the demo", account.Kind)
+			}
+		}
+		for _, account := range engine.StoredAccounts() {
+			if account.Status != models.AccountOff {
+				t.Errorf("%s was stored as %s", account.Kind, account.Status)
+			}
+		}
+		sim.StopDemo()
+		for _, account := range engine.Accounts() {
+			if account.Status != models.AccountOff {
+				t.Errorf("%s is %s after the demo", account.Kind, account.Status)
+			}
+		}
+	})
+}

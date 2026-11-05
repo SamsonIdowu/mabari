@@ -162,7 +162,7 @@ func (c *Connector) refreshAccount(ctx context.Context) error {
 		}
 	}
 	return c.engine.Do(func() {
-		for _, existing := range c.engine.Accounts() {
+		for _, existing := range c.engine.StoredAccounts() {
 			if existing.Kind != models.AccountCodex {
 				continue
 			}
@@ -212,7 +212,7 @@ func (c *Connector) Logout() error {
 
 // setStatus changes the Codex account's status. Call inside Do.
 func (c *Connector) setStatus(status models.AccountStatus) {
-	for _, account := range c.engine.Accounts() {
+	for _, account := range c.engine.StoredAccounts() {
 		if account.Kind == models.AccountCodex {
 			account.Status = status
 			c.engine.SetAccount(account)
@@ -699,7 +699,7 @@ func (c *Connector) AddSubagent(*models.LiveAgent, string, string, string) *mode
 
 // Models lists the models Codex reported for the signed-in account.
 func (c *Connector) Models() []string {
-	for _, account := range c.engine.Accounts() {
+	for _, account := range c.engine.StoredAccounts() {
 		if account.Kind == models.AccountCodex {
 			return account.Models
 		}

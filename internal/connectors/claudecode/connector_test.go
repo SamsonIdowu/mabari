@@ -456,7 +456,7 @@ func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
 	var helper *models.LiveAgent
 	var messages []models.Message
 	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-sub-1") })
-	if helper == nil || helper.Name != "Explorer" || helper.Lead == nil || *helper.Lead != "cc-abc-123" ||
+	if helper == nil || helper.Name != "explorer" || helper.Lead == nil || *helper.Lead != "cc-abc-123" ||
 		helper.Task != "Find the failing test" {
 		t.Fatalf("helper = %+v", helper)
 	}

@@ -203,7 +203,7 @@ func (a *api) detachClaude() error {
 
 // setClaudeAccount changes the Claude Code account's status. Call inside Do.
 func (a *api) setClaudeAccount(status models.AccountStatus) {
-	for _, account := range a.engine.Accounts() {
+	for _, account := range a.engine.StoredAccounts() {
 		if account.Kind == models.AccountClaudeCode {
 			account.Status = status
 			a.engine.SetAccount(account)

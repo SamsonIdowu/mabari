@@ -19,7 +19,6 @@ import {
   DEF_TOOLS,
   defFile,
   defFolderLabel,
-  defTitle,
   draftFrom,
   isCodex,
   MABARI_ID,
@@ -148,16 +147,13 @@ function Tile(props: {
   const toggle = () =>
     act(
       () => api.enableDef(def.id, !def.enabled),
-      def.enabled ? `${defTitle(def)} is off. Mabari won't run it.` : `${defTitle(def)} is on`,
+      def.enabled ? `${def.name} is off. Mabari won't run it.` : `${def.name} is on`,
     );
   const remove = () =>
-    act(
-      async () => {
-        await api.deleteDef(def.id);
-        set({ deleting: null, open: null });
-      },
-      `${defTitle(def)} deleted`,
-    );
+    act(async () => {
+      await api.deleteDef(def.id);
+      set({ deleting: null, open: null });
+    }, `${def.name} deleted`);
   const runIt = () =>
     act(async () => {
       const agent = await api.runDef(def.id);
@@ -173,11 +169,12 @@ function Tile(props: {
     >
       <div className="dchead">
         <span className="davatar" style={{ ['--dc' as string]: def.color }}>
-          {defTitle(def).charAt(0)}
+          {def.name.charAt(0).toUpperCase()}
         </span>
         <div className="dctitle">
-          <b>{defTitle(def)}</b>
-          <span className="mono muted">{def.name}</span>
+          {/* The agent's exact name, as its file and Claude Code or Codex call it. */}
+          <b className="mono">{def.name}</b>
+          <span className="mono muted">{def.path.split('/').pop()}</span>
         </div>
         {def.enabled ? (
           run.length ? (
@@ -507,7 +504,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
     try {
       const saved = await api.saveDef({ ...edit, name: slug(edit.name) }, dialog.id, dialog.by);
       close();
-      toast(`${defTitle(saved)} saved to ${saved.path}`);
+      toast(`${saved.name} saved to ${saved.path}`);
       if (dialog.by === 'mabari') {
         useVee
           .getState()
@@ -681,7 +678,13 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
                         codex ? 'Codex account' : 'Claude account',
                         'Available in every project',
                       ],
-                      ['project', 'One project', 'Saved in the project folder'],
+                      [
+                        'project',
+                        'One project',
+                        office.projects.length
+                          ? 'Saved in the project folder'
+                          : 'Make a project first, on the Projects page',
+                      ],
                     ] as const
                   ).map(([scope, title, sub]) => (
                     <label
@@ -691,6 +694,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
                       <input
                         type="radio"
                         name="dfScope"
+                        disabled={scope === 'project' && office.projects.length === 0}
                         value={scope}
                         checked={edit.scope === scope}
                         onChange={() =>

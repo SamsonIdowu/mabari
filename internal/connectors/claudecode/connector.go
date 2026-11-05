@@ -204,7 +204,7 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 
 // connected marks the account as connected the first time a hook reports. Call inside Do.
 func (c *Connector) connected() {
-	for _, account := range c.engine.Accounts() {
+	for _, account := range c.engine.StoredAccounts() {
 		if account.Kind == models.AccountClaudeCode && account.Status != models.AccountConnected {
 			account.Status = models.AccountConnected
 			c.engine.SetAccount(account)
@@ -223,6 +223,17 @@ func (c *Connector) freeDesk() int {
 		}
 	}
 	return -1
+}
+
+// TidyNames renames sessions an earlier version gave made up names, after their folder, so even
+// ones that never report again stop looking like agents that came with the app. Call inside Do.
+func (c *Connector) TidyNames() {
+	for _, agent := range c.engine.Agents() {
+		if agent.Source == Source && agent.Lead == nil && legacyNames[agent.Name] {
+			agent.Name = c.nameFor(agent.Folder)
+			c.engine.Touch(agent)
+		}
+	}
 }
 
 var notWord = regexp.MustCompile(`[^A-Za-z0-9]+`)
@@ -248,7 +259,7 @@ func (c *Connector) nameFor(folder string) string {
 	return name
 }
 
-// projectFor picks the project whose repository folder holds the session, or the first project.
+// projectFor picks the project whose repository folder holds the session, or none.
 func (c *Connector) projectFor(folder string) string {
 	projects := c.engine.Projects()
 	for _, project := range projects {
@@ -256,9 +267,7 @@ func (c *Connector) projectFor(folder string) string {
 			return project.ID
 		}
 	}
-	if len(projects) > 0 {
-		return projects[0].ID
-	}
+	// A session outside every project's folder belongs to none.
 	return ""
 }
 
@@ -374,6 +383,8 @@ func (c *Connector) observe(in input) []byte {
 	if agent == nil {
 		return nil
 	}
+	// Any hook that reports means Claude Code is connected, whatever the account said before.
+	c.connected()
 	if in.Model != "" {
 		agent.Model = modelName(in.Model)
 	}
@@ -783,7 +794,7 @@ func (c *Connector) CheckStale(now time.Time) {
 			working = true
 		}
 	}
-	for _, account := range c.engine.Accounts() {
+	for _, account := range c.engine.StoredAccounts() {
 		if account.Kind != models.AccountClaudeCode || account.Status == models.AccountOff {
 			continue
 		}
@@ -833,12 +844,14 @@ func (c *Connector) seatHelper(lead *models.LiveAgent, in input) {
 	if task == "" {
 		task = "Help " + lead.Name
 	}
-	name := upperFirst(orDefault(in.AgentType, "helper"))
+	// A subagent keeps its agent's exact name, such as code-reviewer from ~/.claude/agents.
+	base := clip(orDefault(in.AgentType, "helper"), 40)
+	name := base
 	for number := 2; c.engine.AgentByName(name) != nil; number++ {
-		name = upperFirst(orDefault(in.AgentType, "helper")) + " " + strconv.Itoa(number)
+		name = base + " " + strconv.Itoa(number)
 	}
 	helper := &models.LiveAgent{}
-	helper.ID, helper.Name = helperID(in), clip(name, 24)
+	helper.ID, helper.Name = helperID(in), name
 	helper.Provider, helper.Account, helper.Source = models.ProviderClaude, models.AccountClaudeCode, Source
 	helper.Model, helper.SubModel, helper.Desk, helper.Folder = lead.Model, "inherit", desk, lead.Folder
 	helper.Lead, helper.Project = &lead.ID, lead.Project
@@ -873,11 +886,4 @@ func (c *Connector) nearDesk(near int) int {
 		}
 	}
 	return best
-}
-
-func upperFirst(text string) string {
-	if text == "" {
-		return text
-	}
-	return strings.ToUpper(text[:1]) + text[1:]
 }

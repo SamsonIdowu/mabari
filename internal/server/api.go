@@ -123,7 +123,11 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := a.engine.Do(a.engine.Wipe); err != nil {
+	if err := a.engine.Do(func() {
+		a.engine.Wipe()
+		// The wipe cleared the demo's office too, so the simulator lets go of it.
+		a.simulator.Forget()
+	}); err != nil {
 		internalError(w, err)
 		return
 	}

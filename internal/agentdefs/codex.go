@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -61,9 +60,26 @@ func ParseCodex(data []byte) (models.AgentDef, error) {
 	}, nil
 }
 
-// tomlString writes a basic TOML string on one line.
+// tomlString writes a basic TOML string on one line, escaping what TOML requires: backslashes,
+// quotes and control characters. Text that isn't valid UTF-8 is replaced first.
 func tomlString(value string) string {
-	return strconv.Quote(strings.Join(strings.Fields(value), " "))
+	value = strings.Join(strings.Fields(strings.ToValidUTF8(value, "\uFFFD")), " ")
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range value {
+		switch {
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == '"':
+			b.WriteString(`\"`)
+		case unicode.IsControl(r):
+			fmt.Fprintf(&b, `\u%04X`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // tomlBlock writes a multi-line basic TOML string. Every backslash and quote is escaped, so no
@@ -72,7 +88,7 @@ func tomlString(value string) string {
 func tomlBlock(value string) string {
 	var b strings.Builder
 	b.WriteString("\"\"\"\n")
-	for _, r := range strings.TrimSpace(value) {
+	for _, r := range strings.TrimSpace(strings.ToValidUTF8(value, "\uFFFD")) {
 		switch {
 		case r == '\\':
 			b.WriteString(`\\`)

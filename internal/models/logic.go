@@ -283,6 +283,9 @@ func ProjectState(p *Project, agents []*LiveAgent) (ProjectStatus, float64) {
 	}
 }
 
+// DemoEmail is the pretend ChatGPT sign in the demo office shows.
+const DemoEmail = "you@example.com"
+
 // Clip shortens text to at most limit characters, never cutting a character in half.
 func Clip(text string, limit int) string {
 	if utf8.RuneCountInString(text) <= limit {

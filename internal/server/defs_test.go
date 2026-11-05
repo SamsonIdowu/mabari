@@ -118,7 +118,7 @@ func TestBuilderRoutes(t *testing.T) {
 		t.Fatalf("run = %d %s", response.Code, response.Body)
 	}
 	agent := decode[models.LiveAgent](t, response)
-	if agent.DefID != def.ID || agent.Name != "Reviewer" {
+	if agent.DefID != def.ID || agent.Name != "code-reviewer" {
 		t.Errorf("agent = %+v", agent.Agent)
 	}
 	if def, _ = defNamed(t, o, "code-reviewer"); def.Runs != 1 {

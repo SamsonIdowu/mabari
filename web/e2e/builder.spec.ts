@@ -64,7 +64,7 @@ test('build an agent with Mabari: nothing is saved until Save', async ({ page, r
   expect((await defs(request)).map((def) => def.name)).toEqual(['mabari']);
   await dialog.getByRole('button', { name: 'Save agent' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator('.defcard', { hasText: 'Test Writer' })).toBeVisible();
+  await expect(page.locator('.defcard', { hasText: 'test-writer' })).toBeVisible();
   expect((await defs(request)).map((def) => def.name)).toEqual(['mabari', 'test-writer']);
 });
 
@@ -84,7 +84,7 @@ test('Improve opens the edit dialog with Mabari suggestions', async ({ page, req
     },
   });
   await builder(page);
-  const tile = page.locator('.defcard', { hasText: 'Test Writer' });
+  const tile = page.locator('.defcard', { hasText: 'test-writer' });
   await tile.click();
   await tile.getByRole('button', { name: 'Improve' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit agent' });
@@ -127,11 +127,11 @@ test('tiles are one compact size and open across the row, one at a time', async 
   );
   expect(new Set(heights).size).toBe(1);
   const grid = (await page.locator('.defgrid').boundingBox())!;
-  const reviewer = tiles.filter({ hasText: 'Code Reviewer' });
+  const reviewer = tiles.filter({ hasText: 'code-reviewer' });
   await reviewer.click();
   expect((await reviewer.boundingBox())!.width).toBeGreaterThan(grid.width - 20);
   await expect(reviewer.getByRole('button', { name: 'Run' })).toBeVisible();
-  const docs = tiles.filter({ hasText: 'Docs Writer' });
+  const docs = tiles.filter({ hasText: 'docs-writer' });
   await docs.click();
   await expect(reviewer).toHaveAttribute('aria-expanded', 'false');
   // A delete confirmation keeps its tile open.
@@ -148,7 +148,7 @@ test('a file added outside Mabari shows up, and Reload from disk reports it', as
     join(folder, 'notes-taker.md'),
     '---\nname: notes-taker\ndescription: Use to take notes\ntools: Read\n---\nTake notes.\n',
   );
-  await expect(page.locator('.defcard', { hasText: 'Notes Taker' })).toBeVisible({ timeout: 6000 });
+  await expect(page.locator('.defcard', { hasText: 'notes-taker' })).toBeVisible({ timeout: 6000 });
   await page.getByRole('button', { name: 'Reload from disk' }).click();
   await expect(page.getByText(/Loaded 2 agents: 2 from ~\/.claude\/agents/)).toBeVisible();
 });
@@ -170,11 +170,11 @@ test('Run starts an agent from a built agent straight away', async ({ page, requ
     },
   });
   await builder(page);
-  const tile = page.locator('.defcard', { hasText: 'Docs Writer' });
+  const tile = page.locator('.defcard', { hasText: 'docs-writer' });
   await tile.click();
   await tile.getByRole('button', { name: 'Run' }).click();
   await expect(page).toHaveURL(/#office$/);
-  await expect(page.getByText('Writer is walking in, built from docs-writer')).toBeVisible();
+  await expect(page.getByText('docs-writer is walking in, built from docs-writer')).toBeVisible();
 });
 
 test('Home asks Mabari to create or improve an agent', async ({ page }) => {
@@ -205,7 +205,7 @@ test('an agent can be saved to the Codex account as a TOML file', async ({ page 
   await dialog.getByRole('button', { name: 'Save agent' }).click();
   await expect(dialog).toBeHidden();
   await page.getByRole('button', { name: /^Codex account/ }).click();
-  const tile = page.locator('.defcard', { hasText: 'Codex Reviewer' });
+  const tile = page.locator('.defcard', { hasText: 'codex-reviewer' });
   await expect(tile).toContainText('Codex account · every project');
   const file = readFileSync(
     `${process.env.MABARI_E2E_CODEX_DIR}/agents/codex-reviewer.toml`,

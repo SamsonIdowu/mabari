@@ -186,8 +186,8 @@ func (a *api) runBody(def models.AgentDef) (newAgentBody, string) {
 		}
 		return newAgentBody{}, "Connect an account first."
 	}
-	title := strings.Fields(defTitle(def.Name))
-	base := title[len(title)-1]
+	// The agent on the floor keeps the definition's exact name.
+	base := def.Name
 	name := base
 	for n := 2; a.engine.AgentByName(name) != nil; n++ {
 		name = base + " " + strconv.Itoa(n)

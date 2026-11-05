@@ -112,10 +112,6 @@ func (c *Connector) Report(event Event) bool {
 		agent.Task = "Waiting for work"
 		agent.Queued = []models.Instruction{}
 		agent.Files = []string{}
-		if projects := c.engine.Projects(); len(projects) > 0 {
-			first := projects[0].ID
-			agent.Project = &first
-		}
 		c.engine.AddAgent(agent)
 		c.engine.Log(agent.Name, models.LogSession, "A hub agent reported for the first time",
 			"Took a desk", "ok")

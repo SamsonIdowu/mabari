@@ -395,6 +395,33 @@ func (e *Engine) AddAgent(agent *models.LiveAgent) {
 // Touch marks an agent as changed, after updating its fields. Call inside Do.
 func (e *Engine) Touch(agent *models.LiveAgent) { e.dirty[agent.ID] = struct{}{} }
 
+// KeepAgent puts a real agent back after the office was cleared, as the demo does when it ends,
+// and stores again what was cleared with it: its waiting approval, its instructions and its steps.
+// Call inside Do.
+func (e *Engine) KeepAgent(agent *models.LiveAgent) {
+	e.AddAgent(agent)
+	ctx := context.Background()
+	if agent.Approval != nil {
+		e.record(e.store.SaveApproval(ctx, *agent.Approval))
+	}
+	for _, instruction := range agent.Queued {
+		e.record(e.store.SaveInstruction(ctx, instruction))
+	}
+	for _, instruction := range agent.Asked {
+		e.record(e.store.SaveInstruction(ctx, instruction))
+	}
+	for index := len(agent.Feed) - 1; index >= 0; index-- {
+		event := agent.Feed[index]
+		e.record(e.store.AddEvent(ctx, event))
+		// Event numbers carry on from the kept steps, so new ones never repeat an id.
+		if cut := strings.LastIndex(event.ID, "-"); cut > 0 {
+			if number, err := strconv.Atoi(event.ID[cut+1:]); err == nil {
+				e.eventNext[event.ID[:cut]] = max(e.eventNext[event.ID[:cut]], number+1)
+			}
+		}
+	}
+}
+
 // RemoveAgent takes an agent out of the office. Call inside Do.
 func (e *Engine) RemoveAgent(id string) {
 	for index, agent := range e.agents {
@@ -846,19 +873,48 @@ func (e *Engine) SetAccount(account models.Account) {
 	copied := account
 	e.accounts[account.Kind] = &copied
 	e.record(e.store.SaveAccount(context.Background(), copied))
-	e.broadcast(models.ServerMessage{Type: models.MsgAccount, Account: &copied})
+	shown := e.shownAccount(copied)
+	e.broadcast(models.ServerMessage{Type: models.MsgAccount, Account: &shown})
 }
 
 func (e *Engine) accountList() []models.Account {
+	accounts := make([]models.Account, 0, len(models.AccountKinds))
+	for _, kind := range models.AccountKinds {
+		accounts = append(accounts, e.shownAccount(*e.accounts[kind]))
+	}
+	return accounts
+}
+
+// shownAccount is an account as the office sees it. While the demo runs, Codex and Claude Code
+// look connected so the demo's agents make sense; that is never stored, so the real state of each
+// connection is untouched and is what shows again when the demo ends.
+func (e *Engine) shownAccount(account models.Account) models.Account {
+	if !e.demo || account.Status == models.AccountConnected {
+		return account
+	}
+	switch account.Kind {
+	case models.AccountCodex:
+		email := models.DemoEmail
+		account.Status, account.Email = models.AccountConnected, &email
+	case models.AccountClaudeCode:
+		at := e.now().UnixMilli()
+		account.Status, account.LastEventAt = models.AccountConnected, &at
+	}
+	return account
+}
+
+// Accounts lists every connection, in page order, as the office shows them. Call inside Do.
+func (e *Engine) Accounts() []models.Account { return e.accountList() }
+
+// StoredAccounts lists every connection as it really is, never as the demo shows it. Anything that
+// changes an account starts from these. Call inside Do.
+func (e *Engine) StoredAccounts() []models.Account {
 	accounts := make([]models.Account, 0, len(models.AccountKinds))
 	for _, kind := range models.AccountKinds {
 		accounts = append(accounts, *e.accounts[kind])
 	}
 	return accounts
 }
-
-// Accounts lists every connection, in page order. Call inside Do.
-func (e *Engine) Accounts() []models.Account { return e.accountList() }
 
 // ClearOffice empties agents, projects and history, keeping settings and accounts. Call inside Do.
 func (e *Engine) ClearOffice() {

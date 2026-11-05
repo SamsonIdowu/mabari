@@ -32,6 +32,10 @@ export const MaxSubagents = 3;
  * Limits from the prototype.
  */
 export const FeedLimit = 40;
+/**
+ * DemoEmail is the pretend ChatGPT sign in the demo office shows.
+ */
+export const DemoEmail = "you@example.com";
 
 //////////
 // source: models.go

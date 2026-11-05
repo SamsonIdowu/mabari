@@ -259,6 +259,7 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
             value={projectId}
             onChange={(event) => setProjectId(event.target.value)}
           >
+            <option value="">No project</option>
             {office.projects.map((item) => (
               <option value={item.id} key={item.id}>
                 {item.name}

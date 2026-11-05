@@ -26,9 +26,6 @@ import (
 // Source is the value of Agent.Source for simulated agents.
 const Source = "sim"
 
-// demoEmail is the pretend ChatGPT sign in the demo shows.
-const demoEmail = "you@example.com"
-
 // DemoLength is how long the demo office runs before it turns itself off, so simulated agents
 // never keep running in the background.
 const DemoLength = 10 * time.Minute
@@ -88,8 +85,6 @@ type Simulator struct {
 	// demoEnds is when the demo turns itself off, in milliseconds, and demoLength how long it runs.
 	demoEnds   int64
 	demoLength time.Duration
-	// accountsBefore are the accounts the demo pretended were connected, as they were before it.
-	accountsBefore []models.Account
 
 	tickEvery time.Duration
 	mu        sync.Mutex
@@ -190,9 +185,10 @@ func (s *Simulator) Resume(active bool) error {
 			s.endDemo("The demo ended when Mabari restarted", "")
 			return
 		}
-		// An older version left the demo's pretend ChatGPT sign in behind after the demo stopped.
-		for _, account := range s.engine.Accounts() {
-			if account.Kind == models.AccountCodex && account.Email != nil && *account.Email == demoEmail {
+		// Earlier versions stored the demo's pretend sign ins and left them behind after the demo.
+		// The demo only shows them now, so a stored one is turned off.
+		for _, account := range s.engine.StoredAccounts() {
+			if account.Kind == models.AccountCodex && account.Email != nil && *account.Email == models.DemoEmail {
 				s.engine.SetAccount(models.Account{
 					ID: string(account.Kind), Kind: account.Kind, Status: models.AccountOff,
 					Models: models.Models[account.Kind],
@@ -569,7 +565,7 @@ func (s *Simulator) conversationTick() {
 	s.convTimer = 0
 	var pool []*models.LiveAgent
 	for _, agent := range s.engine.Agents() {
-		if !agent.Leaving && agent.State != models.StateError {
+		if agent.Source == Source && !agent.Leaving && agent.State != models.StateError {
 			pool = append(pool, agent)
 		}
 	}
@@ -629,6 +625,10 @@ func isLeadOf(lead, agent *models.LiveAgent) bool {
 // Tick moves the office on by one real second, which is six office seconds.
 func (s *Simulator) Tick() error {
 	return s.engine.Do(func() {
+		// A tick that was already waiting when the demo ended does nothing.
+		if !s.demoMode {
+			return
+		}
 		s.runTimers()
 		s.tick()
 		s.engine.Sweep()
@@ -751,6 +751,10 @@ func planIndex(state models.AgentState) int {
 func (s *Simulator) maybeRequestApproval() {
 	var candidates []*models.LiveAgent
 	for _, agent := range s.engine.Agents() {
+		// Only the demo's own agents are given made up approvals.
+		if agent.Source != Source {
+			continue
+		}
 		if agent.State == models.StateApproval {
 			return
 		}
@@ -933,14 +937,6 @@ func (s *Simulator) loadDemo() {
 	s.runtimes = map[string]*runtime{}
 	s.approvalTimer, s.convTimer, s.hueIndex = 0, 0, 0
 	s.planned = nil
-	if !s.demoMode {
-		s.accountsBefore = nil
-		for _, account := range s.engine.Accounts() {
-			if account.Kind == models.AccountCodex || account.Kind == models.AccountClaudeCode {
-				s.accountsBefore = append(s.accountsBefore, account)
-			}
-		}
-	}
 	s.demoMode = true
 	s.demoEnds = s.now() + s.demoLength.Milliseconds()
 	s.engine.SetDemoEnds(s.demoEnds)
@@ -951,17 +947,6 @@ func (s *Simulator) loadDemo() {
 	for _, project := range demoProjects(now) {
 		s.engine.SaveProject(project)
 	}
-	email := demoEmail
-	s.engine.SetAccount(models.Account{
-		ID: string(models.AccountCodex), Kind: models.AccountCodex,
-		Status: models.AccountConnected, Email: &email, Models: models.Models[models.AccountCodex],
-	})
-	s.engine.SetAccount(models.Account{
-		ID: string(models.AccountClaudeCode), Kind: models.AccountClaudeCode,
-		Status: models.AccountConnected, LastEventAt: &now,
-		Models: models.Models[models.AccountClaudeCode],
-	})
-
 	const (
 		claude = models.ProviderClaude
 		openai = models.ProviderOpenAI
@@ -1106,13 +1091,22 @@ func (s *Simulator) decidePlan(lead *models.LiveAgent, approval models.Approval)
 	s.spawnTeam(lead, members)
 }
 
+// Forget drops the demo without touching the office, after a wipe has already cleared it.
+// Call inside Do.
+func (s *Simulator) Forget() {
+	s.Stop()
+	s.timers, s.runtimes, s.planned = nil, map[string]*runtime{}, nil
+	s.demoMode, s.demoEnds, s.approvalTimer, s.convTimer = false, 0, 0, 0
+	s.engine.SetDemoEnds(0)
+}
+
 // StopDemo ends the demo office when someone asks. Call inside Do.
 func (s *Simulator) StopDemo() {
 	s.endDemo("Stopped the demo office", "")
 }
 
-// endDemo takes the simulated agents and the demo's projects, messages and log away, and puts the
-// accounts the demo pretended to connect back as they were. Loading the demo cleared the office,
+// endDemo takes the simulated agents and the demo's projects, messages and log away. The demo's
+// pretend sign ins were only ever shown, so the accounts are as they really are. Loading the demo cleared the office,
 // so every project now belongs to the demo, including ones made while it ran, unless a real agent
 // works in it. The demo's own projects always go. Every real agent stays. Call inside Do.
 func (s *Simulator) endDemo(why, toast string) {
@@ -1122,6 +1116,7 @@ func (s *Simulator) endDemo(why, toast string) {
 	s.planned = nil
 	s.demoMode = false
 	s.demoEnds = 0
+	s.approvalTimer, s.convTimer = 0, 0
 	s.engine.SetDemoEnds(0)
 	seeded := map[string]bool{}
 	for _, project := range demoProjects(s.now()) {
@@ -1147,16 +1142,12 @@ func (s *Simulator) endDemo(why, toast string) {
 			projects = append(projects, *project)
 		}
 	}
-	accounts := s.engine.Accounts()
 	s.engine.ClearOffice()
-	for _, account := range s.restoredAccounts(accounts) {
-		s.engine.SetAccount(account)
-	}
 	for _, project := range projects {
 		s.engine.SaveProject(project)
 	}
 	for _, agent := range kept {
-		s.engine.AddAgent(agent)
+		s.engine.KeepAgent(agent)
 	}
 	s.engine.SetMeta(store.MetaDemo, "0")
 	s.engine.Log("Everyone", models.LogSession, why, "Only real agents from now on", "")
@@ -1164,27 +1155,4 @@ func (s *Simulator) endDemo(why, toast string) {
 		s.engine.Toast(toast)
 	}
 	s.engine.Reset()
-}
-
-// restoredAccounts puts back the accounts the demo pretended were connected: as they were before
-// it, or, after a restart, off until their real connection reports again.
-func (s *Simulator) restoredAccounts(now []models.Account) []models.Account {
-	var out []models.Account
-	for _, account := range now {
-		if account.Kind != models.AccountCodex && account.Kind != models.AccountClaudeCode {
-			continue
-		}
-		restored := models.Account{
-			ID: string(account.Kind), Kind: account.Kind, Status: models.AccountOff,
-			Models: models.Models[account.Kind],
-		}
-		for _, before := range s.accountsBefore {
-			if before.Kind == account.Kind {
-				restored = before
-			}
-		}
-		out = append(out, restored)
-	}
-	s.accountsBefore = nil
-	return out
 }

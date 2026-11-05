@@ -115,7 +115,7 @@ func (a *api) setAccountStatus(w http.ResponseWriter, kind models.AccountKind, s
 
 // setAccount changes one account's status. Call inside Do.
 func (a *api) setAccount(kind models.AccountKind, status models.AccountStatus) {
-	for _, account := range a.engine.Accounts() {
+	for _, account := range a.engine.StoredAccounts() {
 		if account.Kind == kind {
 			account.Status = status
 			a.engine.SetAccount(account)

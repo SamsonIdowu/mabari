@@ -28,6 +28,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/server"
 	"github.com/SamsonIdowu/mabari/internal/store"
@@ -256,6 +257,19 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	}
 	claude := claudecode.New(engine)
 	engine.AddConnector(claudecode.Source, claude)
+	_ = engine.Do(func() {
+		claude.TidyNames()
+		// Earlier versions stored the demo's pretend Claude Code connection. Without Mabari's
+		// hooks in Claude Code's settings, nothing can be connected.
+		if dir, err := claudecode.ConfigDir(os.Getenv); err == nil && !claudecode.Attached(dir) {
+			for _, account := range engine.StoredAccounts() {
+				if account.Kind == models.AccountClaudeCode && account.Status == models.AccountConnected {
+					account.Status = models.AccountOff
+					engine.SetAccount(account)
+				}
+			}
+		}
+	})
 	hubConnector := hub.New(engine)
 	engine.AddConnector(hub.Source, hubConnector)
 	codexConnector := codex.New(engine, version)

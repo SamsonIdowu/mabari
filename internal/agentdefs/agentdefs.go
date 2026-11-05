@@ -76,6 +76,9 @@ var colours = []struct{ hex, name string }{
 
 var validName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
 
+// codexName is a Codex agent's name: Codex's own examples use underscores, as in pr_explorer.
+var codexName = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,39}$`)
+
 // plainKey is a front matter key written plainly, as Claude Code's own fields are.
 var plainKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
@@ -182,6 +185,14 @@ func expandHome(folder string) string {
 // agentsDir is a project's Claude agent folder.
 func agentsDir(folder string) string { return filepath.Join(expandHome(folder), ".claude", "agents") }
 
+// samePath reports whether two folders are the same place.
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(expandHome(a)) == filepath.Clean(expandHome(b))
+}
+
 func kindOf(def models.AgentDef) models.DefKind {
 	if def.Kind == models.DefCodex {
 		return models.DefCodex
@@ -278,10 +289,18 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 		report.Codex = add(l.folders.Codex, models.DefCodex, models.DefAccount, "")
 	}
 	for _, project := range l.projects {
-		if project.Folder != "" {
-			report.Projects[project.ID] = add(agentsDir(project.Folder), models.DefClaude, models.DefProject, project.ID) +
-				add(codexAgentsDir(project.Folder), models.DefCodex, models.DefProject, project.ID)
+		if project.Folder == "" {
+			continue
 		}
+		count := 0
+		// A project whose folder is the home folder would read the account's agents a second time.
+		if dir := agentsDir(project.Folder); !samePath(dir, l.folders.Account) {
+			count += add(dir, models.DefClaude, models.DefProject, project.ID)
+		}
+		if dir := codexAgentsDir(project.Folder); !samePath(dir, l.folders.Codex) {
+			count += add(dir, models.DefCodex, models.DefProject, project.ID)
+		}
+		report.Projects[project.ID] = count
 	}
 	slices.SortStableFunc(defs, func(a, b models.AgentDef) int {
 		switch {
@@ -584,7 +603,8 @@ func writeAtomic(path string, data []byte) error {
 // Check says what is wrong with a definition before it is saved, in plain words.
 func Check(def models.AgentDef) error {
 	switch {
-	case !validName.MatchString(def.Name):
+	case kindOf(def) == models.DefClaude && !validName.MatchString(def.Name),
+		kindOf(def) == models.DefCodex && !codexName.MatchString(def.Name):
 		return Problem("Give it a short name in lowercase letters, like code-reviewer.")
 	case strings.TrimSpace(def.Description) == "":
 		return Problem("Say when Claude should use it, so it gets picked for the right work.")
@@ -643,6 +663,11 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 		return models.AgentDef{}, err
 	}
 	id := KindID(def.Kind, def.Scope, def.ProjectID, def.Name)
+	// An agent's file name needn't match its name (Codex says the name inside is what counts), so
+	// an edit that keeps the agent where it is writes back to its own file.
+	if old, ok := l.files[previousID]; ok && previousID == id {
+		path = old
+	}
 	if id != previousID {
 		if _, taken := l.files[id]; taken {
 			return models.AgentDef{}, Problem("There is already an agent called " + def.Name + " in this scope.")
@@ -828,6 +853,15 @@ func (l *Library) Refresh(office Office) (Report, error) {
 func (l *Library) Keep(ctx context.Context, office Office, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
+	// known are the projects whose folders the library has read before. Only a folder read for
+	// the first time, as when a project is made or its repository arrives, is announced; agents
+	// the person builds later are theirs, not news.
+	l.mu.Lock()
+	known := map[string]bool{}
+	for id := range l.counts {
+		known[id] = true
+	}
+	l.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():
@@ -837,15 +871,12 @@ func (l *Library) Keep(ctx context.Context, office Office, every time.Duration) 
 			if !l.Changed() {
 				continue
 			}
-			l.mu.Lock()
-			before := maps.Clone(l.counts)
-			l.mu.Unlock()
 			report, err := l.Refresh(office)
 			if err != nil {
 				slog.Warn("could not read the agent folders", "error", err)
 				continue
 			}
-			l.announce(office, before, report)
+			l.announce(office, known, report)
 		}
 	}
 }
@@ -855,10 +886,14 @@ type Announcer interface {
 	Toast(text string)
 }
 
-// announce says when a project's repository brought agents the office didn't have before.
-func (l *Library) announce(office Office, before map[string]int, report Report) {
+// announce says when a project's folder, read for the first time, brought agents with it.
+func (l *Library) announce(office Office, known map[string]bool, report Report) {
 	for id, count := range report.Projects {
-		if count <= before[id] {
+		if known[id] {
+			continue
+		}
+		known[id] = true
+		if count == 0 {
 			continue
 		}
 		toaster, ok := office.(Announcer)
@@ -872,7 +907,7 @@ func (l *Library) announce(office Office, before map[string]int, report Report) 
 					name = project.Name
 				}
 			}
-			added := count - before[id]
+			added := count
 			noun := "agents"
 			if added == 1 {
 				noun = "agent"

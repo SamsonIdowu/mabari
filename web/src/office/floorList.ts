@@ -4,7 +4,15 @@ import { stateLabel } from '../format.ts';
 import type { AgentDef, LiveAgent, Project } from '../gen/models.ts';
 import { onFloor, restKey, restingDefs, STATE_LOCATIONS } from './layout.ts';
 import { restingLook } from './resting.ts';
-import { filesShown, inScope, matches, useOfficeUi, type OfficeFilters } from './uiStore.ts';
+import {
+  filesShown,
+  inScope,
+  matches,
+  needsYou,
+  urgent,
+  useOfficeUi,
+  type OfficeFilters,
+} from './uiStore.ts';
 import { whereWorking } from './where.ts';
 
 /** One line in the list beside the floor: an agent, or an agent file resting in the lounge. */
@@ -34,7 +42,7 @@ export interface FloorGroup {
   entries: FloorEntry[];
 }
 
-/** Below this window width the list starts hidden, as the agent panel stops sitting beside it. */
+/** At this window width and below the list starts hidden, as the agent panel stops sitting beside it. */
 export const FLOOR_LIST_MIN_WIDTH = 1180;
 
 /**
@@ -55,7 +63,9 @@ const onResize = (notify: () => void) => {
   window.addEventListener('resize', notify);
   return () => window.removeEventListener('resize', notify);
 };
-const wideWindow = () => window.innerWidth >= FLOOR_LIST_MIN_WIDTH;
+// The agent panel stops sitting beside the floor at this width and below, so the list starts
+// shown only above it.
+const wideWindow = () => window.innerWidth > FLOOR_LIST_MIN_WIDTH;
 
 /** Whether the list beside the floor shows now, and a way to show or hide it. */
 export function useFloorList(): { shown: boolean; toggle: () => void } {
@@ -69,11 +79,8 @@ export function useFloorList(): { shown: boolean; toggle: () => void } {
   return { shown, toggle };
 }
 
-/** Approvals and errors are red. */
-const urgent = (agent: LiveAgent) => agent.state === 'approval' || agent.state === 'error';
-
-/** Agents waiting on you: approvals and errors, and questions, which wait calmly. */
-const needsAttention = (agent: LiveAgent) => urgent(agent) || Boolean(agent.question);
+/** Agents waiting on you, as the Needs me filter has them. Only approvals and errors are red. */
+const needsAttention = needsYou;
 
 /** In the lounge, as the floor seats it: idle, and not a contractor, who leaves instead. */
 const inLounge = (agent: LiveAgent) => STATE_LOCATIONS[agent.state] === 'lounge' && !agent.workflow;
@@ -84,6 +91,8 @@ const byName = (a: { name: string; id: string }, b: { name: string; id: string }
 function detailOf(agent: LiveAgent): string {
   const asked = agent.question?.items[0]?.question;
   if (asked && !urgent(agent)) return `Asking you · ${asked}`;
+  const queued = agent.queued?.length ?? 0;
+  if (queued && !urgent(agent)) return `${queued} instruction${queued === 1 ? '' : 's'} queued`;
   if (inLounge(agent)) return 'Resting';
   const label = stateLabel(agent.state);
   const what = agent.state === 'error' && agent.error ? agent.error : agent.task;
@@ -110,7 +119,7 @@ function agentEntry(
 
 /**
  * Everyone on the floor, grouped as the floor shows them: those who need you first (approvals,
- * errors and questions), then those at their desks, then the lounge, where idle agents and the agent files
+ * errors, questions and queued instructions), then those at their desks, then the lounge, where idle agents and the agent files
  * with nothing running rest. Project and team decide who is listed, as they decide who is on
  * the floor; the Models and status filters only fade entries. Empty groups are left out.
  */

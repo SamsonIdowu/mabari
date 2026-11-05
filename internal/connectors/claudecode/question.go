@@ -27,6 +27,8 @@ type asked struct {
 	// are the answers. What Mabari shows has secrets masked, so it can differ.
 	items   []models.QuestionItem
 	answers chan map[string]string
+	// ctx is the hook's own call. Once it ends, nobody is left to hear an answer.
+	ctx context.Context
 }
 
 // readQuestions reads AskUserQuestion's input. It returns false for input Mabari can't show
@@ -86,10 +88,17 @@ func firstQuestion(raw json.RawMessage) string {
 	return body.Questions[0].Question
 }
 
+// askCheck is how often a waiting question checks it is still shown: its agent may have been
+// stopped or have left, and then nobody can answer it.
+var askCheck = time.Second
+
 // ask shows Claude's question in Mabari and waits for the person's answers, as permission does
 // for a click. It answers nothing, so Claude Code asks in its own window, when nobody has Mabari
-// open, when the question can't be shown, when nobody answers in time or when the hook gives up.
-// A question from inside a subagent is shown on the subagent.
+// open, when the question can't be shown, when nobody answers in time, when the hook gives up or
+// when the agent leaves the floor. A question from inside a subagent is shown on the subagent;
+// one with no agent of its own on the floor, or from an agent already asking, is left to Claude
+// Code. So is every question while the hook in Claude Code's settings is too old to wait for an
+// answer.
 func (c *Connector) ask(ctx context.Context, in input) []byte {
 	// The call is a tool call like any other first: it is seen, and a pause stops it.
 	var reply []byte
@@ -97,19 +106,21 @@ func (c *Connector) ask(ctx context.Context, in input) []byte {
 	if reply != nil {
 		return reply
 	}
+	if c.ConfigDir != "" && !HookWaits(c.ConfigDir) {
+		return nil
+	}
 	pending, shown, ok := readQuestions(in.ToolInput)
 	if !ok {
 		return nil
 	}
+	pending.ctx = ctx
 	var asker, id string
 	_ = c.engine.Do(func() {
 		agent := c.engine.Agent(agentID(in.SessionID))
 		if in.AgentID != "" {
-			if helper := c.engine.Agent(helperID(in)); helper != nil {
-				agent = helper
-			}
+			agent = c.engine.Agent(helperID(in))
 		}
-		if agent == nil || !c.engine.HasViewers() {
+		if agent == nil || agent.Question != nil || !c.engine.HasViewers() {
 			return
 		}
 		asker, id = agent.ID, c.engine.Ask(agent, shown).ID
@@ -128,10 +139,22 @@ func (c *Connector) ask(ctx context.Context, in input) []byte {
 	var answers map[string]string
 	timer := time.NewTimer(c.wait)
 	defer timer.Stop()
-	select {
-	case answers = <-pending.answers:
-	case <-timer.C:
-	case <-ctx.Done():
+	check := time.NewTicker(askCheck)
+	defer check.Stop()
+wait:
+	for {
+		select {
+		case answers = <-pending.answers:
+			break wait
+		case <-timer.C:
+			break wait
+		case <-ctx.Done():
+			break wait
+		case <-check.C:
+			if !c.stillAsking(asker, id) {
+				break wait
+			}
+		}
 	}
 	if answers == nil {
 		dropped := false
@@ -159,14 +182,24 @@ func (c *Connector) ask(ctx context.Context, in input) []byte {
 	}})
 }
 
+// stillAsking reports whether the agent is on the floor and still showing this question.
+func (c *Connector) stillAsking(asker, id string) bool {
+	shown := false
+	_ = c.engine.Do(func() {
+		agent := c.engine.Agent(asker)
+		shown = agent != nil && agent.Question != nil && agent.Question.ID == id
+	})
+	return shown
+}
+
 // Answer wakes the hook waiting on this question with the person's answers, which the engine has
-// checked against it. Call inside Do.
-func (c *Connector) Answer(_ *models.LiveAgent, question models.Question, answers []models.QuestionAnswer) {
+// checked against it. It returns false when no hook is left to hear them. Call inside Do.
+func (c *Connector) Answer(_ *models.LiveAgent, question models.Question, answers []models.QuestionAnswer) bool {
 	c.mu.Lock()
 	pending := c.asking[question.ID]
 	c.mu.Unlock()
-	if pending == nil || len(answers) != len(pending.items) {
-		return
+	if pending == nil || len(answers) != len(pending.items) || (pending.ctx != nil && pending.ctx.Err() != nil) {
+		return false
 	}
 	given := make(map[string]string, len(pending.items))
 	for index, item := range pending.items {
@@ -174,6 +207,8 @@ func (c *Connector) Answer(_ *models.LiveAgent, question models.Question, answer
 	}
 	select {
 	case pending.answers <- given:
+		return true
 	default:
+		return false
 	}
 }

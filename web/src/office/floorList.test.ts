@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import { FLOOR_LIST_MIN_WIDTH, floorGroups, floorListShown } from './floorList.ts';
-import type { OfficeFilters } from './uiStore.ts';
+import { needsTone, type OfficeFilters } from './uiStore.ts';
 
 const agent = (overrides: Partial<LiveAgent> = {}) =>
   ({
@@ -87,6 +87,23 @@ describe('floorGroups', () => {
       ['Ada', 'Asking you · Which branch?', false],
       ['Pax', 'Needs approval · Fix the login page', true],
     ]);
+  });
+
+  it('lists queued instructions under Needs you too, as the Needs me filter does', () => {
+    const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
+    const agents = [agent({ id: 'q', name: 'Quill', state: 'editing', queued })];
+    const [needs] = floorGroups({ agents, defs: [], projects }, filters());
+    expect(needs!.label).toBe('Needs you');
+    const row = needs!.entries[0]!;
+    expect(row.kind === 'agent' && [row.detail, row.red]).toEqual(['1 instruction queued', false]);
+  });
+
+  it('colours the count of those who need you by the most urgent of them', () => {
+    const question = { id: 'q1', agentId: 'a', time: 0, items: [] };
+    const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
+    expect(needsTone([agent({ state: 'thinking', question })])).toBe('calm');
+    expect(needsTone([agent({ state: 'thinking', question }), agent({ queued })])).toBe('amber');
+    expect(needsTone([agent({ queued }), agent({ state: 'error' })])).toBe('red');
   });
 
   it('says what each one is doing in a few words', () => {

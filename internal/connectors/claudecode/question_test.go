@@ -5,6 +5,8 @@ package claudecode
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -318,5 +320,100 @@ func TestOnlyQuestionsAndPermissionsWaitForThePerson(t *testing.T) {
 		if got := waitsForPerson(test.event, []byte(test.body)); got != test.want {
 			t.Errorf("%s %s = %v", test.event, test.body, got)
 		}
+	}
+}
+
+// Stopping the agent in Mabari frees its waiting question at once, so Claude Code asks in its own
+// window without sitting out the whole wait.
+func TestStoppingAnAgentLetsGoOfItsQuestion(t *testing.T) {
+	c, engine := newConnector(t)
+	c.SetWait(10 * time.Second)
+	askCheck = 10 * time.Millisecond
+	t.Cleanup(func() { askCheck = time.Second })
+	done := asking(t, c, engine, nil)
+	waitForQuestion(t, engine, "cc-abc-123")
+	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abc-123")) })
+	select {
+	case reply := <-done:
+		if reply != nil {
+			t.Errorf("reply = %s", reply)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the hook still waits on a question nobody can see")
+	}
+}
+
+// An agent already asking does not have its question replaced: the newer one is asked in
+// Claude Code, so no hook waits on a question nobody can see.
+func TestASecondQuestionIsLeftToClaudeCode(t *testing.T) {
+	c, engine := newConnector(t)
+	c.SetWait(10 * time.Second)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Plan the shop"})
+	joined := engine.Subscribe(events.Resume{})
+	t.Cleanup(func() { engine.Unsubscribe(joined.Sub) })
+	_ = engine.Do(func() {
+		lead := engine.Agent("cc-abc-123")
+		engine.Ask(lead, models.Question{Items: []models.QuestionItem{{Question: "First?"}}})
+	})
+	if reply := hook(t, c, "PreToolUse", map[string]any{"tool_name": AskTool, "tool_input": askInput()}); reply != nil {
+		t.Errorf("a second question replaced the first: %s", reply)
+	}
+	_ = engine.Do(func() {
+		lead := engine.Agent("cc-abc-123")
+		if lead.Question == nil || lead.Question.Items[0].Question != "First?" {
+			t.Errorf("question = %+v", lead.Question)
+		}
+		engine.DropQuestion(lead, lead.Question.ID)
+	})
+}
+
+// An answer that reaches no waiting session is not reported as sent.
+func TestAnAnswerNobodyHearsIsRefused(t *testing.T) {
+	c, engine := newConnector(t)
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Plan the shop"})
+	var err error
+	_ = engine.Do(func() {
+		lead := engine.Agent("cc-abc-123")
+		question := engine.Ask(lead, models.Question{Items: []models.QuestionItem{{Question: "First?",
+			Options: []models.QuestionOption{{Label: "Yes"}}}}})
+		err = engine.AnswerQuestion(lead.ID, question.ID, []models.QuestionAnswer{{Picked: []int{0}}})
+		if lead.Question != nil {
+			t.Error("the question is still shown")
+		}
+	})
+	if !errors.Is(err, events.ErrNoQuestion) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Hooks attached before questions were answered in Mabari time out too soon to wait for one.
+func TestOldHooksLeaveQuestionsToClaudeCode(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"/bin/mabari","args":["hook","PreToolUse"],"timeout":5}]}]}}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if HookWaits(dir) {
+		t.Error("a 5 second hook waits for answers")
+	}
+	c, engine := newConnector(t)
+	c.ConfigDir = dir
+	joined := engine.Subscribe(events.Resume{})
+	t.Cleanup(func() { engine.Unsubscribe(joined.Sub) })
+	if reply := hook(t, c, "PreToolUse", map[string]any{"tool_name": AskTool, "tool_input": askInput()}); reply != nil {
+		t.Errorf("reply = %s", reply)
+	}
+	if agentOf(t, engine).Question != nil {
+		t.Error("a question shows that the hook cannot wait for")
+	}
+	plan, err := PlanAttach(dir, Hook{Binary: "/bin/mabari", Port: 4317})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if !HookWaits(dir) {
+		t.Error("attaching again did not update the hooks")
 	}
 }

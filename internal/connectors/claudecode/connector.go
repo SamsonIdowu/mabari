@@ -107,6 +107,9 @@ type Connector struct {
 	// MapFile is where Mabari keeps its map of the projects, which a session running as Mabari
 	// gets at its start. Empty leaves it out.
 	MapFile string
+	// ConfigDir is Claude Code's settings folder on this computer, checked before a question is
+	// shown. Empty, as in Docker where the settings are on the host, skips the check.
+	ConfigDir string
 	// asking are the questions hooks are waiting on, by question id.
 	asking map[string]*asked
 }
@@ -976,6 +979,15 @@ func (c *Connector) StopAgent(agent *models.LiveAgent) {
 	c.mu.Lock()
 	c.stopped[session] = true
 	c.pause[session] = true
+	// A permission hook waiting on this session hears no at once, rather than holding Claude
+	// Code until it gives up. A waiting question notices the agent has gone by itself.
+	if waiter := c.waiting[agent.ID]; waiter != nil {
+		decision := models.DecisionCancelled
+		select {
+		case waiter <- models.Approval{Decision: &decision}:
+		default:
+		}
+	}
 	c.mu.Unlock()
 	c.engine.CancelApproval(agent)
 	c.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")

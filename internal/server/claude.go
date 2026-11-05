@@ -75,7 +75,10 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 }
 
 type claudeStatus struct {
-	Attached bool              `json:"attached"`
+	Attached bool `json:"attached"`
+	// Outdated is true when the attached hooks are too old to wait for answers to Claude's
+	// questions. Attaching again updates them.
+	Outdated bool              `json:"outdated"`
 	Path     string            `json:"path"`
 	Diff     []models.DiffLine `json:"diff"`
 	Backup   string            `json:"backup"`
@@ -111,8 +114,10 @@ func (a *api) claudePlan(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	attached := claudecode.Attached(a.claude.ConfigDir)
 	writeJSON(w, http.StatusOK, claudeStatus{
-		Attached: claudecode.Attached(a.claude.ConfigDir),
+		Attached: attached,
+		Outdated: attached && !claudecode.HookWaits(a.claude.ConfigDir),
 		Path:     plan.Path,
 		Diff:     plan.Diff,
 		Backup:   plan.Path + claudecode.BackupSuffix,

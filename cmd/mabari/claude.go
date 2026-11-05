@@ -201,6 +201,8 @@ func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
 	if err != nil {
 		return nil
 	}
+	// Questions are shown only while the hooks there wait long enough for an answer.
+	o.claude.ConfigDir = dir
 	// Under `go run` there is no binary to point at, so Connect explains, but hooks still report.
 	binary, err := hookBinary()
 	if err != nil {

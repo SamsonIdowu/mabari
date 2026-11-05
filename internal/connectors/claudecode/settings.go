@@ -251,6 +251,35 @@ func Attached(configDir string) bool {
 	return false
 }
 
+// HookWaits reports whether Mabari's PreToolUse hook in the settings has a timeout long enough to
+// wait for an answer to Claude's question. Hooks attached by older versions of Mabari time out
+// after 5 seconds, so their questions are left to Claude Code until the hooks are attached again.
+func HookWaits(configDir string) bool {
+	data, existed, err := readSettings(filepath.Join(configDir, "settings.json"))
+	if err != nil || !existed {
+		return false
+	}
+	var settings struct {
+		Hooks map[string][]struct {
+			Hooks []json.RawMessage `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if json.Unmarshal(data, &settings) != nil {
+		return false
+	}
+	for _, group := range settings.Hooks["PreToolUse"] {
+		for _, handler := range group.Hooks {
+			var h struct {
+				Timeout int `json:"timeout"`
+			}
+			if isOurs(handler) && json.Unmarshal(handler, &h) == nil && h.Timeout > PermissionWait {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // isOurs reports whether a hook handler runs `mabari hook`.
 func isOurs(handler json.RawMessage) bool {
 	var h struct {

@@ -895,8 +895,9 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 
 // Answerer is a connector whose agents can ask the person questions, and hear back.
 type Answerer interface {
-	// Answer passes checked answers to the agent's waiting session. Call inside Do.
-	Answer(agent *models.LiveAgent, question models.Question, answers []models.QuestionAnswer)
+	// Answer passes checked answers to the agent's waiting session, and reports whether the
+	// session was still there to hear them. Call inside Do.
+	Answer(agent *models.LiveAgent, question models.Question, answers []models.QuestionAnswer) bool
 }
 
 // ErrNoQuestion is returned for an answer to a question the agent isn't asking: one already
@@ -935,9 +936,12 @@ func (e *Engine) AnswerQuestion(agentID, questionID string, answers []models.Que
 	}
 	agent.Question = nil
 	e.Touch(agent)
+	// The session may have stopped waiting just now; then the answer reaches nobody.
+	if !answerer.Answer(agent, question, answers) {
+		return ErrNoQuestion
+	}
 	e.Log(agent.Name, models.LogInstruction, "Answered: "+models.Clip(models.QuestionSummary(&question), 160), "Answered", "ok")
 	e.AddEvent(agent, "question", "You answered in Mabari", nil)
-	answerer.Answer(agent, question, answers)
 	return nil
 }
 

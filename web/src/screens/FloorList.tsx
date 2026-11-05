@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../gen/models.ts';
 import { openRestingFile } from '../office/builderStore.tsx';
 import { floorGroups, type FloorEntry } from '../office/floorList.ts';
@@ -74,6 +74,15 @@ function moveFocus(event: React.KeyboardEvent<HTMLDivElement>) {
 export function FloorList({ office, filters }: { office: Snapshot; filters: OfficeFilters }) {
   const selected = useOfficeUi((state) => state.selected);
   const [focused, setFocused] = useState<string | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // Whether a line had focus. An agent moving to another group gets a new line, so its focus
+  // is put back on the new one.
+  const inside = useRef(false);
+  useLayoutEffect(() => {
+    const list = body.current;
+    if (!list || !inside.current || !focused || list.contains(document.activeElement)) return;
+    list.querySelector<HTMLButtonElement>(`.flrow[data-entry="${CSS.escape(focused)}"]`)?.focus();
+  });
   const groups = floorGroups(office, filters);
   const ids = groups.flatMap((group) => group.entries.map((entry) => entry.id));
   // Tab comes back to the line last focused, else the selected agent, else the first line.
@@ -84,7 +93,20 @@ export function FloorList({ office, filters }: { office: Snapshot; filters: Offi
         <b>On the floor</b>
         <span className="help num">{ids.length}</span>
       </div>
-      <div className="flbody" onKeyDown={moveFocus}>
+      <div
+        className="flbody"
+        ref={body}
+        onKeyDown={moveFocus}
+        onFocus={() => (inside.current = true)}
+        onBlur={(event) => {
+          // Focus leaving the list, not a line taken away from under it as its agent moves.
+          const row = event.target;
+          queueMicrotask(() => {
+            inside.current =
+              !row.isConnected || (body.current?.contains(document.activeElement) ?? false);
+          });
+        }}
+      >
         {groups.map((group) => (
           <div
             className={`flgroup fl-${group.id}`}

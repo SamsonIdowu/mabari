@@ -158,6 +158,21 @@ export function openThread(key: string): void {
 
 const working = (agent: LiveAgent) => agent.working;
 
+/** Approvals and errors: the only things that are red. */
+export function urgent(agent: Pick<LiveAgent, 'state'>): boolean {
+  return agent.state === 'approval' || agent.state === 'error';
+}
+
+/**
+ * The colour a count of agents who need you takes: red for approvals and errors, amber for
+ * queued instructions, and none for questions, which wait calmly.
+ */
+export function needsTone(agents: LiveAgent[]): 'red' | 'amber' | 'calm' {
+  if (agents.some(urgent)) return 'red';
+  if (agents.some((agent) => (agent.queued?.length ?? 0) > 0)) return 'amber';
+  return 'calm';
+}
+
 export function needsYou(agent: LiveAgent): boolean {
   return (
     agent.state === 'approval' ||

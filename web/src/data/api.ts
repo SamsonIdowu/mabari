@@ -197,6 +197,8 @@ export interface VeeResult {
 /** What Connect would change in Claude Code's settings, from GET /api/accounts/claude. */
 export interface ClaudePlan {
   attached: boolean;
+  /** The attached hooks are too old to wait for answers to Claude's questions. */
+  outdated?: boolean;
   path: string;
   diff: DiffLine[];
   backup: string;

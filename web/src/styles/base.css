@@ -193,6 +193,10 @@ body {
   display: inline-grid;
   place-items: center;
 }
+.badge.calm {
+  background: var(--surface3);
+  color: var(--fg);
+}
 .badge.amber {
   background: var(--amber);
   color: #1c1300;

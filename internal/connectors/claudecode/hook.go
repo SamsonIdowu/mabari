@@ -41,16 +41,18 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 	if err != nil {
 		return
 	}
-	secret, err := token()
-	if err != nil || secret == "" {
-		return
-	}
 	wait := quickWait
 	if waitsForPerson(event, body) {
 		wait = PermissionWait*time.Second + 2*time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
+	// Reading the token can stall, such as a keychain waiting to be unlocked. Claude Code waits
+	// up to two minutes for PreToolUse, so the read is held to the same short wait as the call.
+	secret, ok := readToken(ctx, token)
+	if !ok {
+		return
+	}
 	url := "http://127.0.0.1:" + strconv.Itoa(port) + HookPath + event
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -83,6 +85,25 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 		return
 	}
 	_, _ = stdout.Write(reply)
+}
+
+// readToken reads the hook token, giving up when ctx ends.
+func readToken(ctx context.Context, token func() (string, error)) (string, bool) {
+	type result struct {
+		secret string
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		secret, err := token()
+		done <- result{secret, err}
+	}()
+	select {
+	case got := <-done:
+		return got.secret, got.err == nil && got.secret != ""
+	case <-ctx.Done():
+		return "", false
+	}
 }
 
 // waitsForPerson reports whether the hook waits for someone in Mabari: a permission request, or

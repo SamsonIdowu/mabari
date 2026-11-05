@@ -150,6 +150,7 @@ function ClaudeCard({ account }: { account: Account }) {
   const attach = () => run(api.connectClaude);
   const detach = () => run(api.disconnectClaude);
   const path = plan.data?.path ?? '~/.claude/settings.json';
+  const outdated = Boolean(plan.data?.attached && plan.data.outdated);
   return (
     <article className="card eqcard">
       <div className="acchead">
@@ -168,10 +169,17 @@ function ClaudeCard({ account }: { account: Account }) {
         <StatusChip status={account.status} />
       </div>
       <div className="scroll" tabIndex={0}>
-        {plan.data?.attached ? null : (
+        {plan.data?.attached && !outdated ? null : (
           <div className="field">
+            {outdated ? (
+              <p className="help" data-testid="hooksOutdated">
+                Mabari&apos;s hooks are from an older version. Update them so you can answer
+                Claude&apos;s questions here; until then Claude Code asks in its own window.
+              </p>
+            ) : null}
             <span className="flabel">
-              These lines will be added to <code>{path}</code>
+              {outdated ? 'These lines will change in ' : 'These lines will be added to '}
+              <code>{path}</code>
             </span>
             {/* Focusable, because the change is long enough to scroll. */}
             <div
@@ -238,6 +246,11 @@ function ClaudeCard({ account }: { account: Account }) {
           </button>
         ) : connected ? (
           <>
+            {outdated ? (
+              <button type="button" className="btn primary" disabled={busy} onClick={attach}>
+                Update the hooks
+              </button>
+            ) : null}
             <button type="button" className="btn primary" onClick={() => setShowCommand(true)}>
               Start a Claude Code session
             </button>

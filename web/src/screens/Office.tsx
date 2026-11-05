@@ -14,6 +14,7 @@ import { onFloor } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
 import {
   inScope,
+  needsTone,
   needsYou,
   selectAgent,
   useOfficeUi,
@@ -72,7 +73,9 @@ function Summary({ scoped }: { scoped: LiveAgent[] }) {
   // with an estimate say when they will be done.
   const working = scoped.filter((agent) => agent.working);
   const estimated = scoped.filter((agent) => agent.estimate);
-  const need = scoped.filter(needsYou).length;
+  const needing = scoped.filter(needsYou);
+  const need = needing.length;
+  const tone = needsTone(needing);
   const held = scoped.filter((a) => a.state === 'approval' || a.state === 'paused').length;
   const seconds = Math.max(0, ...estimated.map((agent) => agent.estimate?.secondsLeft ?? 0));
   return (
@@ -81,7 +84,7 @@ function Summary({ scoped }: { scoped: LiveAgent[] }) {
       {need ? (
         <>
           {' · '}
-          <b style={{ color: 'var(--red)' }}>
+          <b style={tone === 'calm' ? undefined : { color: `var(--${tone})` }}>
             {need} need{need === 1 ? 's' : ''} you
           </b>
         </>
@@ -260,7 +263,9 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const inProject = onFloor(office.agents).filter(
     (agent) => filters.project === 'all' || agent.projectId === filters.project,
   );
-  const need = scoped.filter(needsYou).length;
+  const needing = scoped.filter(needsYou);
+  const need = needing.length;
+  const tone = needsTone(needing);
   const filtered =
     filters.provider !== 'all' ||
     filters.model !== 'all' ||
@@ -318,7 +323,9 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
             onClick={() => set({ status: id })}
           >
             {label}
-            {id === 'needs' && need ? <span className="badge">{need}</span> : null}
+            {id === 'needs' && need ? (
+              <span className={`badge${tone === 'red' ? '' : ` ${tone}`}`}>{need}</span>
+            ) : null}
           </button>
         ))}
       </div>

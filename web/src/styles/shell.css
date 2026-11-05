@@ -74,10 +74,11 @@
 .app.collapsed {
   grid-template-columns: 68px minmax(0, 1fr);
 }
+/* The badges stay: with the rail collapsed they are the only sign from another page that
+   something needs you. The prototype hides them here too, then positions them below. */
 .app.collapsed .rail .lbl,
 .app.collapsed .brand span,
-.app.collapsed .local span,
-.app.collapsed .nav .badge {
+.app.collapsed .local span {
   display: none;
 }
 .app.collapsed .nav {
@@ -100,6 +101,10 @@
   min-height: 0;
   overflow-y: auto;
   padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+/* Focus goes here when the control that opened a dialog is gone. It is not a Tab stop. */
+.screen:focus-visible {
+  outline: none;
 }
 .page {
   max-width: 1180px;

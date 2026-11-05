@@ -446,7 +446,13 @@
   line-height: 1;
   cursor: pointer;
   color: #0c0c0c;
-  padding: 0 2px;
+  /* A 24 by 24 px target around the same small ×: the negative margin keeps the card as it was. */
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  margin: -4px -5px;
+  padding: 0;
 }
 .bitem {
   display: flex;
@@ -519,7 +525,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
@@ -1003,6 +1009,11 @@
 }
 .dialog.wide {
   width: min(680px, 100%);
+}
+/* Focus lands on the dialog itself when it opens, so a screen reader reads its title. It is not a
+   Tab stop, so it gets no ring: the controls inside keep theirs. */
+.dialog:focus-visible {
+  outline: none;
 }
 .dhd {
   display: flex;
@@ -2330,7 +2341,7 @@ tr:last-child td {
   width: max-content;
 }
 .fbubble.red {
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
 }
 .fhname {
@@ -2934,6 +2945,10 @@ section[data-screen='home'] {
   background: none;
   color: var(--muted);
   cursor: pointer;
+  /* At least 24 by 24 px to hit, around the same 14 px icon: the negative margin keeps the layout. */
+  min-width: 24px;
+  min-height: 24px;
+  margin: -3px;
   padding: 2px;
   display: grid;
   place-items: center;
@@ -3483,14 +3498,15 @@ section[data-screen='home'] {
   color: #555;
 }
 .pws b {
-  background: var(--red);
+  background: var(--red-fill);
   color: #fff;
   border-radius: 6px;
   padding: 0 0.35em;
   font-size: 0.9em;
 }
 .pwin.done .pws {
-  color: #1b8a4b;
+  /* Decision 36's green: the old #1b8a4b measured 4.39:1 at this size. */
+  color: #1a784a;
 }
 [data-theme='dark'] .pwin {
   color: #f4f4f4;
@@ -3835,7 +3851,9 @@ section[data-screen='components'] .page h1 {
 .ptcard .ptrm {
   align-self: flex-start;
   font-size: 12px;
-  margin-top: 2px;
+  /* A 24 px tall target: the padding is taken back out of the margin, so the card does not move. */
+  padding: 3px 0;
+  margin: -1px 0 -3px;
 }
 
 /* Under a wide office: which stretch of it is in view. Drag it to move along. */

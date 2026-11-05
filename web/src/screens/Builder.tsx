@@ -29,6 +29,7 @@ import {
 import { useVee } from '../office/veeStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { MabariHead } from '../shell/MabariHead.tsx';
+import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 
 const toast = (text: string) => useOfficeStore.getState().toast(text);
@@ -531,7 +532,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
     void save(false);
   };
   return (
-    <div className="scrim">
+    <Modal>
       <form
         className="dialog defdlg"
         id="defForm"
@@ -812,6 +813,6 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

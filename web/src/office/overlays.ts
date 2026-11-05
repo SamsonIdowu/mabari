@@ -125,7 +125,7 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     if (chip) {
       if (chipElement.textContent !== chip.text) chipElement.textContent = chip.text;
       chipElement.style.setProperty('--mc', chip.color);
-      chipElement.className = `mchip ${chip.incoming ? 'mc-in' : 'mc-out'}`;
+      chipElement.className = `mchip ${chip.outlined ? 'mc-out' : 'mc-in'}`;
     }
 
     const isReply = walker.bubbleKind === 'reply';

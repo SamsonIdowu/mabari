@@ -33,7 +33,7 @@ test('opens in light mode whatever the computer prefers', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(await background(page)).toBe(rgb(themes.light.bg));
-  await page.getByRole('button', { name: 'Dark' }).click();
+  await page.getByRole('button', { name: 'Switch to dark theme' }).click();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await background(page)).toBe(rgb(themes.dark.bg));
@@ -70,19 +70,39 @@ test('the top bar brand goes home', async ({ page }) => {
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Dark' }).click();
+  // The button is named for what it does, not for the theme it is showing.
+  const toDark = page.getByRole('button', { name: 'Switch to dark theme' });
+  const toLight = page.getByRole('button', { name: 'Switch to light theme' });
+  await toDark.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.getByRole('button', { name: 'Light' }).click();
+  await expect(toDark).toHaveCount(0);
+  await toLight.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(await background(page)).toBe(rgb(themes.light.bg));
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Dark' })).toBeVisible();
+  await expect(toDark).toBeVisible();
   expect(await background(page)).toBe(rgb(themes.light.bg));
 
-  await page.getByRole('button', { name: 'Dark' }).click();
+  await toDark.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('button', { name: 'Light' })).toBeVisible();
+  await expect(toLight).toBeVisible();
+});
+
+test('each page sets the tab title, and the theme button says what it does', async ({ page }) => {
+  await page.goto('/#projects');
+  await expect(page).toHaveTitle('Projects · Mabari');
+  await page.goto('/#preferences');
+  await expect(page).toHaveTitle('Settings · Mabari');
+  const rail = page.getByRole('complementary', { name: 'Main' });
+  await rail.getByRole('link', { name: 'Accounts', exact: true }).click();
+  await expect(page).toHaveTitle('Accounts · Mabari');
+  await rail.getByRole('link', { name: 'Activity log', exact: true }).click();
+  await expect(page).toHaveTitle('Activity log · Mabari');
+  // The visible word, Dark or Light, is inside the button's name.
+  const theme = page.locator('.topright .tbtn').last();
+  await expect(theme).toHaveAccessibleName('Switch to dark theme');
+  await expect(theme.locator('.lbl')).toHaveText('Dark');
 });
 
 test('the calmer page styles win over the older ones', async ({ page }) => {
@@ -136,6 +156,32 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
   await expand.click();
   await expect.poll(width).toBe(84);
+});
+
+test('the collapsed rail still shows the badge for what needs you, with the link named', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.goto('/#office');
+  const rail = page.getByRole('complementary', { name: 'Main' });
+  await expect(page.locator('.app')).toHaveClass(/collapsed/);
+  await expect(page.locator('.rail .lbl').first()).toBeHidden();
+
+  // The demo has an approval waiting, so the Agents link has its red count even collapsed.
+  const link = rail.getByRole('link', { name: /^Agents/ });
+  const badge = link.locator('.badge');
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveText(/^\d+$/);
+  // It sits on the link's top right corner, as the prototype positions it, not off to the side.
+  const [linkBox, badgeBox] = [await link.boundingBox(), await badge.boundingBox()];
+  expect(badgeBox!.x).toBeGreaterThan(linkBox!.x + linkBox!.width / 2);
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(linkBox!.x + linkBox!.width + 1);
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(linkBox!.y - 1);
+  expect(badgeBox!.y + badgeBox!.height).toBeLessThan(linkBox!.y + linkBox!.height / 2 + 6);
+  // With its label hidden, the link is still named for what it is, not "2".
+  await expect(link).toHaveAccessibleName(/^Agents \d+$/);
 });
 
 test('the app fills the window with no margins', async ({ page }) => {

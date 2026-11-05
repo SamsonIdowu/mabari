@@ -16,6 +16,7 @@ import {
 } from '../shared/tokens.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { useReturnFocus } from '../shell/useReturnFocus.ts';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
@@ -669,6 +670,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
   const tab = useOfficeUi((state) => state.panelTab);
   const [dialog, setDialog] = useState<Dialog>(null);
   const set = useOfficeUi((state) => state.set);
+  useReturnFocus();
   const provider = providers[agent.provider as ProviderName] ?? providers.custom;
   const project = office.projects.find((item) => item.id === agent.projectId);
   const lead = office.agents.find((item) => item.id === agent.leadId);

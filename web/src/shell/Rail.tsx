@@ -5,6 +5,7 @@ import { useVee } from '../office/veeStore.ts';
 import type { Route } from '../routes.ts';
 import { Icon } from './Icon.tsx';
 import { navGroups, type NavItem } from './navItems.tsx';
+import { useRailStore } from './railStore.ts';
 
 const LIVE_MS = 6000;
 
@@ -48,6 +49,7 @@ function linkName(item: NavItem, live: boolean) {
 function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
   const isCurrent = item.route === current;
   const live = useLive() && item.badge === 'live';
+  const collapsed = useRailStore((state) => state.collapsed);
   return (
     <a
       className={isCurrent ? 'nav on' : 'nav'}
@@ -58,8 +60,12 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
     >
       <Icon>{item.icon}</Icon>
       <span className="lbl">{item.label}</span>
+      {/* Collapsed, the label is hidden. A link is named from what is inside it, so with a badge
+          showing it would be just "2", or "live". This keeps its name for a screen reader. */}
+      {collapsed ? <span className="sr">{item.label}</span> : null}
       {item.badge === 'needs' ? <NeedsBadge /> : null}
-      {live ? <span className="badge amber">live</span> : null}
+      {/* Neutral, not amber: amber means a queued instruction, and only red and amber ask for attention. */}
+      {live ? <span className="badge calm">live</span> : null}
       {item.badge === 'unread' ? <UnreadBadge /> : null}
     </a>
   );

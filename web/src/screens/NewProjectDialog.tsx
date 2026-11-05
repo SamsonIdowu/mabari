@@ -14,6 +14,7 @@ import type { AccountKind } from '../gen/models.ts';
 import { listen, type Listener } from '../office/speech.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 
 const EXAMPLES = [
@@ -427,7 +428,7 @@ function Brief() {
   };
 
   return (
-    <div className="scrim">
+    <Modal>
       <div
         className={drag ? 'dialog brief drag' : 'dialog brief'}
         id="briefDlg"
@@ -866,6 +867,6 @@ function Brief() {
           }}
         />
       </div>
-    </div>
+    </Modal>
   );
 }

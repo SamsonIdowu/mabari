@@ -26,6 +26,10 @@ const dark = {
   'openai-ink': '#5CCB92',
   'custom-ink': '#86B6F5',
   red: '#F0585B',
+  // Decision 36 again, for the dark theme: `red` is light enough to read as text on black, but
+  // white on it measures 3.36:1, under AA for 9 to 11 px badges. Anything filled red with white
+  // text uses this, the same red the light theme's `red` already is (white on it: 5.4:1).
+  'red-fill': '#C33437',
   'red-soft': '#3A1719',
   amber: '#F2B33D',
   'amber-fg': '#1C1300',

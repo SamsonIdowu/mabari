@@ -11,6 +11,7 @@ import { startable } from '../office/startable.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
 import { providers } from '../shared/tokens.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { useReturnFocus } from '../shell/useReturnFocus.ts';
 
 function StartTask({ office, def }: { office: Snapshot; def: AgentDef }) {
   const toast = useOfficeStore((state) => state.toast);
@@ -125,6 +126,7 @@ function StartTask({ office, def }: { office: Snapshot; def: AgentDef }) {
  */
 export function RestingPanel({ office, def }: { office: Snapshot; def: AgentDef }) {
   const set = useOfficeUi((state) => state.set);
+  useReturnFocus();
   const look = restingLook(def);
   const provider = providers[look.provider];
   const project = office.projects.find((item) => item.id === def.projectId);

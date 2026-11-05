@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { addToastFilter, useOfficeStore } from '../data/officeStore.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
+import { liveHost } from './modalStack.ts';
 import { clearOfPanel, repeatsOpenPanel } from './toastSpace.ts';
 
 // An agent's panel shows its reply as it lands, so the toast that points to it would repeat it.
@@ -41,13 +43,15 @@ export function Toasts() {
     const timer = window.setInterval(place, 150);
     return () => window.clearInterval(timer);
   }, [showing]);
-  return (
+  // Outside #root, so a toast that appears while a dialog is open is still announced.
+  return createPortal(
     <div className="toasts" role="status" ref={box}>
       {toasts.slice(-3).map((toast) => (
         <div className="toast" key={toast.id}>
           {toast.text}
         </div>
       ))}
-    </div>
+    </div>,
+    liveHost(),
   );
 }

@@ -857,8 +857,8 @@ section[data-screen]:not([data-screen='office']) .acc {
   border-color: var(--fg);
 }
 #hcMic.on .dkic {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-fill);
+  border-color: var(--red-fill);
   color: #fff;
   animation: pulse 1.2s infinite;
 }

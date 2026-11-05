@@ -153,6 +153,16 @@ type Account struct {
 	Email       *string       `json:"email"`
 	Models      []string      `json:"models"`
 	LastEventAt *int64        `json:"lastEventAt"`
+	// Demo is true while the demo office shows this account as connected though it isn't. Nothing
+	// of that is stored, and it goes when the demo ends.
+	Demo bool `json:"demo"`
+	// CanStart says whether Mabari can start an agent on this account, which the New agent
+	// dialog asks before it shows a form that can't succeed. StartNote is why not and what to do
+	// instead, or "". Both are worked out by the server and never stored.
+	CanStart  bool   `json:"canStart"`
+	StartNote string `json:"startNote"`
+	// Missing names a program the account needs and this computer lacks, such as "codex", or "".
+	Missing string `json:"missing"`
 }
 
 // Agent is an agent's identity and settings.

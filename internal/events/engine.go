@@ -72,6 +72,8 @@ type Engine struct {
 	writeErr   error
 	// defs are the agent definitions from the agent folders. A wipe leaves them: they are files.
 	defs []models.AgentDef
+	// accountNotes adds what only the running server knows to each account as the office shows it.
+	accountNotes func(account models.Account, demo bool) models.Account
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -413,6 +415,21 @@ func (e *Engine) SaveSettings(settings models.Settings) {
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.broadcast(models.ServerMessage{Type: models.MsgSettings, Settings: &settings})
+}
+
+// CorrectModels makes every model choice in the settings one that an account offers, keeping the
+// pages honest about which model is used, and says in the log, and in one toast, what it changed.
+// It reads the accounts as stored, so a pretend demo account never decides. Call inside Do.
+func (e *Engine) CorrectModels() {
+	settings, changes := models.CorrectModels(e.settings, e.StoredAccounts())
+	if len(changes) == 0 {
+		return
+	}
+	e.SaveSettings(settings)
+	for _, change := range changes {
+		e.Log("Everyone", models.LogSession, "Corrected a model setting", change, "")
+	}
+	e.Toast(strings.Join(changes, " "))
 }
 
 // Projects lists projects in the order they were made. Call inside Do.
@@ -1105,6 +1122,8 @@ func (e *Engine) RemoveProject(id string) {
 // SetAccount updates a connection. Call inside Do.
 func (e *Engine) SetAccount(account models.Account) {
 	copied := account
+	// What the office works out about an account is never stored, so it can't go stale.
+	copied.Demo, copied.CanStart, copied.StartNote, copied.Missing = false, false, "", ""
 	e.accounts[account.Kind] = &copied
 	e.record(e.store.SaveAccount(context.Background(), copied))
 	shown := e.shownAccount(copied)
@@ -1123,18 +1142,29 @@ func (e *Engine) accountList() []models.Account {
 // look connected so the demo's agents make sense; that is never stored, so the real state of each
 // connection is untouched and is what shows again when the demo ends.
 func (e *Engine) shownAccount(account models.Account) models.Account {
-	if !e.demo || account.Status == models.AccountConnected {
-		return account
+	if e.demo && account.Status != models.AccountConnected {
+		switch account.Kind {
+		case models.AccountCodex:
+			email := models.DemoEmail
+			account.Status, account.Email, account.Demo = models.AccountConnected, &email, true
+		case models.AccountClaudeCode:
+			at := e.now().UnixMilli()
+			account.Status, account.LastEventAt, account.Demo = models.AccountConnected, &at, true
+		}
 	}
-	switch account.Kind {
-	case models.AccountCodex:
-		email := models.DemoEmail
-		account.Status, account.Email = models.AccountConnected, &email
-	case models.AccountClaudeCode:
-		at := e.now().UnixMilli()
-		account.Status, account.LastEventAt = models.AccountConnected, &at
+	if e.accountNotes != nil {
+		account = e.accountNotes(account, e.demo)
 	}
 	return account
+}
+
+// SetAccountNotes sets how each account is described beyond what is stored: whether an agent can be
+// started on it, and what it is missing. The server sets it once, before it serves. The function
+// is given an account as the office shows it and must not call the engine.
+func (e *Engine) SetAccountNotes(notes func(account models.Account, demo bool) models.Account) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.accountNotes = notes
 }
 
 // Accounts lists every connection, in page order, as the office shows them. Call inside Do.

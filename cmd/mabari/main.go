@@ -266,6 +266,8 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	engine.AddConnector(claudecode.Source, claude)
 	_ = engine.Do(func() {
 		claude.TidyNames()
+		// Earlier versions kept a default that its account doesn't offer, and showed another.
+		engine.CorrectModels()
 		// Earlier versions stored the demo's pretend Claude Code connection. Without Mabari's
 		// hooks in Claude Code's settings, nothing can be connected.
 		binary, _ := hookBinary() // under go run there is none, and only names starting with mabari count

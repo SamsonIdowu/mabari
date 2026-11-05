@@ -279,6 +279,22 @@ export interface Account {
   email: string | null;
   models: string[];
   lastEventAt: number /* int64 */ | null;
+  /**
+   * Demo is true while the demo office shows this account as connected though it isn't. Nothing
+   * of that is stored, and it goes when the demo ends.
+   */
+  demo: boolean;
+  /**
+   * CanStart says whether Mabari can start an agent on this account, which the New agent
+   * dialog asks before it shows a form that can't succeed. StartNote is why not and what to do
+   * instead, or "". Both are worked out by the server and never stored.
+   */
+  canStart: boolean;
+  startNote: string;
+  /**
+   * Missing names a program the account needs and this computer lacks, such as "codex", or "".
+   */
+  missing: string;
 }
 /**
  * Agent is an agent's identity and settings.

@@ -286,7 +286,7 @@ func TestEditingKeepsOtherFields(t *testing.T) {
 	library := New(f)
 	scan(t, library)
 	path := filepath.Join(f.Account, "backend.md")
-	text := "---\nname: backend\ndescription: Owns the API\ntools: Read\nmodel: sonnet\neffort: xhigh\npermissionMode: plan\n---\nBuild it.\n"
+	text := "---\nname: backend\ndescription: Owns the API\ntools: Read\nmodel: sonnet\neffort: xhigh\npermissionMode: plan\n\"Model\": opus\n---\nBuild it.\n"
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -301,5 +301,21 @@ func TestEditingKeepsOtherFields(t *testing.T) {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("file lacks %q:\n%s", want, data)
 		}
+	}
+	if strings.Contains(string(data), `"Model"`) {
+		t.Errorf("a disguised copy of a field Mabari writes was kept:\n%s", data)
+	}
+	// Moving the agent to another scope doesn't carry the fields the builder never showed.
+	folder := t.TempDir()
+	library.SetProjects([]Project{{ID: "shop", Folder: folder}})
+	moved := def
+	moved.Scope, moved.ProjectID = models.DefProject, "shop"
+	saved, err := library.Save(moved, def.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(folder, ".claude", "agents", "backend.md"))
+	if strings.Contains(string(data), "permissionMode") || saved.ID != "project:shop:backend" {
+		t.Errorf("moved file kept hidden fields:\n%s", data)
 	}
 }

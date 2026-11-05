@@ -467,13 +467,21 @@ func extraFields(data []byte) string {
 	for _, line := range strings.Split(rest[:end], "\n") {
 		if line != "" && line[0] != ' ' && line[0] != '\t' && line[0] != '-' && line[0] != '#' {
 			key, _, _ := strings.Cut(line, ":")
-			keep = !known[strings.TrimSpace(key)]
+			// Compare keys the way YAML reads them, so a quoted or differently cased copy of a
+			// field Mabari writes can't slip through and override it.
+			keep = !known[strings.ToLower(strings.Trim(strings.TrimSpace(key), `"'`))]
 		}
 		if keep {
 			b.WriteString(line + "\n")
 		}
 	}
 	return b.String()
+}
+
+// sameFolder reports whether two definition IDs are in the same scope and project.
+func sameFolder(a, b string) bool {
+	folder := func(id string) string { return id[:strings.LastIndex(id, ":")+1] }
+	return folder(a) == folder(b)
 }
 
 // withExtra puts kept fields at the end of a rendered file's front matter.
@@ -577,8 +585,10 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 		}
 	}
 	content := Render(def)
-	if old, ok := l.files[previousID]; ok && previousID != "" {
-		// Keep the fields Mabari doesn't edit, such as Claude Code's effort or permissionMode.
+	if old, ok := l.files[previousID]; ok && previousID != "" && sameFolder(previousID, id) {
+		// Keep the fields Mabari doesn't edit, such as Claude Code's effort or permissionMode,
+		// but only while the agent stays where it was: moving it to another scope or project
+		// doesn't carry settings the builder never showed.
 		if data, err := os.ReadFile(old); err == nil { // #nosec G304 -- the agent's own file
 			content = withExtra(content, extraFields(data))
 		}

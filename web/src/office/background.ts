@@ -3,6 +3,8 @@
 import {
   BASE_FLOOR,
   loungeBox,
+  workDoorway,
+  workWalls,
   LOUNGE_NOOK,
   deskTile,
   doorOf,
@@ -180,9 +182,28 @@ export function floorLabel(c: Ctx, text: string, x: number, y: number, P: Palett
   c.fillText(text.split('').join(String.fromCharCode(8202)), x, y);
 }
 
-/** A desk: white top, dark monitor, a mug and a chair. x and y are its corner. */
-function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette, top = true) {
-  if (top) blk(c, x + 4, y + 2, 60, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
+/**
+ * A desk: a low partition behind it, a white top, a dark monitor and keyboard, a mug, a chair,
+ * and one personal touch (a plant, a lamp or a stack of papers) picked by `touch`. x and y are
+ * its corner.
+ */
+function desk(
+  c: Ctx,
+  x: number,
+  y: number,
+  theme: 'dark' | 'light',
+  P: Palette,
+  top = true,
+  touch = 0,
+) {
+  if (top) {
+    /* the partition between this desk and the one behind it */
+    R(c, x + 2, y - 20, 64, 4, P.frame);
+    R(c, x + 2, y - 20, 64, 1, 'rgba(255,255,255,.12)');
+    R(c, x + 2, y - 16, 2, 14, P.frame);
+    R(c, x + 64, y - 16, 2, 14, P.frame);
+    blk(c, x + 4, y + 2, 60, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
+  }
   R(c, x + 8, y + 34, 2, 6, P.chair);
   R(c, x + 58, y + 34, 2, 6, P.chair);
   R(c, x + 29, y + 4, 6, 5, '#111113');
@@ -191,7 +212,149 @@ function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette,
   R(c, x + 20, y + 12, 22, 4, theme === 'dark' ? '#0E0E10' : '#1A1A1C');
   R(c, x + 48, y + 8, 8, 8, P.paper);
   R(c, x + 49, y + 9, 6, 6, theme === 'dark' ? '#3A3A40' : '#E7E6E3');
+  if (top) {
+    if (touch % 3 === 0) {
+      /* a little plant */
+      R(c, x + 8, y + 9, 6, 6, P.pot);
+      R(c, x + 7, y + 4, 3, 5, P.leaf);
+      R(c, x + 11, y + 3, 3, 6, P.leafB);
+    } else if (touch % 3 === 1) {
+      /* a desk lamp */
+      R(c, x + 9, y + 13, 7, 2, P.metal);
+      R(c, x + 11, y + 3, 2, 10, P.metal);
+      R(c, x + 8, y + 1, 9, 4, theme === 'dark' ? '#E8E2D0' : '#2B2B2D');
+    } else {
+      /* a stack of papers */
+      R(c, x + 7, y + 8, 10, 7, P.paper);
+      R(c, x + 8, y + 6, 10, 7, theme === 'dark' ? '#3A3A40' : '#F4F4F2');
+      R(c, x + 9, y + 8, 7, 1, P.metal);
+    }
+  }
   blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
+}
+
+/** Where the work area's two server racks stand, so scene.ts can blink their lights. */
+export const WORK_RACKS = [10, 40];
+
+/**
+ * The work area, like an office: a carpet under the desks, a back row of server racks,
+ * bookshelves, filing cabinets and a printer, and a front row with a water cooler, a whiteboard
+ * and bins, leaving the door clear. Its desks are drawn after it.
+ */
+function drawWorkArea(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
+  const end = floor.workEnd + 24;
+  const L = loungeColours(theme);
+  /* office carpet under the desks, in large quiet tiles */
+  R(c, 48, 104, end - 48, 490, P.carpet);
+  R(c, 52, 108, end - 56, 482, P.carpetB);
+  c.fillStyle = theme === 'dark' ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.035)';
+  for (let x = 52 + 64; x < end - 4; x += 64) c.fillRect(x, 108, 1, 482);
+  for (let y = 108 + 64; y < 590; y += 64) c.fillRect(52, y, end - 56, 1);
+
+  /* the back row, under the wall: two server racks, then shelves, cabinets and a printer */
+  for (const x of WORK_RACKS) {
+    blk(
+      c,
+      x,
+      52,
+      26,
+      6,
+      44,
+      theme === 'dark' ? '#202024' : '#2A2A2D',
+      theme === 'dark' ? '#0C0C0E' : '#141416',
+      P,
+    );
+    for (let slot = 0; slot < 5; slot++) {
+      R(c, x + 3, 62 + slot * 8, 20, 5, theme === 'dark' ? '#18181B' : '#1E1E21');
+    }
+  }
+  const row: { w: number; draw: (x: number) => void }[] = [
+    {
+      w: 56,
+      draw: (x) => {
+        /* a bookshelf of binders */
+        blk(c, x, 54, 52, 6, 40, P.wood, P.woodD, P);
+        for (let shelf = 0; shelf < 2; shelf++) {
+          for (let book = 0; book < 7; book++) {
+            R(c, x + 3 + book * 7, 63 + shelf * 17, 5, 13, L.spines[(book + shelf * 3) % 6]!);
+          }
+        }
+      },
+    },
+    {
+      w: 64,
+      draw: (x) => {
+        /* two filing cabinets */
+        for (let cab = 0; cab < 2; cab++) {
+          blk(c, x + cab * 30, 58, 28, 8, 36, P.cab, P.cabD, P);
+          for (let drawer = 0; drawer < 3; drawer++) {
+            R(c, x + cab * 30 + 2, 68 + drawer * 12, 24, 1, 'rgba(0,0,0,.18)');
+            R(c, x + cab * 30 + 10, 72 + drawer * 12, 8, 2, P.metal);
+          }
+        }
+      },
+    },
+    {
+      w: 52,
+      draw: (x) => {
+        /* a printer on a low cabinet */
+        blk(c, x, 74, 46, 8, 20, P.cab, P.cabD, P);
+        blk(c, x + 6, 60, 34, 8, 14, P.desk, P.deskFront, P, P.deskEdge);
+        R(c, x + 12, 62, 22, 3, theme === 'dark' ? '#0E0E10' : '#1A1A1C');
+        R(c, x + 14, 56, 18, 5, P.paper);
+        R(c, x + 34, 70, 3, 2, P.leafB);
+      },
+    },
+  ];
+  let x = 74;
+  for (let index = 0; x + row[index % row.length]!.w <= end - 20; index++) {
+    const item = row[index % row.length]!;
+    // One printer is enough: after it, shelves and cabinets.
+    if (index >= row.length && item.w === 52) continue;
+    item.draw(x);
+    x += item.w + 8;
+  }
+
+  /* the walls round the work area: glass partitions on its right and along its front, with a
+     doorway facing Mabari's desk; the back wall closes it at the top */
+  const walls = workWalls(floor);
+  const doorway = workDoorway(floor);
+  const glassWall = (x: number, y: number, w: number, h: number) => {
+    R(c, x, y, w, h, P.glass);
+    if (w > h) {
+      R(c, x, y, w, 2, P.wallTop);
+      R(c, x, y + h - 2, w, 2, P.wallLow);
+    } else {
+      R(c, x, y, 2, h, P.wallTop);
+      R(c, x + w - 2, y, 2, h, P.wallLow);
+    }
+  };
+  glassWall(walls.right - 4, WALL, 8, walls.front - WALL + 4);
+  glassWall(0, walls.front - 4, doorway.in.x - 30, 8);
+  glassWall(doorway.in.x + 30, walls.front - 4, walls.right + 4 - (doorway.in.x + 30), 8);
+  /* posts either side of the doorway */
+  R(c, doorway.in.x - 33, walls.front - 7, 4, 14, P.wallLow);
+  R(c, doorway.in.x + 29, walls.front - 7, 4, 14, P.wallLow);
+
+  /* the lobby, by the door: a water cooler, a whiteboard and bins, and plants */
+  const door = doorOf(floor).x;
+  blk(c, 14, 626, 18, 8, 26, P.cab, P.cabD, P);
+  R(c, 16, 606, 14, 20, theme === 'dark' ? '#4E6B73' : '#BFD9E6');
+  R(c, 16, 606, 14, 2, 'rgba(255,255,255,.4)');
+  if (door - 140 > 60) {
+    blk(c, 60, 610, 54, 30, 4, '#F4F4F2', '#C9C9C6', P);
+    R(c, 66, 616, 22, 2, L.cushionA);
+    R(c, 66, 622, 34, 2, P.metal);
+    R(c, 66, 628, 16, 2, L.cushionB);
+    R(c, 70, 644, 2, 18, P.metal);
+    R(c, 102, 644, 2, 18, P.metal);
+  }
+  if (end - 40 > door + 90) {
+    blk(c, end - 54, 640, 14, 8, 16, L.cushionA, L.beanD, P);
+    blk(c, end - 36, 640, 14, 8, 16, P.metal, P.cabD, P);
+  }
+  plant(c, 6, 104, P);
+  plant(c, end - 22, 104, P);
 }
 
 /** Where the lounge's moving parts are, so scene.ts can animate them over the background. */
@@ -426,14 +589,14 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
      the projects and the clock now */
   R(c, 0, 0, W, WALL, P.wall);
   R(c, 0, 0, W, 4, P.wallTop);
-  plant(c, 6, 104, P);
-  plant(c, 6, 19 * 32 + 4, P);
   if (floor.rooms.length) drawRooms(c, floor, theme, P);
-  /* the work area: a desk for each agent working at one, and one free desk for the next */
-  floorLabel(c, 'Work area', 2 * 32, LABEL_Y, P);
+  /* the work area: its furniture, then a desk for each agent working at one, and one free desk */
+  drawWorkArea(c, floor, theme, P);
+  // The label sits on the carpet's front edge, clear of the shelves along the back.
+  floorLabel(c, 'Work area', 60, 586, P);
   for (const index of floor.desks) {
     const dk = deskTile(index);
-    desk(c, dk.x * 32, dk.y * 32, theme, P);
+    desk(c, dk.x * 32, dk.y * 32, theme, P, true, index);
   }
   /* plants by the right hand wall, or by the glass wall in front of the rooms */
   const edge = (floor.wall ?? W) - 58;

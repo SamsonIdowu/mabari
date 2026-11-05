@@ -121,7 +121,7 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
   // An agent file isn't an agent: it isn't counted or tagged like one.
   await expect(page.locator('#officeClock')).toContainText('11 agents');
 
-  // The idle agent walks to the lounge, to the right of the desks, beside the agent file.
+  // The idle agent walks out of the work area to the lounge, where the agent file rests too.
   const napper = page.locator('.tag .nt', { hasText: 'Napper' });
   const desks = page.locator('.tag .nt', { hasText: 'Ledger' });
   await expect
@@ -131,7 +131,8 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
         resting.boundingBox(),
         desks.boundingBox(),
       ]);
-      return !!mine && !!file && !!desk && mine.x > desk.x + 300 && Math.abs(mine.x - file.x) < 120;
+      // Both are out of the work area, roaming the open floor round the lounge.
+      return !!mine && !!file && !!desk && mine.x > desk.x + 300 && file.x > desk.x + 300;
     })
     .toBe(true);
   expect((await world(page)).height).toBe(704);

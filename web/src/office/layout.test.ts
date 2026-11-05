@@ -8,6 +8,7 @@ import {
   deskTile,
   desksUpTo,
   floorFor,
+  inWorkArea,
   loungeArea,
   gridColumns,
   LOUNGE_PITCH,
@@ -19,6 +20,8 @@ import {
   seatingFor,
   spotFor,
   type Point,
+  workDoorway,
+  workWalls,
 } from './layout.ts';
 
 const agent = (overrides: Partial<LiveAgent> = {}) =>
@@ -169,11 +172,12 @@ describe('floorFor', () => {
     });
     expect(floorFor(desksUpTo(0), 40).width).toBeGreaterThan(floorFor(desksUpTo(0), 10).width);
     expect(floorFor(desksUpTo(0), 1).width).toBeLessThan(floorFor(desksUpTo(0), 6).width);
-    // Its open floor, where residents stroll, is inside it.
+    // Resting agents roam the open floor outside the work area's walls, the lounge included.
     const floor = floorFor(desksUpTo(4), 7);
     const area = loungeArea(floor)!;
-    expect(area.x0).toBeGreaterThan(floor.lounge!.x);
-    expect(area.x1).toBeLessThan(floor.lounge!.x + 2 * LOUNGE_PITCH.x);
+    expect(area.x0).toBeGreaterThan(workWalls(floor).right);
+    expect(area.x0).toBeLessThanOrEqual(floor.lounge!.x + 22);
+    expect(area.x1).toBeGreaterThan(floor.lounge!.x + LOUNGE_PITCH.x);
     expect(area.y1).toBeGreaterThan(area.y0);
     expect(loungeArea(BASE_FLOOR)).toBeNull();
   });
@@ -304,13 +308,27 @@ describe('pathTo', () => {
     ]);
   });
 
+  it('leaves and enters the work area through its doorway', () => {
+    const floor = floorFor(desksUpTo(16), 3, ['meeting']);
+    const way = workDoorway(floor);
+    const desk = deskSeat({ desk: 5 });
+    const lounge = loungeSeat(floor, 0);
+    expect(inWorkArea(floor)(desk)).toBe(true);
+    expect(inWorkArea(floor)(lounge)).toBe(false);
+    const out = pathTo(desk, lounge, floor);
+    expect(out.slice(0, 3)).toEqual([{ x: desk.x, y: way.in.y }, way.in, way.out]);
+    expect(out.at(-1)).toEqual(lounge);
+    const back = pathTo(lounge, desk, floor);
+    expect(back).toContainEqual(way.out);
+    expect(back).toContainEqual(way.in);
+    expect(back.at(-1)).toEqual(desk);
+  });
+
   it('uses the gap in the glass wall to reach a room', () => {
     const floor = floorFor(desksUpTo(16), 0, ['meeting']);
     const wall = floor.wall!;
-    expect(pathTo({ x: 300, y: 200 }, { x: wall + 120, y: 362 }, floor)[0]).toEqual({
-      x: wall - 16,
-      y: 200,
-    });
+    const from = { x: workWalls(floor).right + 40, y: 200 };
+    expect(pathTo(from, { x: wall + 120, y: 362 }, floor)[0]).toEqual({ x: wall - 16, y: 200 });
     // Between rooms it stays on their side of the wall.
     expect(pathTo({ x: wall + 70, y: 136 }, { x: wall + 120, y: 520 }, floor)).toEqual([
       { x: wall + 70, y: 520 },
@@ -318,7 +336,7 @@ describe('pathTo', () => {
     ]);
   });
 
-  it('has no wall to go round when no room is open', () => {
-    expect(pathTo({ x: 300, y: 200 }, { x: 600, y: 400 })[0]).toEqual({ x: 300, y: 200 });
+  it('walks straight inside the work area', () => {
+    expect(pathTo({ x: 300, y: 200 }, { x: 400, y: 400 })[0]).toEqual({ x: 300, y: 200 });
   });
 });

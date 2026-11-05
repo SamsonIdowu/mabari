@@ -3,7 +3,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
-import { blk, buildBg, ell, loungeProps, PAL, R, RACKS, rrect } from './background.ts';
+import { blk, buildBg, ell, loungeProps, PAL, R, RACKS, rrect, WORK_RACKS } from './background.ts';
 import {
   clampView,
   homeView,
@@ -859,6 +859,14 @@ export class OfficeScene {
 
   private drawServerRoom(walkers: Walker[], t: number): void {
     const c = this.context;
+    // The work area's racks blink slowly, a little quicker while anyone is running something.
+    const busy = walkers.some((item) => item.state === 'running' && !item.path.length);
+    WORK_RACKS.forEach((rx, ri) => {
+      for (let slot = 0; slot < 5; slot++) {
+        const on = Math.sin(t / (busy ? 260 : 900) + ri * 1.7 + slot * 2.3) > 0.2;
+        R(c, rx + 19, 63 + slot * 8, 3, 3, on ? (slot % 2 ? '#3FB97A' : '#5B9BF0') : '#1A1B20');
+      }
+    });
     const running = walkers.some((item) => item.state === 'running' && !item.path.length);
     if (!this.floor.rooms.includes('server')) return;
     const shift = this.floor.shift;

@@ -51,6 +51,8 @@ export function gridColumns(desks: number): number {
 
 /** How far apart lounge seats are. */
 export const LOUNGE_PITCH = { x: 144, y: 108 };
+/** The narrowest the work area gets: three columns of desks, so its furniture fits. */
+const WORK_MIN_END = (DeskX + 2 * 5) * TILE + 68;
 /** The strip at the lounge's right end with the lamp, the bookshelf and a big plant. */
 export const LOUNGE_NOOK = 72;
 /** The lounge is drawn at least this many rows deep, so its furniture fits. */
@@ -88,8 +90,10 @@ export interface Floor {
   wall: number | null;
   /** The rooms in use, which are the only ones drawn. */
   rooms: Room[];
-  /** The door and Mabari's reception desk, below the middle of the desk grid. */
+  /** The door and Mabari's reception desk, below the middle of the work area. */
   door: number;
+  /** Where the work area ends on the right: its desks, or its smallest size for its furniture. */
+  workEnd: number;
   /**
    * The desks drawn: those someone works at now, and one free desk. An empty desk isn't on the
    * floor, except the one free desk, which the next agent takes; then another appears.
@@ -135,7 +139,8 @@ export function floorFor(
   // grow as agents step out to the lounge and back.
   const columns = Math.max(...[...taken, free].map(columnOf)) + 1;
   const gridStart = DeskX * TILE;
-  const gridEnd = (DeskX + (columns - 1) * 5) * TILE + 68;
+  // The work area keeps room for its shelves and servers, however few desks it has.
+  const gridEnd = Math.max((DeskX + (columns - 1) * 5) * TILE + 68, WORK_MIN_END);
   // From the end of the grid's last desk, each area takes its own stretch of floor.
   let cursor = gridEnd + 56;
   let lounge: Floor['lounge'] = null;
@@ -165,6 +170,7 @@ export function floorFor(
     wall,
     rooms,
     door: Math.round((gridStart + gridEnd) / 2),
+    workEnd: gridEnd,
     desks,
     free,
     lounge,
@@ -182,9 +188,15 @@ export const BASE_FLOOR = floorFor();
 export function loungeArea(
   floor: Floor,
 ): { x0: number; y0: number; x1: number; y1: number } | null {
-  const box = loungeBox(floor);
-  if (!box) return null;
-  return { x0: box.x0 + 22, y0: box.y0 + 52, x1: box.x1 - LOUNGE_NOOK - 16, y1: box.y1 - 14 };
+  if (!floor.lounge) return null;
+  // The lounge is open: resting agents roam the floor outside the work area's walls, from
+  // its wall to the rooms or the office's end, and the lobby by the door.
+  return {
+    x0: workWalls(floor).right + 30,
+    y0: LABEL_Y + 64,
+    x1: (floor.wall ?? floor.width) - 30,
+    y1: floor.height - 70,
+  };
 }
 
 /**
@@ -352,6 +364,46 @@ export function spotFor(agent: Seated, number: number, seating: Seating): Point 
 
 /** The route to a spot: along a corridor, and through the gap in the wall for the rooms. */
 export function pathTo(from: Point, to: Point, floor: Floor = BASE_FLOOR): Point[] {
+  if (Math.abs(from.x - to.x) < 1 && Math.abs(from.y - to.y) < 1) return [];
+  // The work area is enclosed: going in or out means going through its doorway.
+  const inside = inWorkArea(floor);
+  if (inside(from) !== inside(to)) {
+    const way = workDoorway(floor);
+    const [first, second] = inside(from) ? [way.in, way.out] : [way.out, way.in];
+    const there = inside(from)
+      ? [{ x: from.x, y: way.in.y }, first, second]
+      : [...openPath(from, first, floor), second, { x: to.x, y: way.in.y }];
+    const rest = inside(from) ? openPath(second, to, floor) : [to];
+    return [...there, ...rest].filter(
+      (point, index, all) =>
+        index === 0 ||
+        Math.abs(point.x - all[index - 1]!.x) + Math.abs(point.y - all[index - 1]!.y) > 0.5,
+    );
+  }
+  return openPath(from, to, floor);
+}
+
+/** The work area's walls: a partition on its right and along its front, under the back wall. */
+export function workWalls(floor: Floor): { right: number; front: number } {
+  return { right: floor.workEnd + 32, front: 600 };
+}
+
+/** The doorway in the work area's front wall, facing Mabari's desk: a step inside and outside. */
+export function workDoorway(floor: Floor): { in: Point; out: Point } {
+  const x = floor.door;
+  return { in: { x, y: 580 }, out: { x, y: 626 } };
+}
+
+/** Whether a point is inside the work area's walls. */
+export const inWorkArea =
+  (floor: Floor) =>
+  (point: Point): boolean => {
+    const walls = workWalls(floor);
+    return point.x < walls.right && point.y < walls.front;
+  };
+
+/** The route between two points on the same side of the work area's walls. */
+function openPath(from: Point, to: Point, floor: Floor): Point[] {
   if (Math.abs(from.x - to.x) < 1 && Math.abs(from.y - to.y) < 1) return [];
   const wall = floor.wall ?? Infinity;
   const roomSide = (point: Point) => point.x > wall;

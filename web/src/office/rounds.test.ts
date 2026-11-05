@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import type { LiveAgent } from '../gen/models.ts';
-import { nextVisit, onRound, projectUpdate, REPORT_GAP_MS, worthSaying } from './rounds.ts';
+import {
+  nextVisit,
+  onRound,
+  projectUpdate,
+  REPORT_GAP_MS,
+  roundDone,
+  worthSaying,
+} from './rounds.ts';
 
 const agent = (overrides: Partial<LiveAgent>) =>
   ({
@@ -51,5 +58,15 @@ describe("Mabari's rounds", () => {
     expect(worthSaying('a', { text: 'a', at: 0 }, REPORT_GAP_MS * 9)).toBe(false);
     expect(worthSaying('b', { text: 'a', at: 0 }, REPORT_GAP_MS - 1)).toBe(false);
     expect(worthSaying('b', { text: 'a', at: 0 }, REPORT_GAP_MS)).toBe(true);
+  });
+
+  it('rests after a whole round, and after each visit when only one agent works', () => {
+    const round = onRound(agents);
+    expect(roundDone(round, null, round[0]!)).toBe(false);
+    expect(roundDone(round, 'docs', round[1]!)).toBe(false);
+    expect(roundDone(round, 'none', round[0]!)).toBe(true);
+    const alone = [round[0]!];
+    expect(roundDone(alone, null, alone[0]!)).toBe(false);
+    expect(roundDone(alone, 'docs', alone[0]!)).toBe(true);
   });
 });

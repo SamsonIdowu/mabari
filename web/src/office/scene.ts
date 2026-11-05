@@ -43,7 +43,18 @@ import {
 } from './layout.ts';
 import { useLayers } from './layers.ts';
 import { teamLinks } from './links.ts';
-import { lastSaid, nextVisit, onRound, projectUpdate, VISIT_MS, worthSaying } from './rounds.ts';
+import {
+  BETWEEN_MS,
+  lastSaid,
+  MABARI_PACE,
+  nextVisit,
+  onRound,
+  projectUpdate,
+  ROUND_REST_MS,
+  roundDone,
+  VISIT_MS,
+  worthSaying,
+} from './rounds.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 import { useVee } from './veeStore.ts';
 
@@ -63,6 +74,8 @@ export type Walker = LiveAgent & {
   goal?: Point;
   /** When a resting agent next strolls to another spot in the lounge. */
   strollAt?: number;
+  /** True while it is on one of those strolls, which is slower than walking to work. */
+  strolling?: boolean;
 };
 
 /** An agent definition resting in the lounge: drawn like an agent, but not one. */
@@ -177,6 +190,8 @@ export class OfficeScene {
     placed: false,
     visiting: null as string | null,
     until: 0,
+    /** Until when it stands still: between visits, or resting at its desk after a round. */
+    restUntil: 0,
     last: null as string | null,
   };
   /** Mabari's label, drawn over the floor in overlays.ts, and whether it's at its desk. */
@@ -470,19 +485,27 @@ export class OfficeScene {
       ),
       ...this.resting.map((item) => item.walker),
     ];
+    // Only a few stroll at once, so the lounge is alive but never busy.
+    let strolling = lounging.filter((walker) => walker.strolling && walker.path.length).length;
+    const most = lounging.length > 6 ? 2 : 1;
     for (const walker of lounging) {
       if (walker.path.length) continue;
+      walker.strolling = false;
       if (!walker.strollAt) {
-        walker.strollAt = now + 2500 + ((walker.n * 977) % 6000);
+        walker.strollAt = now + 6000 + ((walker.n * 977) % 14000);
         continue;
       }
-      if (now < walker.strollAt) continue;
+      if (now < walker.strollAt || strolling >= most) continue;
+      // A short stroll from where it stands, to another spot on the rug.
+      const reach = 70;
       const spot = {
-        x: area.x0 + Math.random() * (area.x1 - area.x0),
-        y: area.y0 + Math.random() * (area.y1 - area.y0),
+        x: Math.min(area.x1, Math.max(area.x0, walker.x + (Math.random() * 2 - 1) * reach)),
+        y: Math.min(area.y1, Math.max(area.y0, walker.y + (Math.random() * 2 - 1) * reach * 0.6)),
       };
       walker.path = [spot];
-      walker.strollAt = now + 5000 + Math.random() * 7000;
+      walker.strolling = true;
+      walker.strollAt = now + 14000 + Math.random() * 16000;
+      strolling++;
     }
   }
 
@@ -506,7 +529,7 @@ export class OfficeScene {
       const dx = target.x - m.x;
       const dy = target.y - m.y;
       const distance = Math.hypot(dx, dy);
-      const step = 0.08 * dt;
+      const step = MABARI_PACE * dt;
       m.walk += dt;
       m.dir = Math.abs(dx) > 1 ? Math.sign(dx) : m.dir;
       if (teleport || distance <= step) {
@@ -541,11 +564,20 @@ export class OfficeScene {
         }
       }
       m.visiting = null;
+      m.restUntil = now + BETWEEN_MS;
     }
+    if (now < m.restUntil) return;
     const next = nextVisit(round, m.last);
     const walker = next ? this.walkers.get(next.id) : undefined;
     if (!next || !walker || walker.path.length) {
       if (!next && Math.hypot(m.x - home.x, m.y - home.y) > 2) m.path = pathTo(m, home, floor);
+      return;
+    }
+    // After a whole round it goes back to its desk and rests a while before the next.
+    if (roundDone(round, m.last, next)) {
+      m.last = null;
+      m.restUntil = now + ROUND_REST_MS;
+      if (Math.hypot(m.x - home.x, m.y - home.y) > 2) m.path = pathTo(m, home, floor);
       return;
     }
     // It stands beside the agent's chair, in the gap before the next desk.
@@ -585,7 +617,8 @@ export class OfficeScene {
       const dx = target.x - walker.x;
       const dy = target.y - walker.y;
       const distance = Math.hypot(dx, dy);
-      walker.spd = Math.min(0.12, walker.spd + 0.0005 * dt);
+      // A stroll in the lounge is slower than walking to work.
+      walker.spd = Math.min(walker.strolling ? 0.04 : 0.12, walker.spd + 0.0005 * dt);
       const step = walker.spd * dt;
       walker.walk += dt;
       walker.dir = Math.abs(dx) > 1 ? (dx > 0 ? 1 : -1) : 0;

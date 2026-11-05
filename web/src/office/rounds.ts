@@ -9,8 +9,19 @@ import { STATE_LOCATIONS } from './layout.ts';
 
 type Visitable = Pick<LiveAgent, 'id' | 'projectId' | 'desk' | 'state' | 'leaving' | 'working'>;
 
+/**
+ * The pace of the rounds: lively enough to notice, calm enough not to distract. Mabari walks at
+ * a stroll, stays a while by each desk, pauses before the next, and after a whole round goes
+ * back to its desk for a rest.
+ */
 /** How long Mabari stays by an agent's desk. */
-export const VISIT_MS = 3500;
+export const VISIT_MS = 6000;
+/** How long it stands still between two visits. */
+export const BETWEEN_MS = 1500;
+/** How long it rests at its desk after a whole round. */
+export const ROUND_REST_MS = 25 * 1000;
+/** How fast it walks, in world pixels a millisecond: a stroll. */
+export const MABARI_PACE = 0.06;
 /** The least time between two updates about the same project. */
 export const REPORT_GAP_MS = 2 * 60 * 1000;
 
@@ -32,6 +43,13 @@ export function nextVisit<T extends Visitable>(round: T[], last: string | null):
   if (!round.length) return null;
   const at = round.findIndex((agent) => agent.id === last);
   return round[(at + 1) % round.length]!;
+}
+
+/** Whether visiting `next` after `last` starts the round over, so a rest is due first. */
+export function roundDone<T extends Visitable>(round: T[], last: string | null, next: T): boolean {
+  if (last === null) return false;
+  if (round.length === 1) return last === next.id;
+  return next.id === round[0]!.id && last !== next.id;
 }
 
 /** What Mabari says about a project after checking in there, from the server's numbers. */

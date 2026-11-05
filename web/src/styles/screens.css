@@ -1127,6 +1127,16 @@
   gap: 14px;
   padding-right: 4px;
 }
+/* A list with more below it fades out at the bottom, rather than cutting a row in half. */
+.eqcard .scroll.fades {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+/* "+n more": says how many rows of a card's list are out of view. */
+.morerows {
+  align-self: flex-start;
+  flex: none;
+}
 .acchead {
   display: flex;
   align-items: center;

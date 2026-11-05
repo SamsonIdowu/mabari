@@ -491,3 +491,61 @@ for (const extra of [0, 9]) {
     expect(await page.locator('#stage .bub:visible').count()).toBeGreaterThan(2);
   });
 }
+
+test('a long list on a project card says how many rows are out of view, and fades the cut one', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  for (let n = 0; n < 9; n++) {
+    await request.post('/api/agents', {
+      data: {
+        name: `Extra${n}`,
+        account: 'claude_code',
+        model: 'claude-sonnet-4-5',
+        task: 'Work through the backlog',
+        projectId: '',
+        folder: '~/code/extra',
+        dailyCostCap: 0,
+        allowedTools: [],
+      },
+    });
+  }
+  await page.goto('/#projects');
+  const card = page.locator('article', { hasText: 'All projects' }).first();
+  const list = card.getByLabel('Agents on every project');
+  const more = card.getByRole('button', { name: /more agents, show them/ });
+  await expect(more).toBeVisible();
+  // The rows in view and the rows the cue counts make up the whole list.
+  const rows = await list.evaluate((box) => {
+    const edge = box.getBoundingClientRect().bottom;
+    const all = [...box.querySelectorAll(':scope > .subrow')].map((row) =>
+      row.getBoundingClientRect(),
+    );
+    return { total: all.length, out: all.filter((row) => row.top >= edge - 1).length };
+  });
+  expect(rows.total).toBe(19);
+  expect(await more.textContent()).toBe(`+${rows.out} more`);
+  // A row cut by the edge fades out, so it reads as the start of more.
+  await expect(list).toHaveClass(/fades/);
+  // At the end of the list there is nothing more to say.
+  await list.evaluate((box) => box.scrollTo(0, box.scrollHeight));
+  await expect(more).toBeHidden();
+  await expect(list).not.toHaveClass(/fades/);
+});
+
+test('a completed project counts who worked on it, and the office menu says it is completed', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#projects');
+  const landing = page.locator('article', { hasText: 'Landing page' });
+  await expect(landing.locator('.cnt', { hasText: 'Agents involved' })).toContainText('3');
+  // On the floor nobody is on it now, so the Project menu does not claim "0 agents".
+  await page.goto('/#office');
+  await page.getByRole('button', { name: /^Project/ }).click();
+  const item = page.getByRole('menuitemradio', { name: /Landing page/ });
+  await expect(item).toContainText('completed');
+  await expect(item).not.toContainText('0 agents');
+});

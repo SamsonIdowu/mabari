@@ -129,7 +129,11 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
             <span className="pdot" style={{ background: project.color }} />
             <span style={{ flex: 1 }}>{project.name}</span>
             <span className="help num">
-              {count} agent{count === 1 ? '' : 's'}
+              {/* A completed project's agents have moved on: its card on the Projects page counts
+                  who worked on it, so here it says it is done rather than "0 agents". */}
+              {'status' in project && project.status === 'done' && !count
+                ? 'completed'
+                : `${count} agent${count === 1 ? '' : 's'}`}
             </span>
           </button>
         );

@@ -88,7 +88,9 @@ func (a *api) loadDemo(w http.ResponseWriter, _ *http.Request) {
 		internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	// endsAt is when the demo turns itself off, so what the page tells people is the timer's own
+	// word (NEW-1). Loading the demo again starts the time afresh.
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "endsAt": a.engine.Snapshot().DemoEndsAt})
 }
 
 // stopDemo clears the demo office, so only agents from real connections appear.

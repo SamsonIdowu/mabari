@@ -122,6 +122,29 @@ func TestAnsweringTheDemosQuestionThroughTheAPI(t *testing.T) {
 	}
 }
 
+// Loading the demo says when it ends, and that is the time the snapshot, and so the banner,
+// shows: ten minutes from now (NEW-1).
+func TestLoadingTheDemoSaysWhenItEnds(t *testing.T) {
+	office := newOffice(t)
+	before := time.Now()
+	response := office.do(t, http.MethodPost, "/api/demo/load", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("load = %d", response.Code)
+	}
+	loaded := decode[struct {
+		OK     bool  `json:"ok"`
+		EndsAt int64 `json:"endsAt"`
+	}](t, response)
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	if !loaded.OK || loaded.EndsAt == 0 || loaded.EndsAt != snapshot.DemoEndsAt || !snapshot.Demo {
+		t.Fatalf("load said it ends at %d, the snapshot at %d (demo %v)", loaded.EndsAt, snapshot.DemoEndsAt, snapshot.Demo)
+	}
+	left := time.UnixMilli(loaded.EndsAt).Sub(before)
+	if left < 9*time.Minute+55*time.Second || left > 10*time.Minute+5*time.Second {
+		t.Errorf("the demo ends in %v, and the page says ten minutes", left)
+	}
+}
+
 // The planner names a project from accented and non-Latin letters (SETUP-11), the name fits what
 // starting a project accepts, and a name with no plain letters still gets a folder.
 func TestThePlannerKeepsAccentsAndOtherScripts(t *testing.T) {

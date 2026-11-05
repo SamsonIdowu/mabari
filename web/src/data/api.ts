@@ -330,7 +330,7 @@ export const api = {
       return info;
     }),
   snapshot: () => request<Snapshot>('/api/snapshot'),
-  loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
+  loadDemo: () => send<{ ok: boolean; endsAt?: number }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),
   loginService: () => request<LoginStatus>('/api/service'),
   setLoginService: (on: boolean) => send<LoginStatus>('POST', '/api/service', { on }),

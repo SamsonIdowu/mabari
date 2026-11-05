@@ -210,7 +210,9 @@ function PickProject({ reply }: { reply: VeeReply }) {
             {project.name}
           </button>
         ))}
-        <button type="button" className="btn sm ghost" onClick={() => void hear(target, 'any')}>
+        {/* A choice like the projects beside it, with a grey dot for "no project in particular". */}
+        <button type="button" className="btn sm" onClick={() => void hear(target, 'any')}>
+          <span className="pdot" style={{ background: '#8E8E93' }} />
           Any free agent
         </button>
       </p>

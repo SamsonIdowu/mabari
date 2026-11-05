@@ -625,3 +625,38 @@ test('a finished agent has nothing to interrupt, and can still be given work or 
   await expect(page.getByText('Rune stopped and left the office')).toBeVisible();
   await expect(panel).toBeHidden();
 });
+
+test('"Any free agent" in the project question looks like the project choices beside it', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#home');
+  if (!(await page.locator('#hcForm').isVisible())) await page.locator('#hcType').click();
+  const box = page.getByLabel('Message Mabari');
+  await box.fill('fix it');
+  await box.press('Enter');
+  const choices = page.locator('.pickproj');
+  await expect(choices.getByRole('button', { name: 'Any free agent' })).toBeVisible();
+
+  // The same look as the others: its own outline and fill, not bare text.
+  const look = (name: string | RegExp) =>
+    choices
+      .getByRole('button', { name })
+      .first()
+      .evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          border: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+          background: style.backgroundColor,
+          radius: style.borderTopLeftRadius,
+          height: style.height,
+          dot: button.querySelector('.pdot') !== null,
+        };
+      });
+  const project = await look(/^(?!Any free agent)/);
+  const any = await look('Any free agent');
+  expect(any).toEqual(project);
+  expect(any.border).not.toContain('0px');
+  expect(any.background).not.toBe('rgba(0, 0, 0, 0)');
+});

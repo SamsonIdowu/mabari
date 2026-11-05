@@ -790,8 +790,15 @@ func (s *Simulator) Decide(agent *models.LiveAgent, approval models.Approval) {
 	s.engine.Toast(agent.Name + " is continuing")
 }
 
-// Instruct delivers a message, or holds it for an active Claude agent's next checkpoint.
+// Instruct delivers a message, or holds it. An agent waiting on you, for an approval or an answer,
+// can't read anything until you've decided, so whatever it runs on the message waits and is
+// delivered the moment it carries on (FIRST-2): it isn't told "Got it" on its behalf. An active
+// Claude agent also takes it at its next checkpoint.
 func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
+	if agent.State == models.StateApproval || agent.Asking() {
+		s.engine.Queue(agent, text)
+		return
+	}
 	if agent.Provider == models.ProviderClaude && agent.State.Active() {
 		s.engine.Queue(agent, text)
 		// The step it is on ends within a couple of ticks, so the instruction lands in seconds.

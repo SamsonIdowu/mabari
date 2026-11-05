@@ -656,11 +656,36 @@ func Passed(agent *models.LiveAgent, where Where, agents []*models.LiveAgent, no
 	}
 	text := "Sent to " + agent.Name + ". I'll tell you what it says."
 	if where.Queued {
-		text = "Passed it to " + agent.Name + ". It's mid step, so it gets it at its next checkpoint. I'll tell you what it says."
+		text = "Passed it to " + agent.Name + ". " + QueuedBecause(agent) + " I'll tell you what it says."
 	}
 	reply := office.reply(text, "nod", KindPlain)
 	reply.Relay = relayFor(agent, where)
 	return reply
+}
+
+// QueuedBecause says why a message waits for an agent, and when it arrives: an agent waiting on
+// you can't read it until you've decided or answered, and a busy one reads it at its next
+// checkpoint.
+func QueuedBecause(agent *models.LiveAgent) string {
+	switch {
+	case agent.Asking():
+		return agent.Name + " is waiting for your answer, so it gets it once you've answered."
+	case agent.State == models.StateApproval:
+		return agent.Name + " is waiting for your approval, so it gets it once you decide."
+	default:
+		return "It's mid step, so it gets it at its next checkpoint."
+	}
+}
+
+// noAgentFree is the reply when nobody can take a task. It says how to get an agent, which
+// depends on whether anyone is in the office at all.
+func noAgentFree(agents []*models.LiveAgent) string {
+	if len(agents) == 0 {
+		return "There's no agent free to take that yet. Open Accounts to connect Claude Code or sign in with ChatGPT, " +
+			"then choose New agent on the Agents page to start one, and send this again."
+	}
+	return "There's no agent free to take that yet. Choose New agent on the Agents page to start another, " +
+		"and send this again."
 }
 
 // Dispatched is what Mabari says the moment the dispatcher has picked an agent: who got it, which
@@ -668,7 +693,7 @@ func Passed(agent *models.LiveAgent, where Where, agents []*models.LiveAgent, no
 func Dispatched(agent *models.LiveAgent, reason string, where Where, agents []*models.LiveAgent, now time.Time) Reply {
 	office := look(agents, now)
 	if agent == nil {
-		return office.reply("There's no agent free to take that yet. Start one first.", "shrug", KindPlain)
+		return office.reply(noAgentFree(agents), "shrug", KindPlain)
 	}
 	if where.InstructionID == "" {
 		return office.unreachable(agent)

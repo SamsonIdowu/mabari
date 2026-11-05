@@ -419,7 +419,7 @@ func SentToProject(sent ProjectSent, agents []*models.LiveAgent, now time.Time) 
 	default:
 		text := "On it, sent to " + sent.Agent.Name + " (" + models.AIName(sent.Agent) + ") in " + project.Name + "." + why
 		if sent.Where.Queued {
-			text += " It's mid step, so it gets it at its next checkpoint."
+			text += " " + QueuedBecause(sent.Agent)
 		}
 		reply = office.reply(text+" I'll read you the reply the moment it lands.", "nod", KindPlain)
 		reply.Relay = relayFor(sent.Agent, sent.Where)

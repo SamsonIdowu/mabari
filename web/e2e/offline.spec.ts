@@ -38,7 +38,7 @@ test('a setting that cannot be saved says it was not saved', async ({ page }) =>
   );
 });
 
-test('an approval that cannot be sent says it was not sent, and is still waiting', async ({
+test('an approval that cannot be sent says it may not have been sent, and where to check', async ({
   page,
 }) => {
   await page.goto('/#office');
@@ -52,7 +52,7 @@ test('an approval that cannot be sent says it was not sent, and is still waiting
   await cutOff(page);
   await dialog.getByRole('button', { name: 'Allow once' }).click();
   await expect(page.locator('.toast').first()).toHaveText(
-    "Can't reach Mabari. Your decision was not sent. The approval is still waiting.",
+    "Can't reach Mabari. Your decision may not have been sent. When it's back, check the Agents page to see if the approval is still waiting.",
   );
   await expect(page.locator('.toast')).not.toContainText('Failed to fetch');
   // The decision never arrived, so Atlas is still waiting for it.

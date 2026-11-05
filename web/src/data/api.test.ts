@@ -16,10 +16,10 @@ describe('a call that never reaches Mabari', () => {
     );
   });
 
-  it('says an approval was not sent, and is still waiting', async () => {
+  it('says an approval may not have been sent, and where to check, not that it is still waiting', async () => {
     offline();
     await expect(api.decide('ap-1', 'allowed')).rejects.toThrow(
-      "Can't reach Mabari. Your decision was not sent. The approval is still waiting.",
+      "Can't reach Mabari. Your decision may not have been sent. When it's back, check the Agents page to see if the approval is still waiting.",
     );
   });
 
@@ -64,10 +64,25 @@ describe('a call that never reaches Mabari', () => {
   });
 });
 
+// REV-3: when the call is cut off the page cannot know whether the server got it. If only the reply
+// was lost, the decision was made, so the page must not say the approval is still waiting.
+describe('what a lost approval decision claims', () => {
+  it('claims nothing it cannot know', () => {
+    const said = unreachableMessage('/api/approvals/ap-1/decision', 'POST');
+    expect(said).toContain('may not have been sent');
+    expect(said).not.toContain('was not sent');
+    expect(said).not.toContain('The approval is still waiting');
+    expect(said).toContain('check the Agents page');
+    expect(said).toContain('if the approval is still waiting');
+  });
+});
+
 describe('unreachableMessage', () => {
   it('picks the sentence from what was being done', () => {
     expect(unreachableMessage('/api/settings', 'PATCH')).toContain('change was not saved');
-    expect(unreachableMessage('/api/approvals/ap-1/decision', 'POST')).toContain('not sent');
+    expect(unreachableMessage('/api/approvals/ap-1/decision', 'POST')).toContain(
+      'may not have been sent',
+    );
     expect(unreachableMessage('/api/vee', 'POST')).toContain('message was not sent');
     expect(unreachableMessage('/api/snapshot')).toBe("Can't reach Mabari.");
   });

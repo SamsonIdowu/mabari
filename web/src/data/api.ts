@@ -44,12 +44,14 @@ export const SIGN_IN_EVENT = 'mabari:sign-in';
 /**
  * What a call says when it never got an answer. The browser's own text, such as "Failed to
  * fetch", means nothing to most people and doesn't say whether the action happened. A decision
- * on an approval says it was not sent, and the approval stays waiting.
+ * on an approval only says it may not have been sent: the call can reach the server and the answer
+ * be lost on the way back, so the page can't claim the approval is still waiting. It says where to
+ * look once Mabari is back (REV-3).
  */
 export function unreachableMessage(path: string, method = 'GET'): string {
   if (method === 'GET') return "Can't reach Mabari.";
   if (path.startsWith('/api/approvals/')) {
-    return "Can't reach Mabari. Your decision was not sent. The approval is still waiting.";
+    return "Can't reach Mabari. Your decision may not have been sent. When it's back, check the Agents page to see if the approval is still waiting.";
   }
   if (
     path === '/api/vee' ||

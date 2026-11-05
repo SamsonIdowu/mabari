@@ -293,8 +293,18 @@ func agentLibrary(ctx context.Context, cfg config.Config, o *office) *agentdefs.
 		return nil
 	}
 	home, _ := os.UserHomeDir()
+	// Codex keeps its home in CODEX_HOME, or ~/.codex.
+	codexHome := os.Getenv("CODEX_HOME")
+	if codexHome == "" && home != "" {
+		codexHome = filepath.Join(home, ".codex")
+	}
+	codexAgents := ""
+	if codexHome != "" {
+		codexAgents = filepath.Join(codexHome, "agents")
+	}
 	library := agentdefs.New(agentdefs.Folders{
 		Account: filepath.Join(dir, "agents"),
+		Codex:   codexAgents,
 		State:   filepath.Join(cfg.DataDir, "agents-state.json"),
 		Home:    home,
 	})

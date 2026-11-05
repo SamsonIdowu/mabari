@@ -637,15 +637,32 @@ export const DefAccount: DefScope = "account";
  */
 export const DefProject: DefScope = "project";
 /**
- * AgentDef is a reusable agent, read from a Markdown file with front matter. The file is the
- * source of truth; it belongs to this computer, never to a connected account. Runs and Enabled
- * come from Mabari's own state file beside it.
+ * DefKind is which AI's format an agent file is in.
+ */
+export type DefKind = string;
+/**
+ * DefClaude is a Claude Code subagent: Markdown with front matter, in .claude/agents.
+ */
+export const DefClaude: DefKind = "claude";
+/**
+ * DefCodex is a Codex custom agent: TOML, in .codex/agents.
+ */
+export const DefCodex: DefKind = "codex";
+/**
+ * AgentDef is a reusable agent, read from a Claude Code Markdown file or a Codex TOML file. The
+ * file is the source of truth and lives on this computer: in the Claude or Codex folder for the
+ * whole account, or in a project's folder. Runs and Enabled come from Mabari's own state file.
  */
 export interface AgentDef {
   /**
-   * ID is stable across restarts: the scope, the project for a project agent, and the name.
+   * ID is stable across restarts: the kind, the scope, the project for a project agent, and the
+   * name.
    */
   id: string;
+  /**
+   * Kind is the AI whose format the file is in. Empty means Claude.
+   */
+  kind: DefKind;
   name: string;
   description: string;
   scope: DefScope;

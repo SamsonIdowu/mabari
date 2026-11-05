@@ -187,3 +187,30 @@ test('Home asks Mabari to create or improve an agent', async ({ page }) => {
   await expect(dialog.locator('.mbnote')).toContainText('I drafted code-reviewer');
   await expect(page).toHaveURL(/#builder$/);
 });
+
+test('an agent can be saved to the Codex account as a TOML file', async ({ page }) => {
+  const { readFileSync } = await import('node:fs');
+  await builder(page);
+  await page.getByRole('button', { name: 'Build an agent' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Build an agent' });
+  await dialog.getByText('A Codex agent, as TOML').click();
+  await expect(dialog.getByText('Codex account')).toBeVisible();
+  await expect(dialog.locator('.toolgrid')).toHaveCount(0);
+  await dialog.getByLabel('Name').fill('codex-reviewer');
+  await dialog.getByLabel('When should Codex use it?').fill('Use to review pull requests');
+  await dialog.getByLabel('Model').selectOption('gpt-5-codex');
+  await dialog.getByLabel('Instructions').fill('Review the change. Never edit files.');
+  await expect(dialog.locator('#dfPath')).toHaveText('~/.codex/agents/codex-reviewer.toml');
+  await expect(dialog.locator('#dfMd')).toContainText('developer_instructions = """');
+  await dialog.getByRole('button', { name: 'Save agent' }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: /^Codex account/ }).click();
+  const tile = page.locator('.defcard', { hasText: 'Codex Reviewer' });
+  await expect(tile).toContainText('Codex account · every project');
+  const file = readFileSync(
+    `${process.env.MABARI_E2E_CODEX_DIR}/agents/codex-reviewer.toml`,
+    'utf8',
+  );
+  expect(file).toContain('name = "codex-reviewer"');
+  expect(file).toContain('model = "gpt-5-codex"');
+});

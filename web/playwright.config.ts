@@ -11,6 +11,9 @@ const dataDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
 const claudeDir =
   process.env.MABARI_E2E_CLAUDE_DIR ?? mkdtempSync(join(tmpdir(), 'mabari-e2e-claude-'));
 process.env.MABARI_E2E_CLAUDE_DIR = claudeDir;
+const codexDir =
+  process.env.MABARI_E2E_CODEX_DIR ?? mkdtempSync(join(tmpdir(), 'mabari-e2e-codex-'));
+process.env.MABARI_E2E_CODEX_DIR = codexDir;
 // MABARI_WEB_PORT and MABARI_API_PORT move the test servers off 4317 and 4327, for when Mabari is running.
 const webPort = process.env.MABARI_WEB_PORT ?? '4317';
 const apiPort = process.env.MABARI_API_PORT ?? '4327';
@@ -38,6 +41,7 @@ export default defineConfig({
       env: {
         MABARI_DATA_DIR: dataDir,
         CLAUDE_CONFIG_DIR: claudeDir,
+        CODEX_HOME: codexDir,
         MABARI_SECRETS: 'encrypted-file',
         MABARI_TEST_FAKE_LAN: '1',
         MABARI_MASTER_KEY: 'end-to-end-tests-only-master-key-0123456789',

@@ -409,12 +409,26 @@ const (
 	DefProject DefScope = "project"
 )
 
-// AgentDef is a reusable agent, read from a Markdown file with front matter. The file is the
-// source of truth; it belongs to this computer, never to a connected account. Runs and Enabled
-// come from Mabari's own state file beside it.
+// DefKind is which AI's format an agent file is in.
+type DefKind string
+
+// Agent file kinds.
+const (
+	// DefClaude is a Claude Code subagent: Markdown with front matter, in .claude/agents.
+	DefClaude DefKind = "claude"
+	// DefCodex is a Codex custom agent: TOML, in .codex/agents.
+	DefCodex DefKind = "codex"
+)
+
+// AgentDef is a reusable agent, read from a Claude Code Markdown file or a Codex TOML file. The
+// file is the source of truth and lives on this computer: in the Claude or Codex folder for the
+// whole account, or in a project's folder. Runs and Enabled come from Mabari's own state file.
 type AgentDef struct {
-	// ID is stable across restarts: the scope, the project for a project agent, and the name.
-	ID          string   `json:"id"`
+	// ID is stable across restarts: the kind, the scope, the project for a project agent, and the
+	// name.
+	ID string `json:"id"`
+	// Kind is the AI whose format the file is in. Empty means Claude.
+	Kind        DefKind  `json:"kind"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Scope       DefScope `json:"scope"`

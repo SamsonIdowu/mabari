@@ -104,6 +104,7 @@ export interface TeamLine {
 /** What Reload from disk found. Mirrors internal/agentdefs.Report. */
 export interface DefsReport {
   account: number;
+  codex: number;
   projects: Record<string, number> | null;
   problems: string[] | null;
 }

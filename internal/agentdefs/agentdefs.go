@@ -94,6 +94,8 @@ type Project struct {
 type Folders struct {
 	// Account is Claude Code's agent folder, normally ~/.claude/agents.
 	Account string
+	// Codex is Codex's agent folder, normally ~/.codex/agents. Empty leaves Codex agents out.
+	Codex string
 	// State is agents-state.json in Mabari's data folder.
 	State string
 	// Home is the home folder, used to show paths with ~.
@@ -102,7 +104,9 @@ type Folders struct {
 
 // Report says how many agents a scan found in each place.
 type Report struct {
+	// Account counts the Claude account's agents, and Codex the Codex account's.
 	Account  int            `json:"account"`
+	Codex    int            `json:"codex"`
 	Projects map[string]int `json:"projects"`
 	// Problems are files that couldn't be read, by path.
 	Problems []string `json:"problems"`
@@ -140,12 +144,20 @@ func (l *Library) SetProjects(projects []Project) {
 	l.projects = slices.Clone(projects)
 }
 
-// ID names a definition the same way on every start.
+// ID names a Claude definition the same way on every start.
 func ID(scope models.DefScope, project, name string) string {
 	if scope == models.DefProject {
 		return "project:" + project + ":" + name
 	}
 	return "account:" + name
+}
+
+// KindID names a definition of either kind. Codex ones start with codex:.
+func KindID(kind models.DefKind, scope models.DefScope, project, name string) string {
+	if kind == models.DefCodex {
+		return "codex:" + ID(scope, project, name)
+	}
+	return ID(scope, project, name)
 }
 
 func (l *Library) projectFolder(id string) (string, bool) {
@@ -157,15 +169,24 @@ func (l *Library) projectFolder(id string) (string, bool) {
 	return "", false
 }
 
-// agentsDir is a project's agent folder. Projects keep paths the way people type them, so a
-// leading ~ is the home folder.
-func agentsDir(folder string) string {
+// expandHome turns a leading ~ into the home folder: projects keep paths the way people type them.
+func expandHome(folder string) string {
 	if folder == "~" || strings.HasPrefix(folder, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
-			folder = filepath.Join(home, strings.TrimPrefix(folder, "~"))
+			return filepath.Join(home, strings.TrimPrefix(folder, "~"))
 		}
 	}
-	return filepath.Join(folder, ".claude", "agents")
+	return folder
+}
+
+// agentsDir is a project's Claude agent folder.
+func agentsDir(folder string) string { return filepath.Join(expandHome(folder), ".claude", "agents") }
+
+func kindOf(def models.AgentDef) models.DefKind {
+	if def.Kind == models.DefCodex {
+		return models.DefCodex
+	}
+	return models.DefClaude
 }
 
 func (l *Library) shown(path string) string {
@@ -179,13 +200,23 @@ func (l *Library) shown(path string) string {
 
 // Path is where a definition's file goes. A project without a folder has none.
 func (l *Library) Path(def models.AgentDef) (string, error) {
+	codex := kindOf(def) == models.DefCodex
 	if def.Scope == models.DefProject {
 		folder, ok := l.projectFolder(def.ProjectID)
 		if !ok {
 			return "", Problem("That project has no folder on this computer yet, so its agents have nowhere to go. " +
-				"Pick Claude account instead, or give the project a folder.")
+				"Pick the account instead, or give the project a folder.")
+		}
+		if codex {
+			return filepath.Join(codexAgentsDir(folder), def.Name+".toml"), nil
 		}
 		return filepath.Join(agentsDir(folder), def.Name+".md"), nil
+	}
+	if codex {
+		if l.folders.Codex == "" {
+			return "", Problem("Codex's folder isn't known on this computer.")
+		}
+		return filepath.Join(l.folders.Codex, def.Name+".toml"), nil
 	}
 	return filepath.Join(l.folders.Account, def.Name+".md"), nil
 }
@@ -218,11 +249,16 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 	}
 	var defs []models.AgentDef
 	files := map[string]string{}
-	add := func(dir string, scope models.DefScope, project string) int {
-		found, problems := readDir(dir, scope, project)
+	add := func(dir string, kind models.DefKind, scope models.DefScope, project string) int {
+		read := readDir
+		if kind == models.DefCodex {
+			read = readCodexDir
+		}
+		found, problems := read(dir, scope, project)
 		report.Problems = append(report.Problems, problems...)
 		for _, def := range found {
-			def.ID = ID(scope, project, def.Name)
+			def.Kind = kind
+			def.ID = KindID(kind, scope, project, def.Name)
 			if _, twice := files[def.ID]; twice {
 				continue
 			}
@@ -230,17 +266,21 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 			def.Path = l.shown(def.Path)
 			def.Runs = l.state[def.ID].Runs
 			def.Enabled = !l.state[def.ID].Off
-			if scope == models.DefAccount && def.Name == MabariName {
+			if kind == models.DefClaude && scope == models.DefAccount && def.Name == MabariName {
 				def.System, def.Enabled, def.Skills, def.Color = true, true, withSkills(def.Skills), "#0C0C0C"
 			}
 			defs = append(defs, def)
 		}
 		return len(found)
 	}
-	report.Account = add(l.folders.Account, models.DefAccount, "")
+	report.Account = add(l.folders.Account, models.DefClaude, models.DefAccount, "")
+	if l.folders.Codex != "" {
+		report.Codex = add(l.folders.Codex, models.DefCodex, models.DefAccount, "")
+	}
 	for _, project := range l.projects {
 		if project.Folder != "" {
-			report.Projects[project.ID] = add(agentsDir(project.Folder), models.DefProject, project.ID)
+			report.Projects[project.ID] = add(agentsDir(project.Folder), models.DefClaude, models.DefProject, project.ID) +
+				add(codexAgentsDir(project.Folder), models.DefCodex, models.DefProject, project.ID)
 		}
 	}
 	slices.SortStableFunc(defs, func(a, b models.AgentDef) int {
@@ -252,6 +292,8 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 			return 1
 		case a.Scope != b.Scope:
 			return cmp.Compare(a.Scope, b.Scope)
+		case kindOf(a) != kindOf(b):
+			return cmp.Compare(kindOf(a), kindOf(b))
 		default:
 			return cmp.Compare(a.Name, b.Name)
 		}
@@ -546,14 +588,18 @@ func Check(def models.AgentDef) error {
 		return Problem("Give it a short name in lowercase letters, like code-reviewer.")
 	case strings.TrimSpace(def.Description) == "":
 		return Problem("Say when Claude should use it, so it gets picked for the right work.")
-	case len(def.Tools) == 0:
+	case kindOf(def) == models.DefClaude && len(def.Tools) == 0:
 		return Problem("Pick at least one tool.")
 	case strings.TrimSpace(def.Instructions) == "":
 		return Problem("Write the agent's instructions.")
 	case def.Scope != models.DefAccount && def.Scope != models.DefProject:
 		return Problem("Pick where it lives: the Claude account or one project.")
-	case !slices.Contains(Models, cmp.Or(def.Model, "inherit")):
+	case kindOf(def) == models.DefClaude && !slices.Contains(Models, cmp.Or(def.Model, "inherit")):
 		return Problem("Pick a model: same as the session, Sonnet, Opus or Haiku.")
+	case kindOf(def) == models.DefCodex:
+		if err := checkCodex(def); err != nil {
+			return err
+		}
 	}
 	for _, tool := range def.Tools {
 		if !slices.Contains(Tools, tool) {
@@ -579,9 +625,14 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	def.Kind = kindOf(def)
+	if def.Kind == models.DefCodex {
+		def.Tools, def.Skills = []string{}, []string{}
+	}
 	if previousID == ID(models.DefAccount, "", MabariName) {
+		def.Kind = models.DefClaude
 		def.Name, def.Scope, def.ProjectID, def.Skills = MabariName, models.DefAccount, "", withSkills(def.Skills)
-	} else if def.Scope == models.DefAccount && def.Name == MabariName {
+	} else if def.Kind == models.DefClaude && def.Scope == models.DefAccount && def.Name == MabariName {
 		return models.AgentDef{}, Problem("mabari is the office manager's name. Pick another one.")
 	}
 	if err := Check(def); err != nil {
@@ -591,7 +642,7 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 	if err != nil {
 		return models.AgentDef{}, err
 	}
-	id := ID(def.Scope, def.ProjectID, def.Name)
+	id := KindID(def.Kind, def.Scope, def.ProjectID, def.Name)
 	if id != previousID {
 		if _, taken := l.files[id]; taken {
 			return models.AgentDef{}, Problem("There is already an agent called " + def.Name + " in this scope.")
@@ -601,12 +652,21 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 		}
 	}
 	content := Render(def)
+	if def.Kind == models.DefCodex {
+		content = RenderCodex(def)
+	}
 	if old, ok := l.files[previousID]; ok && previousID != "" && sameFolder(previousID, id) {
 		// Keep the fields Mabari doesn't edit, such as Claude Code's effort or permissionMode,
-		// but only while the agent stays where it was: moving it to another scope or project
+		// but only while the agent stays where it was: moving it to another scope, project or AI
 		// doesn't carry settings the builder never showed.
 		if data, err := os.ReadFile(old); err == nil { // #nosec G304 -- the agent's own file
-			content = withExtra(content, extraFields(data))
+			if def.Kind == models.DefCodex {
+				if extra, err := codexExtra(data); err == nil {
+					content = withCodexExtra(content, extra)
+				}
+			} else {
+				content = withExtra(content, extraFields(data))
+			}
 		}
 	}
 	if err := writeAtomic(path, content); err != nil {
@@ -700,17 +760,20 @@ func (l *Library) saveState() error {
 // signature is every agent file's name, size and time, so a change anywhere shows.
 func (l *Library) signature() string {
 	var b strings.Builder
-	dirs := []string{l.folders.Account}
+	dirs := []string{l.folders.Account, l.folders.Codex}
 	for _, project := range l.projects {
 		if project.Folder != "" {
-			dirs = append(dirs, agentsDir(project.Folder))
+			dirs = append(dirs, agentsDir(project.Folder), codexAgentsDir(project.Folder))
 		}
 	}
 	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
 		b.WriteString(dir + "\n")
 		entries, _ := os.ReadDir(dir)
 		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".md") {
+			if !strings.HasSuffix(entry.Name(), ".md") && !strings.HasSuffix(entry.Name(), ".toml") {
 				continue
 			}
 			if info, err := entry.Info(); err == nil {

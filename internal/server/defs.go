@@ -169,13 +169,21 @@ var runAccounts = []models.AccountKind{
 // inside Do.
 func (a *api) runBody(def models.AgentDef) (newAgentBody, string) {
 	account := models.AccountKind("")
-	for _, kind := range runAccounts {
+	order := runAccounts
+	if def.Kind == models.DefCodex {
+		// A Codex agent runs on Codex, or on an OpenAI key.
+		order = []models.AccountKind{models.AccountCodex, models.AccountOpenAIKey}
+	}
+	for _, kind := range order {
 		if a.connected(kind) {
 			account = kind
 			break
 		}
 	}
 	if account == "" {
+		if def.Kind == models.DefCodex {
+			return newAgentBody{}, "Sign in with ChatGPT for Codex first."
+		}
 		return newAgentBody{}, "Connect an account first."
 	}
 	title := strings.Fields(defTitle(def.Name))
@@ -187,7 +195,7 @@ func (a *api) runBody(def models.AgentDef) (newAgentBody, string) {
 	available := models.Models[account]
 	model := available[0]
 	for _, candidate := range available {
-		if def.Model != "inherit" && strings.Contains(candidate, def.Model) {
+		if def.Model != "inherit" && (candidate == def.Model || strings.Contains(candidate, def.Model)) {
 			model = candidate
 			break
 		}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import type { AgentDef } from '../gen/models.ts';
-import { blankDef, defMarkdown, defTitle, draftFrom, improve, slug } from './defs.ts';
+import { blankDef, defMarkdown, defTitle, defToml, draftFrom, improve, slug } from './defs.ts';
 
 const reviewer = (): AgentDef => ({
   ...blankDef(1),
@@ -19,6 +19,21 @@ describe('agent files', () => {
     expect(defMarkdown(reviewer())).toBe(
       '---\nname: code-reviewer\ndescription: "Use after any change: review it for bugs."\ntools: Read, Grep, Glob\n' +
         'model: sonnet\nskills: agent-improver\ncolor: blue\n---\n\nYou are a careful senior reviewer.\n\nNever edit files.\n',
+    );
+  });
+
+  // internal/agentdefs TestCodexAgentsAreTOMLFiles writes exactly this.
+  it('previews a Codex agent exactly as the server writes it', () => {
+    expect(
+      defToml({
+        ...reviewer(),
+        kind: 'codex',
+        model: 'gpt-5-codex',
+        instructions: 'Review for "correctness".\n\nUse \\ carefully. A """ can\'t end this early.',
+      }),
+    ).toBe(
+      'name = "code-reviewer"\ndescription = "Use after any change: review it for bugs."\nmodel = "gpt-5-codex"\n' +
+        'developer_instructions = """\nReview for \\"correctness\\".\n\nUse \\\\ carefully. A \\"\\"\\" can\'t end this early.\n"""\n',
     );
   });
 

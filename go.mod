@@ -11,6 +11,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.5.0
 	github.com/coder/websocket v1.8.15
 	github.com/gzuidhof/tygo v0.2.21
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.58.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -48,7 +49,6 @@ require (
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
-	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

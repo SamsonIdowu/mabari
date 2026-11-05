@@ -14,11 +14,14 @@ import {
 import {
   blankDef,
   DEF_COLORS,
+  DEF_CODEX_MODELS,
   DEF_MODELS,
   DEF_TOOLS,
-  defMarkdown,
+  defFile,
+  defFolderLabel,
   defTitle,
   draftFrom,
+  isCodex,
   MABARI_ID,
   MABARI_SKILLS,
   modelLabel,
@@ -199,13 +202,16 @@ function Tile(props: {
             />
           )}
           {def.scope === 'account'
-            ? 'Account · every project'
+            ? defFolderLabel(def)
             : `Project · ${projectName(office.projects, def.projectId)}`}
         </Chip>
+        <Chip>{isCodex(def) ? 'Codex' : 'Claude'}</Chip>
         <Chip>{modelLabel(def.model)}</Chip>
-        <Chip>
-          {def.tools.length} tool{def.tools.length === 1 ? '' : 's'}
-        </Chip>
+        {isCodex(def) ? null : (
+          <Chip>
+            {def.tools.length} tool{def.tools.length === 1 ? '' : 's'}
+          </Chip>
+        )}
       </div>
       <p className="dcpath mono">{def.path}</p>
       {deleting ? (
@@ -306,9 +312,9 @@ function Persist() {
         (sum, count) => sum + count,
         0,
       );
-      const total = report.account + fromProjects;
+      const total = report.account + report.codex + fromProjects;
       toast(
-        `Loaded ${total} agents: ${report.account} from ~/.claude/agents and ${fromProjects} from ${projectFolders} project folder${projectFolders === 1 ? '' : 's'}.`,
+        `Loaded ${total} agents: ${report.account} from ~/.claude/agents, ${report.codex} from ~/.codex/agents and ${fromProjects} from ${projectFolders} project folder${projectFolders === 1 ? '' : 's'}.`,
       );
     } catch (error) {
       toast((error as Error).message);
@@ -320,8 +326,10 @@ function Persist() {
         <path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" />
       </Icon>
       <span>
-        <b>Saved as files on this computer.</b> Agents load every time Mabari starts, survive
-        restarts and reinstalls, and stay when you switch or disconnect accounts.
+        <b>Saved as files on this computer.</b> Your Claude agents (~/.claude/agents) and Codex
+        agents (~/.codex/agents) load every time Mabari starts, and a project brings the agents in
+        its repository. They survive restarts and reinstalls, and stay when you switch or disconnect
+        accounts.
       </span>
       <button
         type="button"
@@ -345,23 +353,35 @@ export function Builder() {
   const shown = defs.filter(
     (def) =>
       (filter === 'all' ||
-        (filter === 'account'
-          ? def.scope === 'account'
+        (filter === 'claude' || filter === 'codex'
+          ? def.scope === 'account' && (def.kind || 'claude') === filter
           : def.scope === 'project' && def.projectId === filter)) &&
       (!q || `${def.name} ${def.description}`.toLowerCase().includes(q)),
   );
   const tabs: [string, string, number][] = [
     ['all', 'All', defs.length],
-    ['account', 'Account', defs.filter((def) => def.scope === 'account').length],
+    [
+      'claude',
+      'Claude account',
+      defs.filter((def) => def.scope === 'account' && !isCodex(def)).length,
+    ],
+    [
+      'codex',
+      'Codex account',
+      defs.filter((def) => def.scope === 'account' && isCodex(def)).length,
+    ],
     ...office.projects.map((project): [string, string, number] => [
       project.id,
       project.name,
       defs.filter((def) => def.scope === 'project' && def.projectId === project.id).length,
     ]),
   ];
-  const projectFilter = filter !== 'all' && filter !== 'account' ? filter : '';
-  const buildNew = () =>
-    set({ dialog: { id: '', edit: blankDef(defs.length, projectFilter), by: '', note: null } });
+  const projectFilter = filter !== 'all' && filter !== 'claude' && filter !== 'codex' ? filter : '';
+  const buildNew = () => {
+    const edit = blankDef(defs.length, projectFilter);
+    if (filter === 'codex') Object.assign(edit, { kind: 'codex', tools: [] });
+    set({ dialog: { id: '', edit, by: '', note: null } });
+  };
   return (
     <section data-screen="builder">
       <div className="page" id="builderPage">
@@ -452,9 +472,10 @@ function folderOf(projects: Project[], id: string) {
 
 function previewPath(edit: AgentDef, projects: Project[]) {
   const name = edit.name || 'name';
-  if (edit.scope === 'account') return `~/.claude/agents/${name}.md`;
+  const [dir, ext] = isCodex(edit) ? ['.codex', 'toml'] : ['.claude', 'md'];
+  if (edit.scope === 'account') return `~/${dir}/agents/${name}.${ext}`;
   const folder = folderOf(projects, edit.projectId);
-  return folder ? `${folder}/.claude/agents/${name}.md` : 'This project has no folder yet';
+  return folder ? `${folder}/${dir}/agents/${name}.${ext}` : 'This project has no folder yet';
 }
 
 export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: Snapshot }) {
@@ -467,6 +488,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
   useEscape(close);
   const change = (patch: Partial<AgentDef>) => setEdit((current) => ({ ...current, ...patch }));
   const system = edit.id === MABARI_ID;
+  const codex = isCodex(edit);
   const toggleTool = (tool: string, on: boolean) =>
     change({ tools: on ? [...edit.tools, tool] : edit.tools.filter((item) => item !== tool) });
   const draft = () => {
@@ -591,7 +613,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
                   value={edit.model || 'inherit'}
                   onChange={(event) => change({ model: event.target.value })}
                 >
-                  {DEF_MODELS.map(([value, label]) => (
+                  {(codex ? DEF_CODEX_MODELS : DEF_MODELS).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
                     </option>
@@ -600,7 +622,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
               </div>
             </div>
             <div className="field">
-              <label htmlFor="dfDesc">When should Claude use it?</label>
+              <label htmlFor="dfDesc">When should {codex ? 'Codex' : 'Claude'} use it?</label>
               <input
                 className="in"
                 id="dfDesc"
@@ -616,11 +638,49 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
               </p>
             ) : (
               <div className="field">
-                <span className="flabel">Scope</span>
+                <span className="flabel">Saved for</span>
+                <div className="scopepick" role="radiogroup" aria-label="Which AI">
+                  {(
+                    [
+                      ['claude', 'Claude', 'A Claude Code agent, as Markdown'],
+                      ['codex', 'Codex', 'A Codex agent, as TOML'],
+                    ] as const
+                  ).map(([kind, title, sub]) => (
+                    <label
+                      key={kind}
+                      className={(edit.kind || 'claude') === kind ? 'scopeopt on' : 'scopeopt'}
+                    >
+                      <input
+                        type="radio"
+                        name="dfKind"
+                        value={kind}
+                        checked={(edit.kind || 'claude') === kind}
+                        onChange={() =>
+                          change({
+                            kind,
+                            model: 'inherit',
+                            tools:
+                              kind === 'codex'
+                                ? []
+                                : edit.tools.length
+                                  ? edit.tools
+                                  : ['Read', 'Grep', 'Glob'],
+                          })
+                        }
+                      />
+                      <b>{title}</b>
+                      <span>{sub}</span>
+                    </label>
+                  ))}
+                </div>
                 <div className="scopepick">
                   {(
                     [
-                      ['account', 'Claude account', 'Available in every project'],
+                      [
+                        'account',
+                        codex ? 'Codex account' : 'Claude account',
+                        'Available in every project',
+                      ],
                       ['project', 'One project', 'Saved in the project folder'],
                     ] as const
                   ).map(([scope, title, sub]) => (
@@ -665,23 +725,25 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
                 ) : null}
               </div>
             )}
-            <div className="field">
-              <span className="flabel">Tools</span>
-              <div className="toolgrid">
-                {DEF_TOOLS.map(([tool, label]) => (
-                  <label key={tool}>
-                    <input
-                      type="checkbox"
-                      name="dfTool"
-                      value={tool}
-                      checked={edit.tools.includes(tool)}
-                      onChange={(event) => toggleTool(tool, event.target.checked)}
-                    />
-                    {label}
-                  </label>
-                ))}
+            {codex ? null : (
+              <div className="field">
+                <span className="flabel">Tools</span>
+                <div className="toolgrid">
+                  {DEF_TOOLS.map(([tool, label]) => (
+                    <label key={tool}>
+                      <input
+                        type="checkbox"
+                        name="dfTool"
+                        value={tool}
+                        checked={edit.tools.includes(tool)}
+                        onChange={(event) => toggleTool(tool, event.target.checked)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="field">
               <label htmlFor="dfPrompt">Instructions</label>
               <textarea
@@ -693,7 +755,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
                 onChange={(event) => change({ instructions: event.target.value })}
               />
             </div>
-            {system ? null : (
+            {system || codex ? null : (
               <div className="field">
                 <span className="flabel">Colour</span>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -728,7 +790,7 @@ export function DefDialogView({ dialog, office }: { dialog: DefDialog; office: S
               {previewPath(edit, office.projects)}
             </code>
             <pre className="codebox" id="dfMd" tabIndex={0} aria-label="The agent file">
-              {defMarkdown({ ...edit, name: slug(edit.name) })}
+              {defFile({ ...edit, name: slug(edit.name) })}
             </pre>
           </div>
         </div>

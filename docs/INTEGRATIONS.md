@@ -18,3 +18,4 @@ The versions and facts each integration is built on. Check the official docs aga
 | Web Audio API | Browser | Standard | An `AudioContext` needs a user gesture before it plays. |
 | go-keyring | v0.2.8 | github.com/zalando/go-keyring | macOS Keychain, Linux Secret Service, Windows Credential Manager. `MockInit` replaces it in tests. |
 | x/crypto | v0.58.0 | pkg.go.dev/golang.org/x/crypto/chacha20poly1305 | `NewX` gives XChaCha20-Poly1305 with a 24 byte random nonce, safe to pick at random each write. |
+| Codex custom agents | Codex docs, checked 2026-11-05 | learn.chatgpt.com/docs/agent-configuration/subagents | One TOML file per agent in `~/.codex/agents` (or `$CODEX_HOME/agents`) and `<project>/.codex/agents`. Required: `name`, `description`, `developer_instructions`; optional `model` and other settings, which Mabari keeps when it edits a file. No tools list: an agent inherits the session's permissions and MCP servers. |

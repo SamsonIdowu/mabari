@@ -23,6 +23,14 @@ export const DEF_MODELS: [model: string, label: string][] = [
   ['haiku', 'Haiku'],
 ];
 
+/** Codex models an agent file may name. "inherit" uses the session's model. */
+export const DEF_CODEX_MODELS: [model: string, label: string][] = [
+  ['inherit', 'Same as the session'],
+  ['gpt-5-codex', 'gpt-5-codex'],
+  ['gpt-5', 'gpt-5'],
+  ['gpt-5-mini', 'gpt-5-mini'],
+];
+
 export const DEF_COLORS = [
   '#FF6B9A',
   '#4FB3FF',
@@ -76,7 +84,42 @@ export function defTitle(def: Pick<AgentDef, 'name'>): string {
 }
 
 export function modelLabel(model: string): string {
-  return DEF_MODELS.find(([value]) => value === model)?.[1] ?? model;
+  return (
+    DEF_MODELS.find(([value]) => value === model)?.[1] ??
+    DEF_CODEX_MODELS.find(([value]) => value === model)?.[1] ??
+    model
+  );
+}
+
+export const isCodex = (def: Pick<AgentDef, 'kind'>) => def.kind === 'codex';
+
+/** Where the agent's file goes: the Claude or Codex folder, for the account or a project. */
+export function defFolderLabel(def: Pick<AgentDef, 'kind' | 'scope'>): string {
+  const ai = isCodex(def) ? 'Codex' : 'Claude';
+  return def.scope === 'account' ? `${ai} account · every project` : `${ai} · project`;
+}
+
+/** A one-line TOML string, as internal/agentdefs writes it. */
+function tomlString(value: string): string {
+  return JSON.stringify(value.replace(/\s+/g, ' ').trim());
+}
+
+/** A multi-line TOML string with every backslash and quote escaped, as the server writes it. */
+function tomlBlock(value: string): string {
+  const body = value.trim().replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"""\n${body}\n"""\n`;
+}
+
+/** A Codex agent file, as internal/agentdefs.RenderCodex writes it. */
+export function defToml(def: Partial<AgentDef>): string {
+  let text = `name = ${tomlString(def.name ?? '')}\ndescription = ${tomlString(def.description ?? '')}\n`;
+  if (def.model && def.model !== 'inherit') text += `model = ${tomlString(def.model)}\n`;
+  return `${text}developer_instructions = ${tomlBlock(def.instructions ?? '')}`;
+}
+
+/** The file as it will be written, in the agent's own format. */
+export function defFile(def: Partial<AgentDef>): string {
+  return def.kind === 'codex' ? defToml(def) : defMarkdown(def);
 }
 
 /** Quotes a front matter value the way the server does, when YAML would misread it. */
@@ -222,22 +265,27 @@ export function improve(def: AgentDef, running: Pick<LiveAgent, 'state'>[]): Imp
       'The description now starts with when to use it, so I route the right work to it.',
     );
   }
-  if (/test/.test(description + lower()) && !next.tools.includes('Bash')) {
+  const codex = next.kind === 'codex';
+  if (!codex && /test/.test(description + lower()) && !next.tools.includes('Bash')) {
     next.tools.push('Bash');
     changes.push('Added Run commands so it can run the tests it works on.');
   }
   if (
+    !codex &&
     /research|compare|look up|web/.test(description + lower()) &&
     !next.tools.includes('WebSearch')
   ) {
     next.tools.push('WebSearch', 'WebFetch');
     changes.push('Added web search and web pages for research.');
   }
-  if (next.tools.includes('Bash') && !lower().includes('fail')) {
+  if ((codex || next.tools.includes('Bash')) && !lower().includes('fail')) {
     add('If a command fails twice, stop and explain what you tried instead of retrying.');
     changes.push("Added a stop rule for failing commands, so it doesn't loop and burn tokens.");
   }
-  if ((next.tools.includes('Edit') || next.tools.includes('Write')) && !lower().includes('small')) {
+  if (
+    (codex || next.tools.includes('Edit') || next.tools.includes('Write')) &&
+    !lower().includes('small')
+  ) {
     add('Keep each change small and say why you made it.');
     changes.push('Asked for small, explained changes, which makes approvals faster.');
   }
@@ -259,6 +307,7 @@ export function improve(def: AgentDef, running: Pick<LiveAgent, 'state'>[]): Imp
 export function blankDef(count: number, projectId = ''): AgentDef {
   return {
     id: '',
+    kind: 'claude',
     name: '',
     description: '',
     scope: projectId ? 'project' : 'account',

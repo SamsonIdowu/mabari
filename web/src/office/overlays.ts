@@ -145,7 +145,7 @@ function renderResting(layer: HTMLElement, scene: OfficeScene): void {
       element = document.createElement('div');
       element.dataset.r = walker.id;
       element.className = `tag rest ${providers[look.provider].cssClass}`;
-      element.innerHTML = `<span class="nt"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(def.name)}</b></span>`;
+      element.innerHTML = `<span class="rn"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(def.name)}</b></span>`;
       element.style.setProperty('--ac', look.hue);
       layer.appendChild(element);
     }

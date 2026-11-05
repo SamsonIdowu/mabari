@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
 
-const WORLD = { width: 1216, height: 704 };
 const EMPTY_DESK = { x: 23 * 32 + 30, y: 16 * 32 + 20 };
 
 test.beforeEach(async ({ request }) => {
@@ -14,9 +13,12 @@ async function loadDemo(page: Page) {
   await expect(page.locator('.tag .nt').first()).toBeVisible();
 }
 
-/** Where a point in the office is on screen at 100% zoom. */
+/** Where a point in the office is on screen at 100% zoom. The floor grows with the office. */
 async function onScreen(page: Page, point: { x: number; y: number }) {
   const box = (await page.locator('#floor').boundingBox())!;
+  const world = await page.locator('#floor').getAttribute('data-world');
+  const [width, height] = (world ?? '').split('x').map(Number);
+  const WORLD = { width: width || 1216, height: height || 704 };
   // The office covers the view when the shapes are within 10%, and fits inside otherwise.
   const across = box.width / WORLD.width;
   const down = box.height / WORLD.height;

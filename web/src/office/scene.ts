@@ -134,6 +134,8 @@ export class OfficeScene {
   seating: Seating = seatingFor([], []);
   view: View = { cx: BASE_W / 2, cy: BASE_H / 2, s: 1 };
   size = { width: BASE_W, height: BASE_H };
+  /** The floor's size last frame, to notice it changing. */
+  private world: Size = { width: BASE_W, height: BASE_H };
   private readonly restingById = new Map<string, Walker>();
   private readonly context: CanvasRenderingContext2D;
   private readonly motes = makeMotes();
@@ -225,13 +227,15 @@ export class OfficeScene {
     const world = this.worldOf(point);
     const ui = useOfficeUi.getState();
     const agents = useOfficeStore.getState().office?.agents ?? [];
+    // A bigger office is drawn smaller, so the target never gets smaller than a fingertip.
+    const { reachX, reachY } = this.reach();
     let best: Walker | null = null;
     let bestDistance = 1000;
     for (const walker of this.walkers.values()) {
       if (!inScope(walker, ui, agents)) continue;
       const dx = Math.abs(world.x - walker.x);
       const dy = world.y - (walker.y - 22);
-      if (dx < 20 && Math.abs(dy) < 36 && dx + Math.abs(dy) < bestDistance) {
+      if (dx < reachX && Math.abs(dy) < reachY && dx + Math.abs(dy) < bestDistance) {
         best = walker;
         bestDistance = dx + Math.abs(dy);
       }
@@ -243,10 +247,18 @@ export class OfficeScene {
   restingAt(point: Point): AgentDef | null {
     if (!this.restingShown() || this.hit(point)) return null;
     const world = this.worldOf(point);
+    const { reachX, reachY } = this.reach();
     for (const { def, walker } of this.resting) {
-      if (Math.abs(world.x - walker.x) < 20 && Math.abs(world.y - (walker.y - 22)) < 30) return def;
+      const dx = Math.abs(world.x - walker.x);
+      if (dx < reachX && Math.abs(world.y - (walker.y - 22)) < reachY) return def;
     }
     return null;
+  }
+
+  /** How far from a character a click still picks it, in world pixels: at least 26 by 40 on screen. */
+  private reach() {
+    const scale = this.matrix().a;
+    return { reachX: Math.max(20, 26 / scale), reachY: Math.max(36, 40 / scale) };
   }
 
   /** Resting definitions belong to no project or team, so a filter on either hides them. */
@@ -601,6 +613,13 @@ export class OfficeScene {
     const c = this.context;
     const floor = this.floor;
     const world = sizeOf(floor);
+    // When the floor grows or shrinks, the view moves with it at once rather than easing over,
+    // so nothing slides across the screen and what you were looking at stays put.
+    if (world.width !== this.world.width || world.height !== this.world.height) {
+      this.view.cx += (world.width - this.world.width) / 2;
+      this.view.cy += (world.height - this.world.height) / 2;
+      this.world = world;
+    }
 
     const target = clampView(this.viewTarget(), world);
     if (!ui.team && !ui.follow) {

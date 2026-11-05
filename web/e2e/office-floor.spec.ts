@@ -742,11 +742,51 @@ test('the Colour key describes what the floor shows now, and fits or shows that 
   expect(await key.evaluate((menu) => getComputedStyle(menu).backgroundImage)).toContain(
     'radial-gradient',
   );
+  // RT-9: the cue is a plain line of words at its foot, not only a shadow, and it goes at the end.
+  const more = key.getByText('Scroll for more');
+  await expect(more).toBeVisible();
+  const cue = (await more.boundingBox())!;
+  const shown = (await key.boundingBox())!;
+  expect(cue.y + cue.height).toBeLessThanOrEqual(shown.y + shown.height + 1);
+  expect(cue.y).toBeGreaterThan(shown.y + shown.height / 2);
   await key.evaluate((menu) => menu.scrollTo(0, menu.scrollHeight));
+  await expect(more).toBeHidden();
   const last = key.locator('.keyrow').last();
   await expect(last).toContainText('Time the agent thinks it has left');
   const [menuBox, rowBox] = [(await key.boundingBox())!, (await last.boundingBox())!];
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(menuBox.y + menuBox.height + 1);
+});
+
+// RT-9: at 1280x720 the key was cut by 35 px, with only a faint shadow to say so.
+test('at 1280x720 the Colour key says in words that it scrolls, until the end is reached', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  await expect(page.locator('.tag .nt').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Colour key' }).click();
+  const key = page.getByRole('region', { name: 'Colour key' });
+  await expect(key).toBeVisible();
+  await page.waitForTimeout(400);
+  const room = await key.evaluate((menu) => ({ all: menu.scrollHeight, shown: menu.clientHeight }));
+  expect(room.all).toBeGreaterThan(room.shown);
+
+  const more = key.getByText('Scroll for more');
+  await expect(more).toBeVisible();
+  await page.screenshot({ path: 'test-results/colour-key-1280x720.png' });
+  // The words are not covered by the last row, and the key can be scrolled to its end by wheel.
+  await key.hover();
+  await page.mouse.wheel(0, 600);
+  await expect(more).toBeHidden();
+  const last = key.locator('.keyrow').last();
+  await expect(last).toBeInViewport();
+  const [menuBox, rowBox] = [(await key.boundingBox())!, (await last.boundingBox())!];
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(menuBox.y + menuBox.height + 1);
+  // Scrolling back up brings the cue back.
+  await page.mouse.wheel(0, -600);
+  await expect(more).toBeVisible();
 });
 
 test('a finished agent has nothing to interrupt, and can still be given work or ended', async ({

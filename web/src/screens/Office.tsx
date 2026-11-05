@@ -357,16 +357,43 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
           </Icon>
           <span className="klbl">Colour key</span>
         </button>
-        {menu === 'key' ? (
-          <div
-            className="menu right key"
-            role="region"
-            aria-label="Colour key"
-            tabIndex={0}
-            dangerouslySetInnerHTML={{ __html: colourKey }}
-          />
-        ) : null}
+        {menu === 'key' ? <ColourKey /> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The Colour key. On a window too short for the whole of it, it scrolls, and a plain line at its
+ * foot says there is more, until the end is reached (RT-9). A shadow at the edge alone was too
+ * faint to notice.
+ */
+function ColourKey() {
+  const menu = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const element = menu.current;
+    if (!element) return undefined;
+    const check = () =>
+      setMore(element.scrollHeight - element.clientHeight - element.scrollTop > 1);
+    check();
+    element.addEventListener('scroll', check);
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener('scroll', check);
+      observer.disconnect();
+    };
+  }, []);
+  return (
+    <div className="menu right key" role="region" aria-label="Colour key" tabIndex={0} ref={menu}>
+      {/* The key's rows are the menu's own, so they lay out as its children. */}
+      <div style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: colourKey }} />
+      {more ? (
+        <div className="keymore" aria-hidden="true">
+          ↓ Scroll for more
+        </div>
+      ) : null}
     </div>
   );
 }

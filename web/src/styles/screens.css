@@ -1855,6 +1855,20 @@ tr:last-child td {
       no-repeat scroll;
   background-color: var(--surface);
 }
+/* Where the key has to scroll, this line stays at its foot until the end is reached. */
+.menu.key .keymore {
+  position: sticky;
+  bottom: -6px;
+  flex: none;
+  margin-top: -28px;
+  padding: 14px 0 5px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--fg2);
+  background: linear-gradient(transparent, var(--surface) 55%);
+  pointer-events: none;
+}
 .dialog.brief {
   width: min(1060px, 100%);
 }

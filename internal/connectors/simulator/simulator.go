@@ -223,8 +223,11 @@ type agentSpec struct {
 	tokensOut int64
 	errorText string
 	project   string
-	folder    string
-	spawned   bool
+	// unfiled keeps an agent with no project under none. Without it, an agent made with no project
+	// joins the office's first, as in the prototype's own spawns.
+	unfiled bool
+	folder  string
+	spawned bool
 }
 
 // NewAgent is what the Create a new agent dialog asks for.
@@ -268,6 +271,8 @@ func (s *Simulator) CreateAgent(spec NewAgent) (*models.LiveAgent, error) {
 			name: spec.Name, provider: provider, model: spec.Model, account: spec.Account,
 			task: spec.Task, state: models.StateThinking, desk: spec.Desk, project: spec.Project,
 			progress: 0.02, elapsed: 1, tokensIn: 200, tokensOut: 40, folder: spec.Folder,
+			// The dialog's "No project" is a choice, whatever folder the agent works in (RT-2).
+			unfiled: spec.Project == "",
 		})
 	}
 	if agent == nil {
@@ -343,6 +348,8 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 		agent.Project = &project
 	case spec.lead != nil:
 		agent.Project = spec.lead.Project
+	case spec.unfiled:
+		// Left under no project, as chosen.
 	default:
 		// Like the prototype, an agent with no project joins the first one.
 		if projects := s.engine.Projects(); len(projects) > 0 {

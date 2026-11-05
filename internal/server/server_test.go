@@ -967,6 +967,43 @@ func TestCreateAgent(t *testing.T) {
 	}
 }
 
+// RT-2: choosing "No project" in the New agent dialog files the agent under none, even when its
+// working folder is a project's own folder, and even though the office's first project is the one
+// an agent made without any choice at all used to join.
+func TestAnAgentMadeWithNoProjectStaysUnfiled(t *testing.T) {
+	office := newOffice(t)
+	office.do(t, http.MethodPost, "/api/demo/load", "")
+	folder := t.TempDir()
+	_ = office.engine.Do(func() {
+		office.engine.SaveProject(models.Project{
+			ID: "shopfront", Name: "Shopfront", Color: "#FF6B9A", Repository: &models.Repository{Path: folder},
+		})
+	})
+	first := office.engine.Snapshot().Projects[0].ID
+	for _, projectID := range []string{`""`, `null`} {
+		name := "Loner" + strings.Trim(projectID, `"`)
+		body := `{"name":"` + name + `","account":"codex","model":"gpt-5","task":"Keep it tidy",` +
+			`"projectId":` + projectID + `,"folder":"` + folder + `","dailyCostCap":0,"allowedTools":["read"]}`
+		if response := createAgent(t, office, body); response.Code != http.StatusCreated {
+			t.Fatalf("status %d: %s", response.Code, response.Body)
+		}
+		loner := agentNamed(t, office, name)
+		if loner.Project != nil {
+			t.Errorf("projectId %s: an agent with no project was filed under %q (the first project is %q)",
+				projectID, *loner.Project, first)
+		}
+	}
+	// Choosing the project the folder belongs to is still honoured.
+	body := `{"name":"Filed","account":"codex","model":"gpt-5","task":"Keep it tidy",` +
+		`"projectId":"shopfront","folder":"` + folder + `","dailyCostCap":0,"allowedTools":["read"]}`
+	if response := createAgent(t, office, body); response.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	if filed := agentNamed(t, office, "Filed"); filed.Project == nil || *filed.Project != "shopfront" {
+		t.Errorf("an agent given a project lost it: %v", filed.Project)
+	}
+}
+
 // The desk grid grows, so a desk past the first sixteen is a real desk, and the server says who
 // is working.
 func TestCreateAgentAtAGrownDesk(t *testing.T) {

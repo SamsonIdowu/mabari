@@ -63,7 +63,8 @@ function Install-Docker {
     docker compose -f deploy/docker/compose.yaml up -d --build
     if ($LASTEXITCODE -ne 0) { Fail 'Docker Compose could not start Mabari.' }
   } finally { Pop-Location }
-  Say 'Mabari is running at http://localhost:4317'
+  $port = if ($env:MABARI_HOST_PORT) { $env:MABARI_HOST_PORT } else { '4317' }
+  Say "Mabari is running at http://localhost:$port"
   Write-Host "    Stop it:    docker compose -f $SrcDir\deploy\docker\compose.yaml down"
   Write-Host '    Update it:  run this installer again'
 }

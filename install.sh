@@ -77,7 +77,7 @@ install_docker() {
   say "Building and starting Mabari in Docker (the first build takes a few minutes)"
   (cd "${SRC_DIR}" && MABARI_VERSION="$(git describe --tags --always 2>/dev/null || echo dev)" \
     docker compose -f deploy/docker/compose.yaml up -d --build)
-  say "Mabari is running at http://localhost:4317"
+  say "Mabari is running at http://localhost:${MABARI_HOST_PORT:-4317}"
   echo "    Stop it:    docker compose -f ${SRC_DIR}/deploy/docker/compose.yaml down"
   echo "    Update it:  run this installer again"
 }

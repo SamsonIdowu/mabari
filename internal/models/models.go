@@ -205,6 +205,10 @@ type SessionState struct {
 	Progress float64 `json:"progress"`
 	// Rate is progress per office second, which drives the estimate.
 	Rate float64 `json:"rate"`
+	// RateScale is how many office seconds pass in one real second, or zero for one, which is
+	// every real agent. Only the demo sets it: its agents work through their steps several times
+	// faster than the clock, and the estimates must still be in real seconds. See RatePerSecond.
+	RateScale float64 `json:"-"`
 	// Working is true while the agent is at work, as opposed to waiting or finished. It counts
 	// agents that report no progress rate, such as Claude Code sessions.
 	Working bool `json:"working"`

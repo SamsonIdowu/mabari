@@ -186,6 +186,8 @@ export interface VeeReply {
   working: number;
   total: number;
   need: number;
+  /** In a status: how many working agents its list leaves off, so count and list add up. */
+  more?: number;
   /** What a builder reply works on: the agent to improve, or what a new agent should do. */
   target?: string;
   /** Set when Mabari passed an instruction on and will relay the reply. */
@@ -357,7 +359,7 @@ export const api = {
       return info;
     }),
   snapshot: () => request<Snapshot>('/api/snapshot'),
-  loadDemo: () => send<{ ok: boolean }>('POST', '/api/demo/load'),
+  loadDemo: () => send<{ ok: boolean; endsAt?: number }>('POST', '/api/demo/load'),
   stopDemo: () => send<{ ok: boolean }>('POST', '/api/demo/stop'),
   loginService: () => request<LoginStatus>('/api/service'),
   setLoginService: (on: boolean) => send<LoginStatus>('POST', '/api/service', { on }),

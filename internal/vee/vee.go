@@ -89,6 +89,9 @@ type Reply struct {
 	Working  int              `json:"working"`
 	Total    int              `json:"total"`
 	Need     int              `json:"need"`
+	// More is how many working agents a status leaves off its list of Lines, so the list and the
+	// count always add up. It is zero for any other reply.
+	More int `json:"more"`
 	// Target is what a builder reply works on: the agent to improve, or what a new agent should do.
 	Target string `json:"target"`
 	// Relay is set when Mabari passed an instruction on and will relay the reply.
@@ -140,7 +143,20 @@ var (
 	whatFor   = regexp.MustCompile(`(?i)^.*?\bagent\b\s*(?:that|to|for|which|who|called|named)?\s*`)
 	builder   = regexp.MustCompile(`\b(builder|reusable agents|manage agents|my agents)\b`)
 	newProj   = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
+	// overall is a question about how the whole office is doing, with no agent or topic named:
+	// "how is everything going?", "how are things going?", "how's it going", "is everything ok?".
+	overall = regexp.MustCompile(`\bhow(?:'s|s| is| are| goes)\s+(?:everything|everyone|everybody|things|it|we|all|work|` +
+		`the (?:office|team|work|agents|day)|my (?:agents|team|office|work))\b|` +
+		`\b(?:is|are) (?:everything|everyone|everybody) (?:ok|okay|fine|good|well|alright|on track|going)\b`)
 )
+
+// Suggestions are the questions Mabari offers when it can't tell what a message wants. Each one
+// must be understood, because the page tells people to type exactly these: a test asks them all.
+var Suggestions = []string{"how are things going?", "who needs me?"}
+
+// apostrophes turns the curly apostrophes a phone or a pasted line brings into plain ones, so
+// "how’s it going" matches "how's".
+var apostrophes = strings.NewReplacer("’", "'", "‘", "'", "ʼ", "'")
 
 // shortWords is the most a message can have and still be small talk or a gesture.
 const shortWords = 3
@@ -175,7 +191,7 @@ type view struct {
 }
 
 func estimate(a *models.LiveAgent, now time.Time) *models.Estimate {
-	return models.EstimateFor(a.State, a.Progress, a.Rate, now)
+	return a.EstimateAt(now)
 }
 
 func look(agents []*models.LiveAgent, now time.Time) view {
@@ -210,7 +226,7 @@ func (o view) reply(text, gesture string, kind Kind) Reply {
 // IsQuestion reports whether a message is phrased as a question: it ends with "?" or starts the
 // way questions do.
 func IsQuestion(q string) bool {
-	q = strings.TrimSpace(strings.ToLower(q))
+	q = strings.TrimSpace(strings.ToLower(apostrophes.Replace(q)))
 	return strings.HasSuffix(q, "?") || question.MatchString(q)
 }
 
@@ -239,7 +255,7 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 // projects, a task for the dispatcher (Dispatch).
 func AnswerIn(text string, in Office, now time.Time) Reply {
 	office := look(in.Agents, now)
-	q := strings.TrimSpace(strings.ToLower(text))
+	q := strings.TrimSpace(strings.ToLower(apostrophes.Replace(text)))
 	reply, ok := office.passOn(text, q)
 	project, body, nameLength := namedProject(text, open(in.Projects))
 	// An agent's name wins, unless a longer project name starts with it: "tell Shop Admin to …"
@@ -295,14 +311,15 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 			"Claude account.", "point", KindBuilder)
 	case newProj.MatchString(q):
 		return office.reply("The project chat arrives in a later stage, so I can't open it yet.", "shrug", KindPlain)
-	case isQ && has(q, "office", "floor") || q == "office":
+	case isQ && has(q, "office", "floor") && !overall.MatchString(q) || q == "office":
 		return office.reply("Taking you to the office floor.", "point", KindOffice)
 	case named != nil && isQ && has(q, "doing", "working", "status", "how is", "how's", "what is", "what's",
 		"progress", "update", "done", "finished", "up to"):
 		return office.agentStatus(named)
 	case isQ && has(q, "happening", "status", "update", "going on", "summary", "what's up", "whats up",
 		"progress", "catch me up"),
-		isQ && has(q, "who is", "who's", "whos"):
+		isQ && has(q, "who is", "who's", "whos"),
+		isQ && overall.MatchString(q):
 		return asked.status()
 	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
 		"responses", "answers"):
@@ -399,9 +416,14 @@ func shorten(text string) string {
 }
 
 func (o view) agentStatus(agent *models.LiveAgent) Reply {
-	text := agent.Name + " (" + models.AIName(agent) + ") is " +
-		strings.ToLower(models.StateLabels[agent.State]) + ": " + strings.TrimSuffix(agent.Task, ".") + ". " +
-		models.ETALong(agent, o.now) + "."
+	text := agent.Name + " (" + models.AIName(agent) + ") " + models.Doing(agent) + ": " +
+		strings.TrimSuffix(agent.Task, ".") + ". "
+	if agent.State == models.StateError && !agent.Asking() && agent.Error != "" {
+		// The error says more than "Stopped by an error" does.
+		text += strings.TrimSuffix(agent.Error, ".") + "."
+	} else {
+		text += models.ETALong(agent, o.now) + "."
+	}
 	if last, ok := lastReply(agent); ok {
 		text += " Its last reply: " + shorten(last.Reply)
 	}
@@ -561,13 +583,33 @@ func (o view) status() Reply {
 		return o.reply("The office is empty for now. Connect an account or explore the demo office to see agents at work.",
 			"shrug", KindEmpty)
 	}
-	reply := o.reply(strconv.Itoa(len(o.working))+" agents are working"+o.in()+" and "+strconv.Itoa(len(o.need))+" need you.",
-		"point", KindStatus)
-	for _, agent := range o.working[:min(6, len(o.working))] {
+	text := strconv.Itoa(len(o.working)) + " agents are working" + o.in()
+	if len(o.working) == 1 {
+		text = "1 agent is working" + o.in()
+	}
+	switch len(o.need) {
+	case 0:
+	case 1:
+		text += " and 1 needs you"
+	default:
+		text += " and " + strconv.Itoa(len(o.need)) + " need you"
+	}
+	text += "."
+	listed := o.working[:min(statusListed, len(o.working))]
+	reply := o.reply(text, "point", KindStatus)
+	// A long list is cut, and says by how much, so the count and the list always reconcile.
+	if reply.More = len(o.working) - len(listed); reply.More > 0 {
+		reply.Text += " Here are " + strconv.Itoa(len(listed)) + " of them, and " + strconv.Itoa(reply.More) + " more."
+	}
+	for _, agent := range listed {
 		reply.Lines = append(reply.Lines, o.line(agent))
 	}
 	return reply
 }
+
+// statusListed is the most agents the status lists, as in the prototype. Past it, the reply says
+// how many more are working.
+const statusListed = 6
 
 // WorkflowLabel is how Mabari's lines name a workflow sub-agent.
 const WorkflowLabel = "workflow sub-agent"
@@ -614,11 +656,36 @@ func Passed(agent *models.LiveAgent, where Where, agents []*models.LiveAgent, no
 	}
 	text := "Sent to " + agent.Name + ". I'll tell you what it says."
 	if where.Queued {
-		text = "Passed it to " + agent.Name + ". It's mid step, so it gets it at its next checkpoint. I'll tell you what it says."
+		text = "Passed it to " + agent.Name + ". " + QueuedBecause(agent) + " I'll tell you what it says."
 	}
 	reply := office.reply(text, "nod", KindPlain)
 	reply.Relay = relayFor(agent, where)
 	return reply
+}
+
+// QueuedBecause says why a message waits for an agent, and when it arrives: an agent waiting on
+// you can't read it until you've decided or answered, and a busy one reads it at its next
+// checkpoint.
+func QueuedBecause(agent *models.LiveAgent) string {
+	switch {
+	case agent.Asking():
+		return agent.Name + " is waiting for your answer, so it gets it once you've answered."
+	case agent.State == models.StateApproval:
+		return agent.Name + " is waiting for your approval, so it gets it once you decide."
+	default:
+		return "It's mid step, so it gets it at its next checkpoint."
+	}
+}
+
+// noAgentFree is the reply when nobody can take a task. It says how to get an agent, which
+// depends on whether anyone is in the office at all.
+func noAgentFree(agents []*models.LiveAgent) string {
+	if len(agents) == 0 {
+		return "There's no agent free to take that yet. Open Accounts to connect Claude Code or sign in with ChatGPT, " +
+			"then choose New agent on the Agents page to start one, and send this again."
+	}
+	return "There's no agent free to take that yet. Choose New agent on the Agents page to start another, " +
+		"and send this again."
 }
 
 // Dispatched is what Mabari says the moment the dispatcher has picked an agent: who got it, which
@@ -626,7 +693,7 @@ func Passed(agent *models.LiveAgent, where Where, agents []*models.LiveAgent, no
 func Dispatched(agent *models.LiveAgent, reason string, where Where, agents []*models.LiveAgent, now time.Time) Reply {
 	office := look(agents, now)
 	if agent == nil {
-		return office.reply("There's no agent free to take that yet. Start one first.", "shrug", KindPlain)
+		return office.reply(noAgentFree(agents), "shrug", KindPlain)
 	}
 	if where.InstructionID == "" {
 		return office.unreachable(agent)

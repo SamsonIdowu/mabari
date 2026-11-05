@@ -20,14 +20,35 @@ func TestCostOf(t *testing.T) {
 
 func TestAck(t *testing.T) {
 	cases := map[string]string{
-		"Sage, Also update the API docs.": "I'll also update the API docs.",
-		"Fix the bug":                     "I'll fix the bug.",
-		"Use the money helper instead of toFixed and also rewrite every test": "I'll do that next.",
-		// Characters that take more than one byte are kept whole and counted once.
-		"Écris le test":         "I'll écris le test.",
-		"修复登录问题":                "I'll 修复登录问题.",
-		strings.Repeat("é", 40): "I'll " + strings.Repeat("é", 40) + ".",
-		strings.Repeat("修", 24): "I'll " + strings.Repeat("修", 24) + ".",
+		// An instruction that starts with a verb is promised back.
+		"Sage, Also update the API docs.": "Got it. I'll also update the API docs.",
+		"Fix the bug":                     "Got it. I'll fix the bug.",
+		"Add the pricing pages":           "Got it. I'll add the pricing pages.",
+		"  run   the tests\n":             "Got it. I'll run the tests.",
+		"Please check the chart labels":   "Got it. I'll check the chart labels.",
+		"also round the tax line":         "Got it. I'll also round the tax line.",
+		// Anything else is echoed, so it can't come out as "I'll please check", "I'll after this
+		// step" or "I'll we need tests".
+		"please":                             "Got it: please.",
+		"after this step, run the linter":    "Got it: after this step, run the linter.",
+		"After the migration, also seed it.": "Got it: After the migration, also seed it.",
+		"we need tests for csv":              "Got it: we need tests for csv.",
+		"CSV export is wrong":                "Got it: CSV export is wrong.",
+		"can you check the build?":           "Got it: can you check the build?",
+		"/ux-audit https://x.io/a":           "Got it: /ux-audit https://x.io/a.",
+		"":                                   "Got it.",
+		// Too long to repeat back.
+		"Use the money helper instead of toFixed and also rewrite every test":                     "Got it. I'll do that next.",
+		"after the migration finishes, seed the test database and then run the whole suite again": "Got it. I'll do that next.",
+		// Other languages are echoed, and characters that take more than one byte are kept whole
+		// and counted once.
+		"Écris le test":                  "Got it: Écris le test.",
+		"修复登录问题":                         "Got it: 修复登录问题.",
+		strings.Repeat("é", 40):          "Got it: " + strings.Repeat("é", 40) + ".",
+		strings.Repeat("修", 60):          "Got it: " + strings.Repeat("修", 60) + ".",
+		strings.Repeat("修", 61):          "Got it. I'll do that next.",
+		"fix " + strings.Repeat("é", 56): "Got it. I'll fix " + strings.Repeat("é", 56) + ".",
+		"fix " + strings.Repeat("é", 57): "Got it. I'll do that next.",
 	}
 	for in, want := range cases {
 		if got := Ack(in); got != want {
@@ -137,5 +158,36 @@ func TestMessageColoursMatchThePrototype(t *testing.T) {
 		if MessageColors[kind] != colour {
 			t.Errorf("%s = %s, want %s", kind, MessageColors[kind], colour)
 		}
+	}
+}
+
+// Every state that has a label for chips has a phrase for sentences, so Mabari never says
+// "Atlas is needs approval" or "Mori is error".
+func TestEveryStateHasAPhrase(t *testing.T) {
+	for state, label := range StateLabels {
+		phrase, ok := StatePhrases[state]
+		if !ok || phrase == "" {
+			t.Errorf("%s has no phrase", state)
+			continue
+		}
+		if !strings.HasPrefix(phrase, "is ") && !strings.HasPrefix(phrase, "hit ") && !strings.HasPrefix(phrase, "was ") {
+			t.Errorf("%s: %q doesn't read after a name", state, phrase)
+		}
+		if phrase == "is "+strings.ToLower(label) && (state == StateApproval || state == StateError) {
+			t.Errorf("%s: %q is the chip label in a sentence", state, phrase)
+		}
+	}
+	if len(StatePhrases) != len(StateLabels) {
+		t.Errorf("%d phrases for %d labels", len(StatePhrases), len(StateLabels))
+	}
+	asking := &LiveAgent{SessionState: SessionState{State: StateThinking}, Question: &Question{ID: "q"}}
+	if got := Doing(asking); got != "is asking you a question" {
+		t.Errorf("an agent asking says %q", got)
+	}
+	if got := Doing(&LiveAgent{SessionState: SessionState{State: StateApproval}}); got != "is waiting for your approval" {
+		t.Errorf("an agent waiting on approval says %q", got)
+	}
+	if got := Doing(&LiveAgent{SessionState: SessionState{State: StateError}}); got != "hit an error" {
+		t.Errorf("an agent in error says %q", got)
 	}
 }

@@ -168,7 +168,7 @@ func TestOneWordIsNotAFit(t *testing.T) {
 func TestStatusAnswersForThePickedProject(t *testing.T) {
 	in := inProjects("lad")
 	if reply := AnswerIn("what's happening?", in, now); reply.Kind != KindStatus || reply.Total != 1 ||
-		reply.Text != "1 agents are working in Lad Project All and 0 need you." {
+		reply.Text != "1 agent is working in Lad Project All." {
 		t.Errorf("lad = %+v", reply)
 	}
 	if reply := AnswerIn("what's happening?", inProjects("eq"), now); reply.Text != "Nothing is running in Experience and Quality yet. Send it a task and I'll get it started." {

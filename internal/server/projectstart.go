@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -272,8 +271,6 @@ func (b startBody) check() string {
 	return ""
 }
 
-var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-
 // startProject creates the project and seats its team, as the prototype's briefStart does.
 func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 	var body startBody
@@ -305,7 +302,9 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		folder = "~/code/" + strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
+		// Accented letters are written plainly, and a name with none to write, such as one in
+		// Japanese, still gets a folder.
+		folder = "~/code/" + planner.Slug(name)
 	}
 	var (
 		project    models.Project

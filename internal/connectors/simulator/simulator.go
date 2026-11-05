@@ -33,6 +33,10 @@ const DemoLength = 10 * time.Minute
 // SetDemoLength changes how long the demo runs, for tests.
 func (s *Simulator) SetDemoLength(length time.Duration) { s.demoLength = length }
 
+// SetDemoQuestion changes how long into the demo its agent asks a question, for tests. Zero or
+// less means it never asks.
+func (s *Simulator) SetDemoQuestion(after time.Duration) { s.questionAfter = after }
+
 const (
 	officeSecondsPerTick = 6
 	// checkpointSoon is how many office seconds a step has left once an instruction waits for it,
@@ -85,6 +89,8 @@ type Simulator struct {
 	// demoEnds is when the demo turns itself off, in milliseconds, and demoLength how long it runs.
 	demoEnds   int64
 	demoLength time.Duration
+	// questionAfter is how long into the demo a demo agent asks its question.
+	questionAfter time.Duration
 
 	tickEvery time.Duration
 	mu        sync.Mutex
@@ -102,7 +108,7 @@ func New(engine *events.Engine, random func() float64, tickEvery time.Duration) 
 		random:     random,
 		runtimes:   map[string]*runtime{},
 		tickEvery:  tickEvery,
-		demoLength: DemoLength,
+		demoLength: DemoLength, questionAfter: DemoQuestionAfter,
 	}
 	engine.AddConnector(Source, s)
 	return s
@@ -315,6 +321,7 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 	agent.Task, agent.State, agent.Desk = task, state, desk
 	agent.Progress = orElse(spec.progress, func() float64 { return s.between(0.1, 0.6) })
 	agent.Rate = s.between(0.0009, 0.0018)
+	agent.RateScale = demoPace
 	agent.Elapsed = orElse(spec.elapsed, func() int64 { return s.rounded(120, 1800) })
 	agent.TokensIn = orElse(spec.tokensIn, func() int64 { return s.rounded(8000, 90000) })
 	agent.TokensOut = orElse(spec.tokensOut, func() int64 { return s.rounded(2000, 20000) })
@@ -458,7 +465,7 @@ func (s *Simulator) checkpoint(agent *models.LiveAgent) {
 		return
 	}
 	s.engine.AddEvent(agent, "instruction", "Received: "+instruction.Text, nil)
-	said := "Got it. " + models.Ack(instruction.Text)
+	said := models.Ack(instruction.Text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
 }
@@ -519,11 +526,14 @@ func (s *Simulator) talk(from, to *models.LiveAgent, text string, kind models.Me
 	s.engine.AddEvent(from, "message", "To "+to.Name+": "+text, nil)
 }
 
-func baseName(path string) string { return path[strings.LastIndex(path, "/")+1:] }
-
+// firstFile names the agent's first file for a line of chat, or fallback when it has none to name.
+// A folder in the list, such as "test/", is named with its slash, so no line is left with a
+// blank where the file goes.
 func firstFile(agent *models.LiveAgent, fallback string) string {
-	if len(agent.Files) > 0 {
-		return baseName(agent.Files[0])
+	for _, file := range agent.Files {
+		if name := models.BaseName(file); name != "" {
+			return name
+		}
 	}
 	return fallback
 }
@@ -576,17 +586,22 @@ func (s *Simulator) conversationTick() {
 	} else {
 		template = pick(s, peerTalk)
 	}
-	values := map[string]string{
+	values := chatValues(first, second)
+	s.talk(first, second, fill(template.say, values), template.kind)
+	s.after(3200, func() {
+		s.talk(second, first, fill(template.answer, values), models.MessageAnswer)
+	})
+}
+
+// chatValues fills the blanks in a line of chat between two agents. None is ever empty.
+func chatValues(first, second *models.LiveAgent) map[string]string {
+	return map[string]string{
 		"fileA": firstFile(first, "app.ts"),
 		"fileB": firstFile(second, "index.ts"),
 		"fileL": firstFile(second, "index.ts"),
 		"etaB":  models.ETAWords(second),
 		"pct":   strconv.Itoa(int(math.Round(first.Progress * 100))),
 	}
-	s.talk(first, second, fill(template.say, values), template.kind)
-	s.after(3200, func() {
-		s.talk(second, first, fill(template.answer, values), models.MessageAnswer)
-	})
 }
 
 func sameProject(a, b *models.LiveAgent) bool {
@@ -665,12 +680,13 @@ func (s *Simulator) tickAgent(agent *models.LiveAgent) {
 		state.nextTask != 0 && s.now() > state.nextTask {
 		s.pickUpTask(agent, state)
 	}
-	if !agent.State.Active() {
+	// An agent waiting on your answer does no work, and its step doesn't run down, until you answer.
+	if !agent.State.Active() || agent.Asking() {
 		return
 	}
 	speed := 1.0
 	if agent.State == models.StateThinking {
-		speed = 0.6
+		speed = thinkingSpeed
 	}
 	agent.Progress = math.Min(1, agent.Progress+float64(agent.Rate*officeSecondsPerTick*speed))
 	agent.TokensIn += s.rounded(200, 900)
@@ -737,7 +753,8 @@ func (s *Simulator) maybeRequestApproval() {
 		if agent.State == models.StateApproval {
 			return
 		}
-		if agent.State.Active() && agent.Lead == nil {
+		// An agent already waiting on an answer isn't asked for an approval on top of it.
+		if agent.State.Active() && agent.Lead == nil && !agent.Asking() {
 			candidates = append(candidates, agent)
 		}
 	}
@@ -781,8 +798,15 @@ func (s *Simulator) Decide(agent *models.LiveAgent, approval models.Approval) {
 	s.engine.Toast(agent.Name + " is continuing")
 }
 
-// Instruct delivers a message, or holds it for an active Claude agent's next checkpoint.
+// Instruct delivers a message, or holds it. An agent waiting on you, for an approval or an answer,
+// can't read anything until you've decided, so whatever it runs on the message waits and is
+// delivered the moment it carries on (FIRST-2): it isn't told "Got it" on its behalf. An active
+// Claude agent also takes it at its next checkpoint.
 func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
+	if agent.State == models.StateApproval || agent.Asking() {
+		s.engine.Queue(agent, text)
+		return
+	}
 	if agent.Provider == models.ProviderClaude && agent.State.Active() {
 		s.engine.Queue(agent, text)
 		// The step it is on ends within a couple of ticks, so the instruction lands in seconds.
@@ -800,7 +824,7 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 		agent.Rate = s.between(0.0012, 0.002)
 		s.setState(agent, models.StateThinking)
 	}
-	said := "Got it. " + models.Ack(text)
+	said := models.Ack(text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
 }
@@ -808,6 +832,10 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 // Interrupt pauses an agent after its current tool call, remembering where it was.
 func (s *Simulator) Interrupt(agent *models.LiveAgent) {
 	if agent.State == models.StatePaused {
+		return
+	}
+	if agent.Asking() {
+		s.engine.Toast(agent.Name + " is waiting for your answer, so there is nothing to interrupt.")
 		return
 	}
 	state := s.runtimeOf(agent)
@@ -891,6 +919,8 @@ func (s *Simulator) StopAgent(agent *models.LiveAgent) {
 	s.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")
 	agent.Leaving = true
 	agent.State = models.StateIdle
+	// Nobody is left to hear an answer.
+	agent.Question = nil
 	s.engine.CancelApproval(agent)
 	s.engine.Touch(agent)
 	s.engine.Toast(agent.Name + " stopped and left the office")
@@ -992,7 +1022,47 @@ func (s *Simulator) loadDemo() {
 		"Answered from the log", "")
 	s.engine.Log("Atlas", models.LogApproval, "rm -rf ./tmp/fixtures", "Denied", "red")
 	s.seedConversations()
+	if s.questionAfter > 0 {
+		s.after(s.questionAfter.Milliseconds(), func() { s.askDemoQuestion(0) })
+	}
 	s.engine.Reset()
+}
+
+// askDemoQuestion has the demo's Claude agent ask its question, so the journey of being asked,
+// and answering in the agent's panel, can be seen without a real session (FIRST-11). It waits
+// until the agent is at work, not already waiting on you, and has read the message the demo opens
+// with waiting for it, so the two don't muddle each other. It gives up after a minute.
+func (s *Simulator) askDemoQuestion(attempt int) {
+	agent := s.engine.AgentByName(demoAsker)
+	if agent == nil || agent.Source != Source || agent.Leaving {
+		return
+	}
+	if !agent.State.Active() || agent.Asking() || len(agent.Queued) > 0 {
+		if attempt < 6 {
+			s.after(10_000, func() { s.askDemoQuestion(attempt + 1) })
+		}
+		return
+	}
+	asked := demoQuestion
+	asked.Items = slices.Clone(demoQuestion.Items)
+	s.engine.Ask(agent, asked)
+}
+
+// Answer takes your answers to a demo agent's question, once the engine has checked them, and the
+// agent carries on from where it asked, saying what it will do. A message that waited for it is
+// delivered now. Call inside Do.
+func (s *Simulator) Answer(agent *models.LiveAgent, question models.Question, answers []models.QuestionAnswer) bool {
+	if !s.stillHere(agent) || len(answers) != len(question.Items) {
+		return false
+	}
+	chosen := make([]string, len(question.Items))
+	for index, item := range question.Items {
+		chosen[index] = models.AnswerText(item, answers[index])
+	}
+	s.checkpoint(agent)
+	s.reply(agent, "Thanks. Going with "+strings.Join(chosen, " and ")+".", 7000)
+	s.engine.Toast(agent.Name + " is carrying on")
+	return true
 }
 
 func (s *Simulator) seedConversations() {

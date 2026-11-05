@@ -168,6 +168,7 @@ function Lines({ reply }: { reply: VeeReply }) {
             ) : null}
           </li>
         ))}
+        {reply.more ? <li className="muted">and {reply.more} more</li> : null}
       </ul>
     </>
   );

@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,6 +44,9 @@ func setup(t *testing.T, path string, seed uint32) (*Simulator, *events.Engine, 
 	sim := New(engine, Mulberry32(seed), 0)
 	// Long enough for the golden test; TestTheDemoTurnsItselfOff checks the real length's effect.
 	sim.SetDemoLength(24 * time.Hour)
+	// The demo's question is the port's own, not the prototype's, and it stops an agent, which would
+	// move every random draw the golden test follows. The tests of it turn it on.
+	sim.SetDemoQuestion(0)
 	return sim, engine, c, s
 }
 
@@ -525,6 +529,22 @@ type goldenFrame struct {
 	Log      int           `json:"log"`
 }
 
+// The port knowingly differs from the prototype in what agents say to each other, in two ways,
+// and the golden test sets both aside so everything else is still checked against the prototype.
+//
+//   - The prototype names a folder as nothing, which makes lines like "touches . Over to you"
+//     (FIRST-7); the port names it, "touches test/.".
+//   - The prototype counts "give me about 15 min" in office time, which runs several times faster
+//     than the clock; the port tells real minutes (FIRST-8).
+var (
+	folderNames = regexp.MustCompile(`\b(?:test|docs)/`)
+	minuteWords = regexp.MustCompile(`about \d+ min\b`)
+)
+
+func withoutFolders(text string) string { return folderNames.ReplaceAllString(text, "") }
+
+func withoutMinutes(text string) string { return minuteWords.ReplaceAllString(text, "about N min") }
+
 func TestMatchesThePrototype(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "golden.json"))
 	if err != nil {
@@ -558,6 +578,10 @@ func TestMatchesThePrototype(t *testing.T) {
 			}
 			if len(agent.Feed) > 0 {
 				got.Top = agent.Feed[0].Tool + "|" + agent.Feed[0].Summary
+				if agent.Feed[0].Tool == "message" {
+					got.Top = withoutMinutes(withoutFolders(got.Top))
+					want.Top = withoutMinutes(want.Top)
+				}
 			}
 			// Subagents are contractors, unlike in the prototype: off duty they leave the floor,
 			// and back on duty they take the free desk nearest their lead.
@@ -574,7 +598,7 @@ func TestMatchesThePrototype(t *testing.T) {
 		if got := len(snapshot.Messages); got != frame.Messages {
 			t.Fatalf("tick %d: %d messages, prototype has %d", tick, got, frame.Messages)
 		}
-		if got := snapshot.Messages[len(snapshot.Messages)-1].Text; got != frame.LastText {
+		if got := withoutMinutes(withoutFolders(snapshot.Messages[len(snapshot.Messages)-1].Text)); got != withoutMinutes(frame.LastText) {
 			t.Fatalf("tick %d: last message %q, prototype has %q", tick, got, frame.LastText)
 		}
 		if got := len(snapshot.Log); got != frame.Log {

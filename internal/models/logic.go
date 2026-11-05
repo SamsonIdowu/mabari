@@ -36,6 +36,24 @@ var StateLabels = map[AgentState]string{
 	StatePaused:   "Interrupted",
 }
 
+// StatePhrases say what an agent is doing in a sentence, after its name: "Atlas is waiting for your
+// approval", "Mori hit an error". StateLabels are for chips and headings, where "Needs approval"
+// and "Error" read well but "Atlas is needs approval" does not. Every state has one: a test
+// compares the two maps.
+var StatePhrases = map[AgentState]string{
+	StateThinking: "is thinking",
+	StateReading:  "is reading files",
+	StateEditing:  "is editing",
+	StateRunning:  "is running tests",
+	StateBrowsing: "is browsing",
+	StateApproval: "is waiting for your approval",
+	StateSpawning: "is starting a subagent",
+	StateIdle:     "is idle",
+	StateDone:     "is done",
+	StateError:    "hit an error",
+	StatePaused:   "was interrupted",
+}
+
 // Models lists the demo office's models for each account kind.
 var Models = map[AccountKind][]string{
 	AccountCodex:        {"gpt-5-codex", "gpt-5", "gpt-5-mini"},
@@ -174,7 +192,7 @@ func (a *LiveAgent) Refresh(now time.Time) {
 	a.Cost = CostOf(a.TokensIn, a.TokensOut, a.Model)
 	// An agent waiting on the person's answer isn't working, whatever it was doing when it asked.
 	a.Working = a.State.Active() && !a.Asking()
-	a.Estimate = EstimateFor(a.State, a.Progress, a.Rate, now)
+	a.Estimate = a.EstimateAt(now)
 	a.Bubble, a.BubbleKind = bubbleFor(a, now.UnixMilli())
 }
 
@@ -195,11 +213,14 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 	}
 	from := func(tool, fallback string, pick func(string) string) string {
 		if lastTool == tool {
-			return pick(lastSummary)
+			// Never a sentence around nothing: "Reading " with no file says less than "Reading files".
+			if picked := strings.TrimSpace(pick(lastSummary)); picked != "" {
+				return picked
+			}
 		}
 		return fallback
 	}
-	baseName := func(s string) string { return s[strings.LastIndex(s, "/")+1:] }
+	baseName := BaseName
 	head := func(s string) string { return strings.SplitN(s, "  ", 2)[0] }
 	same := func(s string) string { return s }
 
@@ -235,6 +256,19 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 	return "", ""
 }
 
+// Doing is what the agent is doing as a phrase after its name: "is editing", "is waiting for your
+// approval", "is asking you a question". An agent waiting on your answer says so whatever it was
+// doing when it asked.
+func Doing(a *LiveAgent) string {
+	if a.Asking() {
+		return "is asking you a question"
+	}
+	if phrase, ok := StatePhrases[a.State]; ok {
+		return phrase
+	}
+	return "is " + strings.ToLower(string(a.State))
+}
+
 // ETALong is the estimate in plain words, as the panel and answers say it.
 func ETALong(a *LiveAgent, now time.Time) string {
 	if a.Asking() {
@@ -252,7 +286,7 @@ func ETALong(a *LiveAgent, now time.Time) string {
 	case StatePaused:
 		return "Interrupted, waiting for your instruction"
 	}
-	estimate := EstimateFor(a.State, a.Progress, a.Rate, now)
+	estimate := a.EstimateAt(now)
 	if estimate == nil {
 		return "No estimate yet"
 	}
@@ -294,14 +328,74 @@ var addressedTo = regexp.MustCompile(`^[A-Za-z]+,\s*`)
 // WithoutName drops a leading "Sage, " from an instruction.
 func WithoutName(text string) string { return addressedTo.ReplaceAllString(text, "") }
 
-// Ack is an agent's reply to an instruction, such as "I'll update the docs."
-func Ack(text string) string {
-	body := WithoutName(text)
-	// Characters, not bytes, so an instruction in another language is measured fairly.
-	if utf8.RuneCountInString(body) > 60 {
-		return "I'll do that next."
+// ackLimit is the longest instruction an acknowledgement repeats back, in characters.
+const ackLimit = 60
+
+// verbs are words that start an instruction on their own: "fix the bug", "run the tests". An
+// instruction starting with one can be promised back as "I'll fix the bug." Anything else
+// ("after this step, run the linter", "we need tests") would make nonsense after "I'll", so it is
+// echoed instead.
+var verbs = map[string]bool{
+	"add": true, "analyse": true, "analyze": true, "ask": true, "benchmark": true, "build": true,
+	"cache": true, "change": true, "check": true, "choose": true, "clean": true, "close": true,
+	"commit": true, "compare": true, "configure": true, "continue": true, "copy": true,
+	"create": true, "debug": true, "delete": true, "deploy": true, "disable": true, "document": true,
+	"downgrade": true, "draft": true, "drop": true, "edit": true, "enable": true, "explain": true,
+	"extract": true, "find": true, "finish": true, "fix": true, "focus": true, "format": true,
+	"generate": true, "give": true, "go": true, "handle": true, "implement": true, "improve": true,
+	"increase": true, "install": true, "investigate": true, "keep": true, "limit": true,
+	"lint": true, "list": true, "look": true, "make": true, "merge": true, "move": true,
+	"open": true, "optimize": true, "optimise": true, "pause": true, "pick": true, "plan": true,
+	"prepare": true, "profile": true, "push": true, "read": true, "reduce": true, "refactor": true,
+	"remove": true, "rename": true, "replace": true, "rerun": true, "retry": true, "review": true,
+	"revert": true, "rewrite": true, "round": true, "run": true, "search": true, "select": true,
+	"send": true, "set": true, "show": true, "simplify": true, "split": true, "start": true,
+	"stop": true, "summarise": true, "summarize": true, "switch": true, "take": true, "test": true,
+	"try": true, "update": true, "upgrade": true, "use": true, "validate": true, "verify": true,
+	"wait": true, "work": true, "write": true,
+}
+
+// promiseAdverbs may come before the verb: "also update the docs" is "I'll also update the docs".
+var promiseAdverbs = map[string]bool{"also": true, "then": true, "now": true, "first": true, "next": true, "just": true}
+
+// promise gives what follows "I'll" for an instruction, and reports whether it can: only when the
+// instruction starts with a verb, after "please" and a word like "also". "please" is dropped.
+func promise(body string) (string, bool) {
+	words := strings.Fields(body)
+	if len(words) > 0 && strings.EqualFold(words[0], "please") {
+		words = words[1:]
 	}
-	return "I'll " + strings.TrimSuffix(LowerFirst(body), ".") + "."
+	verb := 0
+	for verb < len(words) && promiseAdverbs[strings.ToLower(words[verb])] {
+		verb++
+	}
+	if verb >= len(words) || !verbs[strings.ToLower(words[verb])] {
+		return "", false
+	}
+	return LowerFirst(strings.Join(words, " ")), true
+}
+
+// Ack is an agent's reply to an instruction. An instruction that starts with a verb is promised
+// back, "Got it. I'll update the docs."; any other is echoed, "Got it: after this step, run the
+// linter.", which can't come out garbled whatever the person typed. A long one only gets "I'll do
+// that next." It is the whole reply, "Got it" included.
+func Ack(text string) string {
+	body := strings.Join(strings.Fields(WithoutName(text)), " ")
+	// Characters, not bytes, so an instruction in another language is measured fairly.
+	if utf8.RuneCountInString(body) > ackLimit {
+		return "Got it. I'll do that next."
+	}
+	body = strings.TrimSuffix(body, ".")
+	if said, ok := promise(body); ok {
+		return "Got it. I'll " + said + "."
+	}
+	if body == "" {
+		return "Got it."
+	}
+	if strings.HasSuffix(body, "?") || strings.HasSuffix(body, "!") {
+		return "Got it: " + body
+	}
+	return "Got it: " + body + "."
 }
 
 // LowerFirst lowers the first character, which may take more than one byte.
@@ -313,12 +407,24 @@ func LowerFirst(text string) string {
 	return string(unicode.ToLower(first)) + text[size:]
 }
 
+// BaseName is the last part of a path, as a sentence names it: "src/app.ts" is "app.ts", and a
+// folder keeps its slash so it reads as one: "test/" is "test/", not nothing. It is empty only
+// for an empty path, or one with nothing in it but slashes, and callers use a fallback then.
+func BaseName(path string) string {
+	trimmed := strings.TrimRight(path, "/")
+	name := trimmed[strings.LastIndex(trimmed, "/")+1:]
+	if name != "" && len(trimmed) < len(path) {
+		name += "/"
+	}
+	return name
+}
+
 // ETAWords is the prototype's phrase for when an agent will be free, used in agent chat.
 func ETAWords(a *LiveAgent) string {
-	if !a.State.Active() || a.Rate <= 0 {
+	if !a.State.Active() || a.RatePerSecond() <= 0 {
 		return "a few minutes"
 	}
-	minutes := max(1, int(math.Round((1-a.Progress)/a.Rate/60)))
+	minutes := max(1, int(math.Round((1-a.Progress)/a.RatePerSecond()/60)))
 	return "about " + strconv.Itoa(minutes) + " min"
 }
 

@@ -629,20 +629,55 @@ func (c *Connector) Stop() {}
 
 // Decide answers Codex's approval request. Call inside Do.
 func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
-	reply := c.takeReply(agent.ID)
-	if reply == nil {
-		return
+	if reply := c.takeReply(agent.ID); reply != nil {
+		decision := "decline"
+		if approval.Decision != nil && *approval.Decision == models.DecisionAllowed {
+			decision = "accept"
+			agent.State = models.StateThinking
+		}
+		go reply(map[string]string{"decision": decision})
 	}
-	decision := "decline"
-	if approval.Decision != nil && *approval.Decision == models.DecisionAllowed {
-		decision = "accept"
-		agent.State = models.StateThinking
-	}
-	go reply(map[string]string{"decision": decision})
+	// What was sent while the turn waited on this decision reaches it now.
+	c.deliverQueued(agent)
 }
 
-// Instruct steers the running turn, or starts a new turn if the thread is idle.
+// deliverQueued passes on, oldest first, the messages that waited for the agent to carry on. A
+// thread that has gone keeps them waiting. Call inside Do.
+func (c *Connector) deliverQueued(agent *models.LiveAgent) {
+	c.mu.Lock()
+	running := c.byAgent[agent.ID] != nil
+	c.mu.Unlock()
+	for running {
+		instruction, ok := c.engine.NextQueued(agent)
+		if !ok {
+			return
+		}
+		c.pass(agent, instruction.Text)
+	}
+}
+
+// Instruct steers the running turn, or starts a new turn if the thread is idle. A turn waiting on
+// your approval can't read anything until you decide, so a message to it waits for the decision,
+// and isn't reported as delivered before then.
 func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
+	c.mu.Lock()
+	running := c.byAgent[agent.ID] != nil
+	c.mu.Unlock()
+	if !running {
+		c.engine.Toast(agent.Name + " isn't running in Codex yet. Try again in a moment.")
+		return
+	}
+	if agent.State == models.StateApproval {
+		c.engine.Queue(agent, text)
+		return
+	}
+	c.engine.Delivered(agent, text)
+	c.pass(agent, text)
+}
+
+// pass gives text to the agent's thread, steering the turn it is on or starting a new one. Call
+// inside Do.
+func (c *Connector) pass(agent *models.LiveAgent, text string) {
 	c.mu.Lock()
 	t := c.byAgent[agent.ID]
 	turn := ""
@@ -651,10 +686,8 @@ func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 	}
 	c.mu.Unlock()
 	if t == nil {
-		c.engine.Toast(agent.Name + " isn't running in Codex yet. Try again in a moment.")
 		return
 	}
-	c.engine.Delivered(agent, text)
 	c.engine.AddEvent(agent, "instruction", "Received: "+clip(text, 120), nil)
 	if turn == "" {
 		agent.Task, agent.Progress, agent.State = clip(models.WithoutName(text), 120), 0, models.StateThinking

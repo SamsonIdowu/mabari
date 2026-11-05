@@ -218,11 +218,14 @@ test('an agent that needs you and has an instruction queued is listed once, with
   await expect(list(page)).toBeVisible();
 
   const needs = list(page).getByRole('group', { name: /^Needs you/ });
-  const row = needs.locator('.flrow', { hasText: /^Atlas/ });
+  const named = (name: string) => ({
+    has: page.locator('.flname', { hasText: new RegExp(`^${name}$`) }),
+  });
+  const row = needs.locator('.flrow', named('Atlas'));
   await expect(row).toBeVisible();
   await expect(row.locator('.flq')).toHaveText('1 queued');
   // One line for Atlas in the whole list.
-  await expect(list(page).locator('.flrow', { hasText: /^Atlas/ })).toHaveCount(1);
+  await expect(list(page).locator('.flrow', named('Atlas'))).toHaveCount(1);
 
   // Read at one instant: the groups add up to the agents, and the header's numbers are theirs.
   // Sage may still be waiting on its own message, in the Queued group, so the header's queued is

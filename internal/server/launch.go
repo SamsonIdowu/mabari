@@ -114,6 +114,12 @@ func (a *api) openProjectClaude(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prompt := strings.TrimSpace(body.Prompt)
+	// The prompt already follows "--"; refusing a leading dash as well means it can't be a flag
+	// even if Claude Code ever read options after "--".
+	if strings.HasPrefix(prompt, "-") {
+		writeError(w, http.StatusBadRequest, "A prompt can't start with a dash.")
+		return
+	}
 	if prompt == "" {
 		prompt = "You are working on the project " + project.Name + "."
 		if instructions := strings.TrimSpace(project.Instructions); instructions != "" {

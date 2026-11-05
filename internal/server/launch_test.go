@@ -111,6 +111,9 @@ func TestAttachingAFolderToAProject(t *testing.T) {
 	if project.Repository == nil || project.Repository.Path != folder {
 		t.Fatalf("project = %+v", project)
 	}
+	if response := office.do(t, http.MethodPost, "/api/projects/"+created.ID+"/claude", `{"prompt":"--dangerously-skip-permissions"}`); response.Code != http.StatusBadRequest {
+		t.Errorf("a flag as the prompt = %d", response.Code)
+	}
 	response := office.do(t, http.MethodPost, "/api/projects/"+created.ID+"/claude", `{}`)
 	if result := decode[map[string]string](t, response); response.Code != http.StatusOK || !strings.HasPrefix(result["notice"], "Opened Claude Code in "+folder) {
 		t.Fatalf("open = %d %v", response.Code, result)

@@ -52,7 +52,8 @@ func Args(request Request) []string {
 		args = append(args, "--permission-mode", "plan")
 	}
 	if request.Prompt != "" {
-		args = append(args, request.Prompt)
+		// "--" ends the options, so a prompt that starts with a dash is never read as a flag.
+		args = append(args, "--", request.Prompt)
 	}
 	return args
 }
@@ -77,7 +78,11 @@ func appleScriptString(text string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `"`, `\"`) + `"`
 }
 
-// Command is how this computer opens the session, or nil when it can't.
+// Command is how this computer opens the session, or nil when it can't. The program is always a
+// fixed name (osascript, or a terminal found on PATH by its fixed name), never taken from a
+// request. A request's folder, name and prompt only travel as separate arguments, or shell quoted
+// where a terminal needs one line, and the prompt follows "--", so none of them can run a command
+// or add a flag.
 func Command(ctx context.Context, goos string, lookPath func(string) (string, error), request Request) *exec.Cmd {
 	switch goos {
 	case "darwin":
@@ -86,14 +91,14 @@ func Command(ctx context.Context, goos string, lookPath func(string) (string, er
 	case "linux":
 		if path, err := lookPath("gnome-terminal"); err == nil {
 			args := append([]string{"--working-directory=" + request.Folder, "--"}, Args(request)...)
-			return exec.CommandContext(ctx, path, args...) // #nosec G204 -- exec form, no shell
+			return exec.CommandContext(ctx, path, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
 		}
 		if path, err := lookPath("konsole"); err == nil {
 			args := append([]string{"--workdir", request.Folder, "-e"}, Args(request)...)
-			return exec.CommandContext(ctx, path, args...) // #nosec G204 -- exec form, no shell
+			return exec.CommandContext(ctx, path, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
 		}
 		if path, err := lookPath("x-terminal-emulator"); err == nil {
-			return exec.CommandContext(ctx, path, "-e", "sh", "-c", ShellLine(request)) // #nosec G204 -- every part is shell quoted
+			return exec.CommandContext(ctx, path, "-e", "sh", "-c", ShellLine(request)) // #nosec G204 nosemgrep -- fixed program; every part is shell quoted
 		}
 	}
 	return nil

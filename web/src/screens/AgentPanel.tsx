@@ -598,9 +598,18 @@ function MessageBox({ agent, office }: { agent: LiveAgent; office: Snapshot }) {
   );
 }
 
+/**
+ * Whether an agent has nothing running: it finished, or it is resting. There is nothing to
+ * interrupt then, and Stop is no longer about stopping work but about ending its session, which is
+ * how a finished agent is sent off. Telling it something in the box above gives it new work.
+ */
+const nothingRunning = (agent: Pick<LiveAgent, 'state'>) =>
+  agent.state === 'done' || agent.state === 'idle';
+
 function Foot({ agent }: { agent: LiveAgent }) {
   const [confirming, setConfirming] = useState(false);
   const set = useOfficeUi((state) => state.set);
+  const idle = nothingRunning(agent);
   const stop = () => {
     setConfirming(false);
     set({ selected: null, follow: false });
@@ -611,18 +620,20 @@ function Foot({ agent }: { agent: LiveAgent }) {
       {confirming ? (
         <div className="banner red" style={{ padding: '10px 12px' }}>
           <span className="grow">
-            Stop {agent.name}? This ends the session. Unsaved work in its folder stays.
+            {idle
+              ? `End ${agent.name}'s session? It has nothing running. Unsaved work in its folder stays.`
+              : `Stop ${agent.name}? This ends the session. Unsaved work in its folder stays.`}
           </span>
           <button type="button" className="btn sm" onClick={() => setConfirming(false)}>
-            Keep running
+            {idle ? 'Keep it' : 'Keep running'}
           </button>
           <button type="button" className="btn sm danger" onClick={stop}>
-            Stop
+            {idle ? 'End session' : 'Stop'}
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>
-          {agent.state === 'paused' ? (
+          {idle ? null : agent.state === 'paused' ? (
             <button
               type="button"
               className="btn primary"
@@ -652,13 +663,13 @@ function Foot({ agent }: { agent: LiveAgent }) {
           <button
             type="button"
             className="btn danger-out"
-            title="End this agent session"
+            title={idle ? 'Nothing is running. End this agent session' : 'End this agent session'}
             onClick={() => setConfirming(true)}
           >
             <Icon>
               <path d="M6 6h12v12H6z" />
             </Icon>
-            Stop
+            {idle ? 'End session' : 'Stop'}
           </button>
         </div>
       )}

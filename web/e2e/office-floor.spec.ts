@@ -591,3 +591,37 @@ test('the Colour key describes what the floor shows now, and fits or shows that 
   const [menuBox, rowBox] = [(await key.boundingBox())!, (await last.boundingBox())!];
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(menuBox.y + menuBox.height + 1);
 });
+
+test('a finished agent has nothing to interrupt, and can still be given work or ended', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  const row = (name: string) =>
+    list(page).locator('.flrow', {
+      has: page.locator('.flname', { hasText: new RegExp(`^${name}$`) }),
+    });
+
+  // An agent at work can be interrupted and stopped.
+  await row('Scout').click();
+  await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Interrupt' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+
+  // Rune has finished: nothing to interrupt, and "Stop" says what it does to a finished agent.
+  await row('Rune').click();
+  await expect(panel.getByRole('heading', { name: 'Rune', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Interrupt' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+  // It can still be given new work, which restarts it.
+  await expect(panel.getByRole('group', { name: 'Message type' })).toBeVisible();
+  // And its session can be ended, after asking.
+  await panel.getByRole('button', { name: 'End session' }).click();
+  await expect(panel).toContainText("End Rune's session? It has nothing running.");
+  await panel.getByRole('button', { name: 'Keep it' }).click();
+  await expect(panel.getByRole('button', { name: 'End session' })).toBeVisible();
+  await panel.getByRole('button', { name: 'End session' }).click();
+  await panel.getByRole('button', { name: 'End session' }).click();
+  await expect(page.getByText('Rune stopped and left the office')).toBeVisible();
+  await expect(panel).toBeHidden();
+});

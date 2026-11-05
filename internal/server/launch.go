@@ -67,9 +67,23 @@ func briefFor(name string, body startBody) string {
 // openClaude opens Claude Code in a project's folder and says what happened, in words for a toast,
 // and whether a session is on its way. Call outside Do: it waits for the terminal to open.
 func (a *api) openClaude(name, folder, prompt string, plan bool) (string, bool) {
+	return a.openClaudeAs(name, folder, prompt, plan, "")
+}
+
+// openClaudeAs is openClaude with the session running as an agent file, by its name.
+func (a *api) openClaudeAs(name, folder, prompt string, plan bool, agent string) (string, bool) {
+	command := "claude"
+	if agent != "" {
+		command = "claude --agent " + agent
+	}
+	byHand := "Run " + command + " in " + folder + ". The session joins " + name + " when it starts."
+	if agent != "" {
+		byHand = "Run " + command + " in " + folder + " and give it the task. It joins " + name +
+			" and takes the free desk when it starts."
+	}
 	// Without a launcher, as in Docker and in tests, Mabari only says how to start.
 	if a.launcher == nil {
-		return "Run claude in " + folder + ". The session joins " + name + " when it starts.", false
+		return byHand, false
 	}
 	path, err := projectFolder(folder)
 	if err != nil {
@@ -77,12 +91,12 @@ func (a *api) openClaude(name, folder, prompt string, plan bool) (string, bool) 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), launchWait)
 	defer cancel()
-	err = a.launcher.Claude(ctx, launch.Request{Folder: path, Name: name, Prompt: prompt, Plan: plan})
+	err = a.launcher.Claude(ctx, launch.Request{Folder: path, Name: name, Prompt: prompt, Plan: plan, Agent: agent})
 	switch {
 	case errors.Is(err, launch.ErrNoTerminal):
-		return "Run claude in " + folder + ". The session joins " + name + " when it starts.", false
+		return byHand, false
 	case err != nil:
-		return "Couldn't open Claude Code (" + err.Error() + "). Run claude in " + folder + ".", false
+		return "Couldn't open Claude Code (" + err.Error() + "). " + byHand, false
 	}
 	_ = a.engine.Do(func() {
 		a.engine.Log(name, models.LogSession, "claude in "+folder, "Opened Claude Code", "ok")

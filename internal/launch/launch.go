@@ -7,7 +7,8 @@
 //
 // Checked against Claude Code 2.1.318 (`claude --help`): `claude [prompt]` starts an
 // interactive session with a first prompt, `--permission-mode plan` starts in plan mode, and
-// `--name` sets the session's display name.
+// `--name` sets the session's display name, and `--agent <agent>` runs one of the agents
+// from ~/.claude/agents or the project's .claude/agents as the session's main agent.
 package launch
 
 import (
@@ -30,6 +31,8 @@ type Request struct {
 	Prompt string
 	// Plan starts the session in plan mode, so it proposes before it changes anything.
 	Plan bool
+	// Agent is the agent file the session runs as, by name, or empty for Claude Code's own.
+	Agent string
 }
 
 // slashCommand is a Claude Code command or skill at the start of a message, such as /ux-audit or
@@ -65,6 +68,9 @@ func Args(request Request) []string {
 	}
 	if request.Plan {
 		args = append(args, "--permission-mode", "plan")
+	}
+	if request.Agent != "" {
+		args = append(args, "--agent", request.Agent)
 	}
 	if request.Prompt != "" {
 		// "--" ends the options, so a prompt that starts with a dash is never read as a flag.

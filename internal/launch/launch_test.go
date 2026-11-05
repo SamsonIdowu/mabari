@@ -11,6 +11,14 @@ import (
 	"testing"
 )
 
+// An agent file's name goes in as its own argument, and the prompt still comes after "--".
+func TestArgsRunAsAnAgentFile(t *testing.T) {
+	got := strings.Join(Args(Request{Name: "Shop", Agent: "planner", Prompt: "-x"}), " ")
+	if got != "claude --name Shop --agent planner -- -x" {
+		t.Errorf("args = %q", got)
+	}
+}
+
 func TestArgs(t *testing.T) {
 	got := Args(Request{Folder: "/x", Name: "Shop", Prompt: "Hi there", Plan: true})
 	want := []string{"claude", "--name", "Shop", "--permission-mode", "plan", "--", "Hi there"}

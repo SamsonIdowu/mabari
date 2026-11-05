@@ -46,6 +46,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/reopen", a.reopenProject)
 	mux.HandleFunc("POST /api/projects/{id}/claude", a.openProjectClaude)
 	mux.HandleFunc("POST /api/projects/{id}/send", a.sendToProject)
+	mux.HandleFunc("POST /api/desks/start", a.startAtDesk)
 	mux.HandleFunc("DELETE /api/instructions/{id}", a.removeInstruction)
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)

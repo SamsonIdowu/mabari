@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import { blankDef, draftFrom, improve } from './defs.ts';
+import { useOfficeUi } from './uiStore.ts';
 
 /** The build or edit dialog, and Mabari's note when it suggested what is in it. */
 export interface DefDialog {
@@ -47,6 +48,15 @@ function goToBuilder() {
 export function openDef(id: string) {
   useBuilder.getState().set({ open: id, filter: 'all', query: '' });
   goToBuilder();
+}
+
+/**
+ * What clicking an agent file resting in the lounge does, on the floor or in the list beside it:
+ * no agent stays selected, and the file opens in the builder.
+ */
+export function openRestingFile(id: string) {
+  useOfficeUi.getState().set({ selected: null, follow: false });
+  openDef(id);
 }
 
 /** Mabari's agent-creator skill: opens the build dialog with a draft, or asks what to draft. */

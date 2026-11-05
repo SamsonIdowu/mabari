@@ -4,20 +4,28 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
-import { openDef } from '../office/builderStore.tsx';
+import { openRestingFile } from '../office/builderStore.tsx';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
+import { useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
 import { onFloor } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
-import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
+import {
+  inScope,
+  needsYou,
+  selectAgent,
+  useOfficeUi,
+  type StatusFilter,
+} from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AgentPanel } from './AgentPanel.tsx';
+import { FloorList } from './FloorList.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './OfficeWall.tsx';
 import { PromptTray } from './PromptTray.tsx';
@@ -552,6 +560,7 @@ function CanvasTools() {
   const zoomBy = useOfficeUi((state) => state.zoomBy);
   const fit = useOfficeUi((state) => state.fit);
   const wide = useOfficeUi((state) => state.fullscreen);
+  const list = useFloorList();
   return (
     <div className="ctools" role="toolbar" aria-label="Office view">
       <button
@@ -625,6 +634,19 @@ function CanvasTools() {
           <circle cx="19" cy="6" r="2" />
           <circle cx="19" cy="18" r="2" />
           <path d="M7 12h5V6h5M12 12v6h5" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        id="floorListBtn"
+        title={list.shown ? 'Hide the list of everyone on the floor' : 'List everyone on the floor'}
+        aria-label="List of everyone on the floor"
+        aria-pressed={list.shown}
+        aria-controls={list.shown ? 'floorList' : undefined}
+        onClick={list.toggle}
+      >
+        <Icon>
+          <path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
         </Icon>
       </button>
     </div>
@@ -769,11 +791,7 @@ function Stage({ office }: { office: Snapshot }) {
     if (skipClick.current || !scene.current) return;
     const hit = scene.current.hit(pointIn(event));
     if (hit) {
-      set({
-        selected: hit.id,
-        target: 'selected',
-        reviewing: hit.state === 'approval' ? (hit.approval?.id ?? null) : null,
-      });
+      selectAgent(hit);
     } else {
       set({ selected: null, follow: false });
       // Mabari, on its rounds or at its desk, shows its updates.
@@ -785,7 +803,7 @@ function Stage({ office }: { office: Snapshot }) {
       // An agent file resting in the lounge opens in the builder.
       const def = scene.current.restingAt(pointIn(event));
       if (def) {
-        openDef(def.id);
+        openRestingFile(def.id);
         return;
       }
       // The free desk starts a new agent there, with what it should do.
@@ -983,6 +1001,7 @@ export function Office() {
   const office = useOfficeStore((state) => state.office);
   const filters = useFilters();
   const selectedId = useOfficeUi((state) => state.selected);
+  const list = useFloorList();
   if (!office) return null;
 
   const selected = office.agents.find((agent) => agent.id === selectedId);
@@ -999,7 +1018,10 @@ export function Office() {
           <DemoBanner office={office} />
           <AutoBanner office={office} />
           <AccountBanners office={office} />
-          <Stage office={office} />
+          <div className="ofrow">
+            <Stage office={office} />
+            {list.shown ? <FloorList office={office} filters={filters} /> : null}
+          </div>
         </div>
         {selected ? <AgentPanel key={selected.id} office={office} agent={selected} /> : null}
       </div>

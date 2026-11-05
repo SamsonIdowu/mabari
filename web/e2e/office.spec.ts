@@ -57,7 +57,15 @@ for (const [width, height] of [
     // The office sits right under them and runs to the bottom: no bar under it.
     expect(stage.y).toBeCloseTo(above.y + above.height, 0);
     expect(stage.x).toBe(main.x);
-    expect(stage.x + stage.width).toBe(main.x + main.width);
+    // On a wide window the list of everyone on the floor sits beside it, and the floor runs up
+    // to the list. On a narrow one the list starts hidden and the floor runs to the edge.
+    const list = page.getByRole('complementary', { name: 'Everyone on the floor' });
+    const right = width >= 1180 ? (await list.boundingBox())!.x : main.x + main.width;
+    expect(stage.x + stage.width).toBeCloseTo(right, 0);
+    if (width >= 1180) {
+      const box = (await list.boundingBox())!;
+      expect(box.x + box.width).toBeCloseTo(main.x + main.width, 0);
+    } else await expect(list).toBeHidden();
     expect(stage.y + stage.height).toBeCloseTo(height, 0);
     await expect(page.locator('.cmdbar')).toHaveCount(0);
   });

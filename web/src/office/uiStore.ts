@@ -21,6 +21,12 @@ interface OfficeUi extends OfficeFilters {
   follow: boolean;
   spotlight: boolean;
   fullscreen: boolean;
+  /**
+   * The list of everyone on the floor, beside it: shown or hidden by choice, or null to show it
+   * when the window is wide enough. In full screen it is hidden unless `floorListFull` is set.
+   */
+  floorList: boolean | null;
+  floorListFull: boolean;
   /** The auto approve banner, shown briefly after it is turned on. */
   autoBanner: boolean;
   /** The Create a new agent dialog, with the desk or project it was opened for. */
@@ -96,6 +102,8 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   ...FRESH_VIEW,
   spotlight: true,
   fullscreen: false,
+  floorList: null,
+  floorListFull: false,
   mode: 'instruct',
   zoomBy: (direction) =>
     set((state) => {
@@ -118,6 +126,23 @@ export function openAgent(agent: LiveAgent, agents: LiveAgent[]): void {
   const widen = inScope(agent, ui, agents) ? {} : { project: 'all', team: null };
   ui.set({ ...widen, selected: agent.id, target: 'selected' });
   window.location.hash = '#office';
+}
+
+/**
+ * What clicking an agent on the floor does, from the canvas or the list beside it: opens its
+ * panel, sends what is typed next to it, and opens its approval for review if it is waiting.
+ */
+export function selectAgent(agent: Pick<LiveAgent, 'id' | 'state' | 'approval'>): void {
+  useOfficeUi.getState().set({
+    selected: agent.id,
+    target: 'selected',
+    reviewing: agent.state === 'approval' ? (agent.approval?.id ?? null) : null,
+  });
+}
+
+/** Agent files resting in the lounge belong to no project or team, so a filter on either hides them. */
+export function filesShown(filters: Pick<OfficeFilters, 'project' | 'team'>): boolean {
+  return !filters.team && filters.project === 'all';
 }
 
 /** The key of the conversation between two agents, by name. */

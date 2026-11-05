@@ -16,8 +16,11 @@ type Box = { x: number; y: number; width: number; height: number };
 const overlaps = (a: Box, b: Box) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
+// The header holds one row while everything fits with comfortable gaps. The New agent button and
+// the queued count made 1440 px too narrow for that, so it takes two rows there, as at 1100 px.
 for (const [width, rows] of [
-  [1440, 'one'],
+  [1920, 'one'],
+  [1440, 'two'],
   [1100, 'two'],
 ] as const) {
   test(`the Agents header is ${rows} row${rows === 'one' ? '' : 's'} at ${width} px and nothing overlaps`, async ({

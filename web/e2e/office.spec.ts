@@ -98,7 +98,8 @@ test('the notice board lists approvals', async ({ page }) => {
 test('filters and projects narrow the floor', async ({ page }) => {
   await loadDemo(page);
   await page.getByRole('button', { name: 'Needs me' }).click();
-  await expect(page.locator('.tag .nt:visible')).toHaveCount(3);
+  // Atlas (approval) and Mori (error). Sage's queued instruction is a wait, not a request.
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(2);
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('.tag .nt:visible')).toHaveCount(10);
 
@@ -254,7 +255,20 @@ test('in full screen Mabari counts its updates and opens the chat on Home', asyn
 test('escape leaves full screen last', async ({ page }) => {
   await loadDemo(page);
   await page.keyboard.press('f');
-  const tag = (await page.locator('.tag', { hasText: 'Scout' }).first().boundingBox())!;
+  await expect(page.locator('body')).toHaveClass(/ofs/);
+  // The header and the floor take their full screen places over a few frames (the header may
+  // change rows), so Scout is clicked once its tag has stopped moving.
+  const scout = page.locator('.tag', { hasText: 'Scout' }).first();
+  let last = (await scout.boundingBox())!;
+  await expect
+    .poll(async () => {
+      const now = (await scout.boundingBox())!;
+      const still = Math.abs(now.x - last.x) < 0.5 && Math.abs(now.y - last.y) < 0.5;
+      last = now;
+      return still;
+    })
+    .toBe(true);
+  const tag = (await scout.boundingBox())!;
   await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel).toBeVisible();

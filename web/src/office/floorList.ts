@@ -6,8 +6,10 @@ import { onFloor, restKey, restingDefs, STATE_LOCATIONS } from './layout.ts';
 import { restingLook } from './resting.ts';
 import {
   filesShown,
+  hasQueued,
   inScope,
   matches,
+  needsTone,
   needsYou,
   urgent,
   useOfficeUi,
@@ -31,10 +33,12 @@ export type FloorEntry =
       dim: boolean;
       /** Waiting on an approval or stopped by an error: the only red lines in the list. */
       red: boolean;
+      /** An instruction is queued for it: the amber lines, in their own group. */
+      amber: boolean;
     }
   | { kind: 'file'; id: string; def: AgentDef; name: string; color: string; detail: string };
 
-export type FloorGroupId = 'needs' | 'working' | 'lounge';
+export type FloorGroupId = 'needs' | 'queued' | 'working' | 'interrupted' | 'done' | 'lounge';
 
 export interface FloorGroup {
   id: FloorGroupId;
@@ -79,14 +83,55 @@ export function useFloorList(): { shown: boolean; toggle: () => void } {
   return { shown, toggle };
 }
 
-/** Agents waiting on you, as the Needs me filter has them. Only approvals and errors are red. */
-const needsAttention = needsYou;
-
 /** In the lounge, as the floor seats it: idle, and not a contractor, who leaves instead. */
 const inLounge = (agent: LiveAgent) => STATE_LOCATIONS[agent.state] === 'lounge' && !agent.workflow;
 
 const byName = (a: { name: string; id: string }, b: { name: string; id: string }) =>
   a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+
+/**
+ * The one group an agent is listed in, so every agent is listed once and the groups add up to the
+ * floor. What needs you comes first (decision 1: an approval, an error or a question), then
+ * agents with an instruction queued, then the rest by the server's working flag: working, paused
+ * by you, resting in the lounge, and finished. A queued agent can be working too, and then counts
+ * in both the header's "working" and this group.
+ */
+export function groupOf(agent: LiveAgent): FloorGroupId {
+  if (needsYou(agent)) return 'needs';
+  if (hasQueued(agent)) return 'queued';
+  if (agent.working) return 'working';
+  if (agent.state === 'paused') return 'interrupted';
+  if (inLounge(agent)) return 'lounge';
+  // Finished, or a contractor with nothing left to do.
+  return 'done';
+}
+
+/** The agents the office counts in this view: on the floor, not leaving, and in the project or team. */
+export function agentsHere(agents: LiveAgent[], filters: OfficeFilters): LiveAgent[] {
+  const floor = onFloor(agents);
+  return floor.filter((agent) => !agent.leaving && inScope(agent, filters, floor));
+}
+
+/** The numbers in the floor's header, from the same agents and the same groups as the list. */
+export interface FloorCounts {
+  agents: number;
+  working: number;
+  need: number;
+  queued: number;
+  /** Red when an approval or an error waits, calm when only questions do. */
+  tone: 'red' | 'calm';
+}
+
+export function floorCounts(here: LiveAgent[]): FloorCounts {
+  const needing = here.filter((agent) => groupOf(agent) === 'needs');
+  return {
+    agents: here.length,
+    working: here.filter((agent) => agent.working).length,
+    need: needing.length,
+    queued: here.filter((agent) => groupOf(agent) === 'queued').length,
+    tone: needsTone(needing),
+  };
+}
 
 function detailOf(agent: LiveAgent): string {
   const asked = agent.question?.items[0]?.question;
@@ -114,14 +159,16 @@ function agentEntry(
     where: agent.workflow ? whereWorking(agent, projects) : null,
     dim: !matches(agent, filters),
     red: urgent(agent),
+    amber: groupOf(agent) === 'queued',
   };
 }
 
 /**
  * Everyone on the floor, grouped as the floor shows them: those who need you first (approvals,
- * errors, questions and queued instructions), then those at their desks, then the lounge, where idle agents and the agent files
- * with nothing running rest. Project and team decide who is listed, as they decide who is on
- * the floor; the Models and status filters only fade entries. Empty groups are left out.
+ * errors and questions), then those with an instruction queued, those working, those you
+ * interrupted, those who are done, and the lounge, where idle agents and the agent files with
+ * nothing running rest. Project and team decide who is listed, as they decide who is on the
+ * floor; the Models and status filters only fade entries. Empty groups are left out.
  */
 export function floorGroups(
   office: {
@@ -131,13 +178,9 @@ export function floorGroups(
   },
   filters: OfficeFilters,
 ): FloorGroup[] {
+  const here = agentsHere(office.agents, filters).sort(byName);
   const floor = onFloor(office.agents);
-  const here = floor
-    .filter((agent) => !agent.leaving && inScope(agent, filters, floor))
-    .sort(byName);
-  const needs = here.filter(needsAttention);
-  const lounge = here.filter((agent) => !needsAttention(agent) && inLounge(agent));
-  const working = here.filter((agent) => !needsAttention(agent) && !inLounge(agent));
+  const inGroup = (id: FloorGroupId) => here.filter((agent) => groupOf(agent) === id);
   const files: FloorEntry[] = filesShown(filters)
     ? restingDefs(office.defs, floor).map((def) => ({
         kind: 'file',
@@ -150,9 +193,12 @@ export function floorGroups(
     : [];
   const entry = (agent: LiveAgent) => agentEntry(agent, filters, office.projects);
   const groups: FloorGroup[] = [
-    { id: 'needs', label: 'Needs you', entries: needs.map(entry) },
-    { id: 'working', label: 'Working', entries: working.map(entry) },
-    { id: 'lounge', label: 'Lounge', entries: [...lounge.map(entry), ...files] },
+    { id: 'needs', label: 'Needs you', entries: inGroup('needs').map(entry) },
+    { id: 'queued', label: 'Queued', entries: inGroup('queued').map(entry) },
+    { id: 'working', label: 'Working', entries: inGroup('working').map(entry) },
+    { id: 'interrupted', label: 'Interrupted', entries: inGroup('interrupted').map(entry) },
+    { id: 'done', label: 'Done', entries: inGroup('done').map(entry) },
+    { id: 'lounge', label: 'Lounge', entries: [...inGroup('lounge').map(entry), ...files] },
   ];
   return groups.filter((group) => group.entries.length);
 }

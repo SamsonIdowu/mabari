@@ -7,19 +7,11 @@ import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
-import { useFloorList } from '../office/floorList.ts';
+import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
 import { onFloor, restKey } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
-import {
-  inScope,
-  needsTone,
-  needsYou,
-  selectAgent,
-  selectResting,
-  useOfficeUi,
-  type StatusFilter,
-} from '../office/uiStore.ts';
+import { selectAgent, selectResting, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
@@ -66,27 +58,34 @@ function placeScrollBar(bar: HTMLDivElement | null, scene: OfficeScene) {
   thumb.style.width = `${width}%`;
 }
 
+/** Below this width the floor's toolbar and readout no longer fit side by side. */
+const NARROW_STAGE = 560;
 const WHEEL_STEP = 40;
 const WHEEL_GAP_MS = 120;
 
 function Summary({ scoped }: { scoped: LiveAgent[] }) {
   // Working comes from the server, so agents that report no progress rate count too. Only those
   // with an estimate say when they will be done.
-  const working = scoped.filter((agent) => agent.working);
+  const { agents, working, need, queued, tone } = floorCounts(scoped);
   const estimated = scoped.filter((agent) => agent.estimate);
-  const needing = scoped.filter(needsYou);
-  const need = needing.length;
-  const tone = needsTone(needing);
   const held = scoped.filter((a) => a.state === 'approval' || a.state === 'paused').length;
   const seconds = Math.max(0, ...estimated.map((agent) => agent.estimate?.secondsLeft ?? 0));
   return (
     <span className="help" id="officeClock">
-      {scoped.length} agent{scoped.length === 1 ? '' : 's'} · {working.length} working
+      {agents} agent{agents === 1 ? '' : 's'} · {working} working
       {need ? (
         <>
           {' · '}
           <b style={tone === 'calm' ? undefined : { color: `var(--${tone})` }}>
             {need} need{need === 1 ? 's' : ''} you
+          </b>
+        </>
+      ) : null}
+      {queued ? (
+        <>
+          {' · '}
+          <b className="queuedn" style={{ color: 'var(--amber)' }}>
+            {queued} queued
           </b>
         </>
       ) : null}
@@ -130,7 +129,11 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
             <span className="pdot" style={{ background: project.color }} />
             <span style={{ flex: 1 }}>{project.name}</span>
             <span className="help num">
-              {count} agent{count === 1 ? '' : 's'}
+              {/* A completed project's agents have moved on: its card on the Projects page counts
+                  who worked on it, so here it says it is done rather than "0 agents". */}
+              {'status' in project && project.status === 'done' && !count
+                ? 'completed'
+                : `${count} agent${count === 1 ? '' : 's'}`}
             </span>
           </button>
         );
@@ -264,9 +267,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const inProject = onFloor(office.agents).filter(
     (agent) => filters.project === 'all' || agent.projectId === filters.project,
   );
-  const needing = scoped.filter(needsYou);
-  const need = needing.length;
-  const tone = needsTone(needing);
+  const { need, tone } = floorCounts(scoped);
   const filtered =
     filters.provider !== 'all' ||
     filters.model !== 'all' ||
@@ -356,8 +357,10 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
         </button>
         {menu === 'key' ? (
           <div
-            className="menu right"
-            style={{ minWidth: 320 }}
+            className="menu right key"
+            role="region"
+            aria-label="Colour key"
+            tabIndex={0}
             dangerouslySetInnerHTML={{ __html: colourKey }}
           />
         ) : null}
@@ -687,10 +690,22 @@ function Stage({ office }: { office: Snapshot }) {
   const hint = useRef<HTMLSpanElement>(null);
   const scrollBar = useRef<HTMLDivElement>(null);
   const queueNote = useRef<HTMLDivElement>(null);
+  const stageBox = useRef<HTMLDivElement>(null);
   const scene = useRef<OfficeScene | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const skipClick = useRef(false);
   const set = useOfficeUi((state) => state.set);
+
+  // On a narrow floor the readout moves up, off the toolbar it would otherwise cover.
+  useEffect(() => {
+    const element = stageBox.current;
+    if (!element) return undefined;
+    const mark = () => element.classList.toggle('narrow', element.clientWidth < NARROW_STAGE);
+    mark();
+    const observer = new ResizeObserver(mark);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const element = canvas.current;
@@ -849,7 +864,7 @@ function Stage({ office }: { office: Snapshot }) {
 
   return (
     <div className="ofloor">
-      <div className="stage" id="stage">
+      <div className="stage" id="stage" ref={stageBox}>
         <canvas
           id="floor"
           ref={canvas}
@@ -953,6 +968,10 @@ function useOneRowWhenItFits() {
     const fit = () => {
       const bar = element.querySelector<HTMLElement>('.obar2.inhead');
       if (!bar || !element.offsetWidth) return;
+      // Measuring takes the stacked layout away for a moment. A short window scrolls, and the page
+      // would be clamped to the shorter header and jump to the top, so its place is put back.
+      const scroller = element.closest('main');
+      const place = scroller?.scrollTop ?? 0;
       element.classList.remove('stack');
       const kids = [...bar.children].filter(
         (kid) => (kid as HTMLElement).offsetWidth,
@@ -961,6 +980,7 @@ function useOneRowWhenItFits() {
         kids.reduce((sum, kid) => sum + kid.offsetWidth, 0) +
         HEAD_GAP * Math.max(0, kids.length - 1);
       if (need > bar.clientWidth + 1) element.classList.add('stack');
+      if (scroller && scroller.scrollTop !== place) scroller.scrollTop = place;
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -1003,6 +1023,21 @@ function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] 
         </button>
         <button
           type="button"
+          className="btn"
+          title="Make a new agent and give it a desk"
+          onClick={() => {
+            // In a project's view the new agent starts in that project.
+            const { project } = useOfficeUi.getState();
+            useOfficeUi.getState().set({ newAgent: project === 'all' ? {} : { project } });
+          }}
+        >
+          <Icon>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M16 11h6" />
+          </Icon>
+          New agent
+        </button>
+        <button
+          type="button"
           className="btn fsonly"
           title="Leave full screen (Esc)"
           onClick={toggleFullscreen}
@@ -1027,8 +1062,7 @@ export function Office() {
   const selected = office.agents.find((agent) => agent.id === selectedId);
   const resting = selected ? undefined : office.defs?.find((def) => restKey(def) === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
-  const floor = onFloor(office.agents);
-  const scoped = floor.filter((agent) => inScope(agent, filters, floor));
+  const scoped = agentsHere(office.agents, filters);
 
   return (
     <section data-screen="office" style={{ height: '100%' }}>

@@ -53,6 +53,16 @@ describe("Mabari's rounds", () => {
     expect(projectUpdate(null, agents, null)).toBe('Outside any project: 1 working.');
   });
 
+  it('counts a question as needing you, as every other count does, and not a queued instruction', () => {
+    const question = { id: 'q', agentId: 'asker', time: 0, items: [] } as LiveAgent['question'];
+    const queued = [{ id: 'i' }] as LiveAgent['queued'];
+    const here = [
+      agent({ id: 'asker', projectId: 'shop', working: false, question }),
+      agent({ id: 'sage', projectId: 'shop', queued }),
+    ];
+    expect(projectUpdate(null, here, 'shop')).toBe('Outside any project: 1 working, 1 needs you.');
+  });
+
   it('says a change, but not more often than every couple of minutes', () => {
     expect(worthSaying('a', undefined, 0)).toBe(true);
     expect(worthSaying('a', { text: 'a', at: 0 }, REPORT_GAP_MS * 9)).toBe(false);

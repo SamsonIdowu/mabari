@@ -36,8 +36,8 @@ async function freeDesk(page: Page) {
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Create a new agent' });
 
-/** The Agents page has no New agent button now (the builder is where agents are made), so the
- * dialog is opened from Accounts. Creating an agent there takes you to the office. */
+/** The dialog is opened from Accounts here, so creating an agent takes you to the office. The
+ * Agents header opens it too. */
 async function openNewAgent(page: Page) {
   await page.goto('/#accounts');
   await page.getByRole('button', { name: 'New agent' }).click();
@@ -46,7 +46,8 @@ async function openNewAgent(page: Page) {
 
 test('New agent replaces Start agent everywhere', async ({ page }) => {
   await loadDemo(page);
-  await expect(page.locator('.ohead').getByRole('button', { name: 'New agent' })).toHaveCount(0);
+  // The Agents header has it, next to New project (DAILY-6).
+  await expect(page.locator('.ohead').getByRole('button', { name: 'New agent' })).toBeVisible();
   for (const route of ['#office', '#projects', '#accounts']) {
     await page.goto(`/${route}`);
     await expect(page.locator('main')).not.toContainText(/Start (an )?agent/);

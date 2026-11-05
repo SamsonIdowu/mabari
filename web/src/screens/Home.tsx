@@ -5,7 +5,7 @@ import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText, shortMinutes } from '../format.ts';
 import type { Snapshot } from '../gen/models.ts';
-import { openAgent, useOfficeUi } from '../office/uiStore.ts';
+import { needsTone, openAgent, useOfficeUi, whoNeedsYou } from '../office/uiStore.ts';
 import { mascotBox, MouseGestures } from '../office/mouseGestures.ts';
 import { drawMascot, IDLE_GESTURES, POKE_GESTURES, veeFrame } from '../office/vee.ts';
 import { useVee } from '../office/veeStore.ts';
@@ -35,9 +35,10 @@ function Summary({ office }: { office: Snapshot }) {
   const working = agents.filter((agent) => agent.working);
   const workflow = working.filter((agent) => agent.workflow).length;
   const estimated = agents.filter((agent) => agent.estimate);
-  const need = agents.filter((a) => a.state === 'approval' || a.state === 'error').length;
-  // Questions wait on you too, but calmly: they are not approvals, so they aren't red.
-  const asking = agents.filter((agent) => agent.question).length;
+  // The one count of who needs you: approvals, errors and questions, as the rail badge and the
+  // floor header count them. Red only when an approval or an error waits; a question is calm.
+  const needing = whoNeedsYou(agents);
+  const need = needing.length;
   const finish = Math.max(0, ...estimated.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
     <p id="homeSum">
@@ -46,10 +47,13 @@ function Summary({ office }: { office: Snapshot }) {
       {need ? (
         <>
           {' · '}
-          <b style={{ color: 'var(--red)' }}>{need} need you</b>
+          {needsTone(needing) === 'red' ? (
+            <b style={{ color: 'var(--red)' }}>{need} need you</b>
+          ) : (
+            `${need} need you`
+          )}
         </>
       ) : null}
-      {asking ? ` · ${asking} asking you a question` : ''}
       {estimated.length ? ` · done around ${clockText(finish)}` : ''}
     </p>
   );
@@ -208,7 +212,9 @@ function PickProject({ reply }: { reply: VeeReply }) {
             {project.name}
           </button>
         ))}
-        <button type="button" className="btn sm ghost" onClick={() => void hear(target, 'any')}>
+        {/* A choice like the projects beside it, with a grey dot for "no project in particular". */}
+        <button type="button" className="btn sm" onClick={() => void hear(target, 'any')}>
+          <span className="pdot" style={{ background: '#8E8E93' }} />
           Any free agent
         </button>
       </p>

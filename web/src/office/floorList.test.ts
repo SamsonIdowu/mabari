@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
-import { FLOOR_LIST_MIN_WIDTH, floorGroups, floorListShown } from './floorList.ts';
+import {
+  agentsHere,
+  FLOOR_LIST_MIN_WIDTH,
+  floorCounts,
+  floorGroups,
+  floorListShown,
+  groupOf,
+} from './floorList.ts';
 import { needsTone, type OfficeFilters } from './uiStore.ts';
 
 const agent = (overrides: Partial<LiveAgent> = {}) =>
@@ -89,21 +96,92 @@ describe('floorGroups', () => {
     ]);
   });
 
-  it('lists queued instructions under Needs you too, as the Needs me filter does', () => {
+  it('lists a queued instruction in its own amber group, not under Needs you', () => {
     const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
-    const agents = [agent({ id: 'q', name: 'Quill', state: 'editing', queued })];
-    const [needs] = floorGroups({ agents, defs: [], projects }, filters());
-    expect(needs!.label).toBe('Needs you');
-    const row = needs!.entries[0]!;
-    expect(row.kind === 'agent' && [row.detail, row.red]).toEqual(['1 instruction queued', false]);
+    const agents = [
+      agent({ id: 'q', name: 'Quill', state: 'editing', queued }),
+      agent({ id: 'p', name: 'Pax', state: 'approval' }),
+    ];
+    const groups = floorGroups({ agents, defs: [], projects }, filters());
+    expect(groups.map((group) => group.label)).toEqual(['Needs you', 'Queued']);
+    expect(names(groups)).toEqual({ needs: ['Pax'], queued: ['Quill'] });
+    const row = groups[1]!.entries[0]!;
+    expect(row.kind === 'agent' && [row.detail, row.red, row.amber]).toEqual([
+      '1 instruction queued',
+      false,
+      true,
+    ]);
   });
 
-  it('colours the count of those who need you by the most urgent of them', () => {
-    const question = { id: 'q1', agentId: 'a', time: 0, items: [] };
+  it('keeps an agent with an approval under Needs you even with an instruction queued', () => {
     const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
+    const agents = [agent({ id: 'p', name: 'Pax', state: 'approval', queued })];
+    expect(names(floorGroups({ agents, defs: [], projects }, filters()))).toEqual({
+      needs: ['Pax'],
+    });
+  });
+
+  it('colours the count of those who need you red for approvals and errors, calm for questions', () => {
+    const question = { id: 'q1', agentId: 'a', time: 0, items: [] };
     expect(needsTone([agent({ state: 'thinking', question })])).toBe('calm');
-    expect(needsTone([agent({ state: 'thinking', question }), agent({ queued })])).toBe('amber');
-    expect(needsTone([agent({ queued }), agent({ state: 'error' })])).toBe('red');
+    expect(needsTone([agent({ state: 'thinking', question }), agent({ state: 'error' })])).toBe(
+      'red',
+    );
+  });
+
+  it('puts finished agents in their own group, not under Working', () => {
+    const agents = [
+      agent({ id: 'w', name: 'Wren', state: 'editing' }),
+      agent({ id: 'd', name: 'Dot', state: 'done', working: false, task: 'Update the README' }),
+      agent({ id: 'p', name: 'Pip', state: 'paused', working: false }),
+      agent({ id: 'c', name: 'Cal', state: 'idle', working: false, workflow: true }),
+    ];
+    const groups = floorGroups({ agents, defs: [], projects }, filters());
+    expect(groups.map((group) => group.label)).toEqual(['Working', 'Interrupted', 'Done']);
+    expect(names(groups)).toEqual({
+      working: ['Wren'],
+      interrupted: ['Pip'],
+      done: ['Cal', 'Dot'],
+    });
+    const dot = groups.at(-1)!.entries.find((entry) => entry.name === 'Dot')!;
+    expect(dot.detail).toBe('Done · Update the README');
+  });
+
+  it('adds up: the header and the groups count the same agents, and every agent once', () => {
+    const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
+    const question = { id: 'q1', agentId: 'q', time: 0, items: [] };
+    const agents = [
+      agent({ id: 'a', name: 'Atlas', state: 'approval', working: false }),
+      agent({ id: 'm', name: 'Mori', state: 'error', working: false }),
+      agent({ id: 'q', name: 'Quill', state: 'thinking', working: false, question }),
+      agent({ id: 's', name: 'Sage', state: 'editing', queued }),
+      agent({ id: 'w1', name: 'Wren', state: 'editing' }),
+      agent({ id: 'w2', name: 'Wynn', state: 'reading' }),
+      agent({ id: 'r', name: 'Rune', state: 'done', working: false }),
+      agent({ id: 'i', name: 'Ivy', state: 'idle', working: false }),
+      agent({ id: 'l', name: 'Leaver', state: 'editing', leaving: true }),
+    ];
+    const here = agentsHere(agents, filters());
+    const counts = floorCounts(here);
+    const groups = floorGroups({ agents, defs: [], projects }, filters());
+    const size = (id: string) => groups.find((group) => group.id === id)?.entries.length ?? 0;
+    // A leaving agent is counted nowhere.
+    expect(counts.agents).toBe(8);
+    expect(groups.flatMap((group) => group.entries)).toHaveLength(counts.agents);
+    expect([counts.need, counts.queued]).toEqual([size('needs'), size('queued')]);
+    expect(counts.need).toBe(3);
+    expect(counts.tone).toBe('red');
+    // Sage works with an instruction queued: it is in Queued, and in the header's working count.
+    expect(counts.working).toBe(3);
+    expect(size('working') + here.filter((a) => groupOf(a) === 'queued' && a.working).length).toBe(
+      counts.working,
+    );
+  });
+
+  it('keeps the header count calm when only questions wait', () => {
+    const question = { id: 'q1', agentId: 'q', time: 0, items: [] };
+    const here = [agent({ id: 'q', state: 'thinking', working: false, question })];
+    expect(floorCounts(here)).toMatchObject({ need: 1, tone: 'calm' });
   });
 
   it('says what each one is doing in a few words', () => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import {
@@ -85,6 +85,74 @@ function AgentRows({ agents }: { agents: LiveAgent[] }) {
   ]);
 }
 
+/**
+ * A card's list. The card is a fixed height, so a long list scrolls, and a row cut in half at the
+ * bottom says nothing about the rest. This counts the rows not fully in view and says so, and the
+ * count follows the scrolling.
+ */
+function CardList({
+  label,
+  gap,
+  noun,
+  children,
+}: {
+  label: string;
+  gap: number;
+  noun: string;
+  children: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState(0);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return undefined;
+    const count = () => {
+      const edge = element.getBoundingClientRect().bottom;
+      const rows = [...element.querySelectorAll(':scope > :not(.flabel)')].map((row) =>
+        row.getBoundingClientRect(),
+      );
+      // Rows wholly out of view are counted. A row half in view fades out instead, so it reads as
+      // the start of more rather than as a mistake.
+      setHidden(rows.filter((row) => row.top >= edge - 1).length);
+      setCut(rows.some((row) => row.bottom > edge + 1));
+    };
+    count();
+    element.addEventListener('scroll', count, { passive: true });
+    const observer = new ResizeObserver(count);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener('scroll', count);
+      observer.disconnect();
+    };
+  });
+  return (
+    <>
+      <div
+        className={cut ? 'scroll fades' : 'scroll'}
+        style={{ gap }}
+        tabIndex={0}
+        aria-label={label}
+        ref={box}
+      >
+        {children}
+      </div>
+      {hidden ? (
+        <button
+          type="button"
+          className="btn ghost sm morerows"
+          aria-label={`${hidden} more ${noun}, show them`}
+          onClick={() =>
+            box.current?.scrollBy({ top: box.current.clientHeight * 0.8, behavior: 'smooth' })
+          }
+        >
+          +{hidden} more
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function Counters(props: { values: [string, string][] }) {
   return (
     <div className="counters">
@@ -130,13 +198,14 @@ function CompletedBody({ project }: { project: Project }) {
       </p>
       <Counters
         values={[
-          [String(done.agents), 'Agents'],
+          // How many worked on it, when it was completed. Who is on the floor now can be fewer.
+          [String(done.agents), 'Agents involved'],
           [minsText(done.mins * 60), 'Time taken'],
           [`$${done.cost.toFixed(2)}`, 'Cost'],
         ]}
       />
       <CardMeta project={project} />
-      <div className="scroll" style={{ gap: 8 }} tabIndex={0} aria-label="What got done">
+      <CardList label="What got done" gap={8} noun="tasks">
         <span className="flabel">What got done</span>
         {done.tasks.length ? (
           done.tasks.map((task) => (
@@ -148,7 +217,7 @@ function CompletedBody({ project }: { project: Project }) {
         ) : (
           <p className="help">No tasks recorded.</p>
         )}
-      </div>
+      </CardList>
     </>
   );
 }
@@ -192,9 +261,9 @@ function OpenBody({ project, agents }: { project: Project; agents: LiveAgent[] }
           )}
         </p>
       )}
-      <div className="scroll" style={{ gap: 6 }} tabIndex={0} aria-label="Agents on this project">
+      <CardList label="Agents on this project" gap={6} noun="agents">
         <AgentRows agents={agents} />
-      </div>
+      </CardList>
     </>
   );
 }
@@ -411,9 +480,9 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
           'Nothing in progress'
         )}
       </p>
-      <div className="scroll" style={{ gap: 6 }} tabIndex={0} aria-label="Agents on every project">
+      <CardList label="Agents on every project" gap={6} noun="agents">
         <AgentRows agents={agents} />
-      </div>
+      </CardList>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <a
           className="btn sm primary"

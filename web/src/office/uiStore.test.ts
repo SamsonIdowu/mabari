@@ -2,13 +2,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Estimate, LiveAgent } from '../gen/models.ts';
 import {
+  hasQueued,
   inScope,
   matches,
+  needsTone,
   needsYou,
   openAgent,
   openThread,
   threadKey,
   useOfficeUi,
+  whoNeedsYou,
   type OfficeFilters,
 } from './uiStore.ts';
 
@@ -62,12 +65,36 @@ describe('matches', () => {
     expect(matches(agent(), filters({ model: 'gpt-5' }))).toBe(false);
   });
 
-  it('counts approvals, errors and queued instructions as needing you', () => {
+  it('counts approvals, errors and questions as needing you, and not a queued instruction', () => {
+    const queued = [{ id: 'q' } as LiveAgent['queued'][number]];
+    const question = { id: 'q1', agentId: 'a', time: 0, items: [] } as LiveAgent['question'];
     expect(needsYou(agent({ state: 'approval' }))).toBe(true);
     expect(needsYou(agent({ state: 'error' }))).toBe(true);
-    expect(needsYou(agent({ queued: [{ id: 'q' } as LiveAgent['queued'][number]] }))).toBe(true);
+    expect(needsYou(agent({ question }))).toBe(true);
+    // A queued instruction is a wait, not a request (decision 1).
+    expect(needsYou(agent({ queued }))).toBe(false);
+    expect(hasQueued(agent({ queued }))).toBe(true);
     expect(needsYou(agent())).toBe(false);
     expect(matches(agent(), filters({ status: 'needs' }))).toBe(false);
+    expect(matches(agent({ queued }), filters({ status: 'needs' }))).toBe(false);
+    expect(matches(agent({ question }), filters({ status: 'needs' }))).toBe(true);
+  });
+
+  it('counts the same agents everywhere: on the floor, and not on the way out', () => {
+    const everyone = [
+      agent({ id: 'w', state: 'approval', desk: 0 }),
+      agent({ id: 'g', state: 'approval', desk: 1, leaving: true }),
+      agent({ id: 'o', state: 'error', desk: -1 }),
+      agent({ id: 'c', desk: 3 }),
+    ];
+    expect(whoNeedsYou(everyone).map((item) => item.id)).toEqual(['w']);
+  });
+
+  it('colours the count red for an approval or an error, and calm for questions alone', () => {
+    const question = { id: 'q1', agentId: 'a', time: 0, items: [] } as LiveAgent['question'];
+    expect(needsTone([agent({ question })])).toBe('calm');
+    expect(needsTone([agent({ question }), agent({ state: 'error' })])).toBe('red');
+    expect(needsTone([agent({ state: 'approval' })])).toBe('red');
   });
 
   it('treats agents the server says are working as working, with or without an estimate', () => {

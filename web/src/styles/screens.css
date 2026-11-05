@@ -62,7 +62,10 @@
 /* The floor and, beside it, the list of everyone on it. The floor shrinks to make room. */
 .ofrow {
   flex: 1;
-  min-height: 0;
+  /* The floor never gets squeezed below what it needs to be usable. In a short window, such as
+     200% zoom, or a narrow one, the page scrolls instead, so the whole floor and its tools can be
+     reached. */
+  min-height: 360px;
   display: flex;
 }
 .ofrow > .ofloor {
@@ -97,6 +100,11 @@
 }
 .flrow.red .fldet {
   color: var(--red);
+}
+/* A queued instruction is a wait, not a request: its own amber group, apart from Needs you. */
+.flrow.amber .fldet,
+.fl-queued .mhead span:first-child {
+  color: var(--amber);
 }
 .flrow {
   display: flex;
@@ -355,9 +363,13 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1.3;
-  /* Up to two short lines, rather than one long cut-off line, so bubbles keep apart. */
+  /* Up to two short lines, rather than one long cut-off line, so bubbles keep apart. A bubble is
+     as wide as its words, up to the limit above, wherever it sits, and only a word longer than
+     the limit breaks. It was cut to a few letters a line near the edge of the floor, which broke
+     words in the middle. */
   white-space: normal;
-  overflow-wrap: anywhere;
+  width: max-content;
+  overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -368,6 +380,11 @@
 }
 .bub[hidden] {
   display: none;
+}
+/* Cut to one line, with an ellipsis, when its second line would cover a name tag. */
+.bub.one {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 .bub.reply {
   background: var(--accent);
@@ -411,6 +428,13 @@
   background: none;
   box-shadow: none;
   overflow: visible;
+}
+/* The open stack sits under the wall bar (58px high), not over the project cards in it, so every
+   card stays readable and can be clicked while an approval waits. */
+.board:not(.is-mini) {
+  top: 66px;
+  /* Leaves the floor's tool strip at the bottom clear when many approvals wait. */
+  max-height: calc(100% - 134px);
 }
 .board:not(.is-mini) {
   animation: bpop 0.22s ease-out;
@@ -1114,6 +1138,16 @@
   gap: 14px;
   padding-right: 4px;
 }
+/* A list with more below it fades out at the bottom, rather than cutting a row in half. */
+.eqcard .scroll.fades {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+/* "+n more": says how many rows of a card's list are out of view. */
+.morerows {
+  align-self: flex-start;
+  flex: none;
+}
 .acchead {
   display: flex;
   align-items: center;
@@ -1790,6 +1824,27 @@ tr:last-child td {
   font-size: 13px;
   color: var(--fg2);
 }
+.keyrow > .chip,
+.keyrow > .pdot,
+.keyrow > .idot,
+.keyrow > b,
+.keyrow > span[style] {
+  flex: none;
+}
+/* The Colour key is longer than most menus. It takes the height the window has, and where it
+   still has to scroll, a shadow at the edge says there is more that way. */
+.menu.key {
+  min-width: 360px;
+  max-height: min(640px, calc(100vh - 150px));
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 28px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.22), transparent) top / 100% 12px
+      no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.22), transparent) bottom / 100% 12px
+      no-repeat scroll;
+  background-color: var(--surface);
+}
 .dialog.brief {
   width: min(1060px, 100%);
 }
@@ -2277,6 +2332,10 @@ tr:last-child td {
 .stage .stagehint {
   left: 268px;
   bottom: 20px;
+}
+/* A floor too narrow for the toolbar and the readout side by side stacks the readout above it. */
+.stage.narrow .readout {
+  bottom: 58px;
 }
 
 .fscrim {
@@ -3312,6 +3371,11 @@ section[data-screen='home'] {
   box-shadow: none;
   z-index: 3;
   box-sizing: border-box;
+  /* In a narrow window the filters and project cards no longer fit side by side. The bar scrolls
+     sideways then, so every one of them can still be reached, rather than being cut off. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 [data-theme='dark'] .wallbar {
   background: #1b1b1e;
@@ -3503,6 +3567,15 @@ section[data-screen='home'] {
   border-radius: 6px;
   padding: 0 0.35em;
   font-size: 0.9em;
+}
+/* Only questions wait: a count that is not red, as only approvals and errors are. */
+.pws b.calm {
+  background: #e6e6e6;
+  color: #0c0c0c;
+}
+[data-theme='dark'] .pws b.calm {
+  background: #3a3a40;
+  color: #f4f4f4;
 }
 .pwin.done .pws {
   /* Decision 36's green: the old #1b8a4b measured 4.39:1 at this size. */

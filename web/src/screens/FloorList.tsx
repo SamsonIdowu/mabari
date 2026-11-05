@@ -18,10 +18,11 @@ function Row({ entry, selected, current, onFocus }: RowProps) {
   const where = isAgent ? entry.where : null;
   const dim = isAgent && entry.dim;
   const red = isAgent && entry.red;
+  const amber = isAgent && entry.amber;
   return (
     <button
       type="button"
-      className={`flrow${on ? ' on' : ''}${dim ? ' dim' : ''}${red ? ' red' : ''}${isAgent ? '' : ' file'}`}
+      className={`flrow${on ? ' on' : ''}${dim ? ' dim' : ''}${red ? ' red' : ''}${amber ? ' amber' : ''}${isAgent ? '' : ' file'}`}
       data-entry={entry.id}
       tabIndex={current ? 0 : -1}
       aria-pressed={on}

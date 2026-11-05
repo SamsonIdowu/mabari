@@ -270,6 +270,20 @@ body.notes .note.inline {
 section[data-screen]:not([data-screen='office']) {
   zoom: 0.88;
 }
+/*
+ * The Library is drawn at full size, so its header takes the 0.88 the other screens are drawn at.
+ * That puts its title at the same size and place as theirs.
+ */
+#screen section[data-screen='components'] .page {
+  padding: calc(28px * 0.88) calc(24px * 0.88) calc(32px * 0.88);
+  gap: calc(20px * 0.88);
+}
+section[data-screen='components'] .page .phead {
+  zoom: 0.88;
+}
+section[data-screen='components'] .page h1 {
+  font-size: 34px;
+}
 
 /* home 2: Vee fills the page, replies come from its mouth, one simple box */
 section[data-screen='home'] {

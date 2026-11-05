@@ -4,7 +4,7 @@ Four testers drove a real browser through Mabari at commit `f5b28a2`, each on it
 
 Finding ids are kept from the testers' reports so each fix traces back. Every item below was read against the code and the prototype. Where that changed a finding, the item says so.
 
-**Status key:** `open`, `done`, or `no change` with a reason. The tracker at the end is the record.
+**Status key:** `open`, `built, merged` (waiting for the browser re-test), `done`, or `no change` with a reason. The tracker at the end is the record.
 
 ## Decisions made in this round
 
@@ -113,6 +113,22 @@ Owner: web. Files: `Home.tsx`, `HomeDock.tsx`, `calm.css`, `useHashRoute.ts`, `u
 | DAILY-13 | low | The Library title is about 40 px at y=105; other screens are about 32 px at y=94. | Same title style as other screens. | Measured in a test. |
 | SETUP-13 | low | An empty Activity log says "Nothing matches" on a fresh install. | "Nothing has happened yet" when no filter is set. | Covered by a test. |
 
+## Work package F: Found while building
+
+Owner: web and server. These came out of packages A to E and the merged test run, so they have no tester id.
+
+| ID | Sev | Problem | Required change | Done when |
+|---|---|---|---|---|
+| NEW-3 | high | `perf.spec.ts` reads about 10 fps against a floor of 30, at the base commit too, and always near 10.4 whatever the machine load. It has been failing unnoticed. | Find the cause. Compare `requestAnimationFrame` on a blank page, the idle floor and the busy floor. If the floor really is slow, fix it. If it is the test browser, make the test measure something true of the app. Do not simply lower the number. | The test passes for a reason the commit message explains. |
+| NEW-4 | medium | The merged `home-reply.spec.ts` expects `replied: Got it.`, but FIRST-3 changed that wording. | Update the test. | Passes. |
+| NEW-5 | medium | An instruction to an agent in the error state gets an instant "Got it" though nothing restarts it, the same untruth as FIRST-2 (`simulator.Instruct`). | Treat error like idle and done, so the instruction really starts it, or queue it. Check the prototype first. | A test shows the reply matches what the agent then does. |
+| NEW-6 | low | `planner.go:429` hard-codes a Claude model that may not be on the account in use. | Take the fallback from the account's model list. | Covered by a test. |
+| NEW-7 | low | The hub card sends users to `docs/HUB_API.md`, which a binary-only user can't open. | Link to the file on GitHub, opening safely in a new tab. | Link present. |
+| NEW-8 | low | The rail badge is announced as a bare count ("Agents 2"). | Add hidden text with the `.sr` class so it reads "Agents, 2 need you". | Asserted in an aria snapshot. |
+| NEW-9 | low | Escape with one dialog over another closes both. | Only the top dialog closes. | Covered by a test. |
+| NEW-10 | low | A tester's click on Sage missed while its question bubble showed. | Find out if bubbles swallow clicks on the sprite. If so, fix it. | A test clicks an agent showing a question bubble and its panel opens. |
+| NEW-11 | low | The wall bar has four project slots, so a fifth project has no card and no sign that it exists. | Check the prototype. Show a quiet "+N" that opens Projects, unless the prototype settles it otherwise. | Covered by a test, or `no change` with the reason. |
+
 ## Keep as it is
 
 The testers confirmed these work. Fixes must not regress them.
@@ -129,8 +145,9 @@ The testers confirmed these work. Fixes must not regress them.
 
 | Package | IDs | Status |
 |---|---|---|
-| A | FIRST-1, 2, 3, 7, 8, 9, 11; SETUP-9 (reply), SETUP-11; DAILY-8; NEW-1 | open |
-| B | SETUP-1, 2, 3, 4, 5, 6, 8, 9 (UI), 10, 12; FIRST-10; DAILY-7 | open |
-| C | A11Y-1, 2, 3, 6, 7, 9, 10, 11, 12; DAILY-1; NEW-2 | open |
-| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | open |
-| E | A11Y-4; SETUP-7, 13; DAILY-3, 9, 12, 13; FIRST-12, 13, 14 (times) | open |
+| A | FIRST-1, 2, 3, 7, 8, 9, 11; SETUP-9 (reply), SETUP-11; DAILY-8; NEW-1 | built, merged |
+| B | SETUP-1, 2, 3, 4, 5, 6, 8, 9 (UI), 10, 12; FIRST-10; DAILY-7 | built, merged |
+| C | A11Y-1, 2, 3, 6, 7, 9, 10, 11, 12; DAILY-1; NEW-2 | built, merged |
+| D | FIRST-4, 5, 6, 14 (chip); DAILY-2, 4, 5, 6, 10, 11; A11Y-5, 8 | built, merged |
+| E | A11Y-4; SETUP-7, 13; DAILY-3, 9, 12, 13; FIRST-12, 13, 14 (times) | built, merged |
+| F | NEW-3 to NEW-11 | open |

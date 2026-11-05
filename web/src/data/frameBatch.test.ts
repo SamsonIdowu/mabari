@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { frameBatch } from './frameBatch.ts';
+import { flushBeforeInput, frameBatch } from './frameBatch.ts';
 
 const FRAME_MS = 16;
 
@@ -94,5 +94,30 @@ describe('frameBatch', () => {
     batch.add('b');
     vi.advanceTimersByTime(FRAME_MS);
     expect(handle).toHaveBeenCalledWith(['b']);
+  });
+});
+
+describe('flushBeforeInput', () => {
+  it('hands over what is held when the person presses a key or clicks, before the page reacts', () => {
+    withFrames();
+    const handle = vi.fn();
+    const batch = frameBatch<string>(handle);
+    const page = new EventTarget();
+    const stop = flushBeforeInput(batch, page);
+    // The page's own handler comes after the one that hands the changes over.
+    const reacted: number[] = [];
+    page.addEventListener('keydown', () => reacted.push(handle.mock.calls.length));
+    batch.add('a');
+    page.dispatchEvent(new Event('keydown'));
+    expect(handle).toHaveBeenCalledWith(['a']);
+    batch.add('b');
+    page.dispatchEvent(new Event('click'));
+    expect(handle).toHaveBeenLastCalledWith(['b']);
+    // By the time the page's handler ran, 'a' was applied.
+    expect(reacted).toEqual([1]);
+    stop();
+    batch.add('c');
+    page.dispatchEvent(new Event('keydown'));
+    expect(handle).toHaveBeenCalledTimes(2);
   });
 });

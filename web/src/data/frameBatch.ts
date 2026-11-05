@@ -55,3 +55,32 @@ export function frameBatch<T>(handle: (items: T[]) => void): FrameBatch<T> {
     },
   };
 }
+
+/** What a person does to the page, from the first touch to the last. */
+const INPUT_EVENTS = [
+  'keydown',
+  'keyup',
+  'pointerdown',
+  'pointerup',
+  'click',
+  'input',
+  'submit',
+] as const;
+
+/**
+ * Hands over what a batch holds before the page reacts to the person. The screen may be a frame
+ * behind the changes that arrived, but a key press or a click never acts on an office that is a
+ * frame behind: it reads what has already been received. Returns how to stop.
+ */
+export function flushBeforeInput(
+  batch: Pick<FrameBatch<unknown>, 'flush'>,
+  target: EventTarget = window,
+): () => void {
+  const flush = () => batch.flush();
+  for (const type of INPUT_EVENTS) {
+    target.addEventListener(type, flush, { capture: true, passive: true });
+  }
+  return () => {
+    for (const type of INPUT_EVENTS) target.removeEventListener(type, flush, { capture: true });
+  };
+}

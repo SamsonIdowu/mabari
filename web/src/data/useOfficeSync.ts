@@ -5,7 +5,7 @@ import { useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { api } from './api.ts';
-import { frameBatch } from './frameBatch.ts';
+import { flushBeforeInput, frameBatch } from './frameBatch.ts';
 import { holdChangesWith } from './heldChanges.ts';
 import { useOfficeStore } from './officeStore.ts';
 import { socketProtocols } from './session.ts';
@@ -34,6 +34,8 @@ export function useOfficeSync(): void {
     // page one render, not one each.
     const arrived = frameBatch<ServerMessage>(applyAll);
     const release = holdChangesWith(arrived.flush);
+    // Nothing a person does acts on an office that is a frame behind.
+    const stopInputFlush = flushBeforeInput(arrived);
 
     const reload = async () => {
       // What came before the snapshot was asked for goes in first, in order.
@@ -101,6 +103,7 @@ export function useOfficeSync(): void {
     return () => {
       stopped = true;
       release();
+      stopInputFlush();
       arrived.discard();
       clearTimeout(retry);
       clearTimeout(reloadRetry);

@@ -342,6 +342,37 @@ func colourName(hex string) string {
 	return "blue"
 }
 
+// plainLines reads front matter as one "key: value" per line, splitting at the first colon. It
+// fails when a line has no key, so only files that are readable this way are accepted.
+func plainLines(text string) (frontMatter, bool) {
+	var front frontMatter
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, ":")
+		if !found || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			return frontMatter{}, false
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch strings.TrimSpace(key) {
+		case "name":
+			front.Name = value
+		case "description":
+			front.Description = value
+		case "tools":
+			front.Tools = value
+		case "model":
+			front.Model = value
+		case "skills":
+			front.Skills = value
+		case "color":
+			front.Color = value
+		}
+	}
+	return front, front.Name != "" || front.Description != ""
+}
+
 // Parse reads an agent file: front matter between --- lines, then the instructions.
 func Parse(data []byte) (models.AgentDef, error) {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
@@ -355,7 +386,12 @@ func Parse(data []byte) (models.AgentDef, error) {
 	}
 	var front frontMatter
 	if err := yaml.Unmarshal([]byte(rest[:end]), &front); err != nil {
-		return models.AgentDef{}, fmt.Errorf("the front matter isn't valid YAML: %w", err)
+		// Claude Code reads "key: value" lines even when a value isn't strict YAML, such as a
+		// description with a colon in it, so Mabari reads them the same way.
+		var ok bool
+		if front, ok = plainLines(rest[:end]); !ok {
+			return models.AgentDef{}, fmt.Errorf("the front matter isn't valid YAML: %w", err)
+		}
 	}
 	body := rest[end+len("\n---"):]
 	body = strings.TrimPrefix(strings.TrimLeft(body, "-"), "\n")
@@ -409,6 +445,45 @@ func Render(def models.AgentDef) []byte {
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(def.Instructions) + "\n")
 	return b.Bytes()
+}
+
+// known are the front matter fields Mabari writes itself.
+var known = map[string]bool{"name": true, "description": true, "tools": true, "model": true, "skills": true, "color": true}
+
+// extraFields are the front matter lines of fields Mabari doesn't write, with any lines that
+// continue them, exactly as they were.
+func extraFields(data []byte) string {
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	if !strings.HasPrefix(text, "---\n") {
+		return ""
+	}
+	rest := text[len("---\n"):]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return ""
+	}
+	var b strings.Builder
+	keep := false
+	for _, line := range strings.Split(rest[:end], "\n") {
+		if line != "" && line[0] != ' ' && line[0] != '\t' && line[0] != '-' && line[0] != '#' {
+			key, _, _ := strings.Cut(line, ":")
+			keep = !known[strings.TrimSpace(key)]
+		}
+		if keep {
+			b.WriteString(line + "\n")
+		}
+	}
+	return b.String()
+}
+
+// withExtra puts kept fields at the end of a rendered file's front matter.
+func withExtra(content []byte, extra string) []byte {
+	if extra == "" {
+		return content
+	}
+	text := string(content)
+	closing := strings.Index(text, "\n---\n")
+	return []byte(text[:closing+1] + extra + text[closing+1:])
 }
 
 // writeAtomic writes a whole file or nothing: a temporary file beside it, synced, then renamed.
@@ -501,7 +576,14 @@ func (l *Library) Save(def models.AgentDef, previousID string) (models.AgentDef,
 			return models.AgentDef{}, Problem("There is already an agent file at " + l.shown(path) + ".")
 		}
 	}
-	if err := writeAtomic(path, Render(def)); err != nil {
+	content := Render(def)
+	if old, ok := l.files[previousID]; ok && previousID != "" {
+		// Keep the fields Mabari doesn't edit, such as Claude Code's effort or permissionMode.
+		if data, err := os.ReadFile(old); err == nil { // #nosec G304 -- the agent's own file
+			content = withExtra(content, extraFields(data))
+		}
+	}
+	if err := writeAtomic(path, content); err != nil {
 		return models.AgentDef{}, fmt.Errorf("save %s: %w", l.shown(path), err)
 	}
 	if old, ok := l.files[previousID]; ok && previousID != "" && previousID != id {

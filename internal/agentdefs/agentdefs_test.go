@@ -67,7 +67,12 @@ func TestParseHandWrittenFiles(t *testing.T) {
 	if def.Model != "inherit" || strings.Join(def.Tools, ",") != "Read,Bash" || def.Instructions != "Do it." {
 		t.Errorf("got %+v", def)
 	}
-	for _, bad := range []string{"no front matter", "---\nname: x\n", "---\nname: [\n---\n"} {
+	// A description with a colon in it isn't strict YAML, but Claude Code reads it, so Mabari does.
+	loose, err := Parse([]byte("---\nname: backend\ndescription: Owns the API. Use for: services, workers\ntools: Read, Bash\nmodel: sonnet\neffort: xhigh\n---\nBuild it.\n"))
+	if err != nil || loose.Description != "Owns the API. Use for: services, workers" || strings.Join(loose.Tools, ",") != "Read,Bash" || loose.Model != "sonnet" {
+		t.Errorf("loose = %+v, %v", loose, err)
+	}
+	for _, bad := range []string{"no front matter", "---\nname: x\n", "---\n  - [\n---\n"} {
 		if _, err := Parse([]byte(bad)); err == nil {
 			t.Errorf("%q parsed", bad)
 		}
@@ -272,5 +277,29 @@ func TestABrokenFileIsLeftAlone(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(broken); string(data) != "no front matter" {
 		t.Error("the broken file changed")
+	}
+}
+
+// Editing an agent keeps the front matter fields Mabari doesn't edit.
+func TestEditingKeepsOtherFields(t *testing.T) {
+	f := folders(t)
+	library := New(f)
+	scan(t, library)
+	path := filepath.Join(f.Account, "backend.md")
+	text := "---\nname: backend\ndescription: Owns the API\ntools: Read\nmodel: sonnet\neffort: xhigh\npermissionMode: plan\n---\nBuild it.\n"
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defs := scan(t, library)
+	def := defs[1]
+	def.Model = "opus"
+	if _, err := library.Save(def, def.ID); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	for _, want := range []string{"model: opus\n", "effort: xhigh\npermissionMode: plan\n---\n"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("file lacks %q:\n%s", want, data)
+		}
 	}
 }

@@ -2,8 +2,8 @@
 import type { ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
-import { openAgent, useOfficeUi } from '../office/uiStore.ts';
-import { LATER, PageHead } from './parts.tsx';
+import { openAgent } from '../office/uiStore.ts';
+import { LATER } from './parts.tsx';
 
 /** Shows Mori's error on the floor, loading the demo office first if Mori isn't there. */
 async function seeMori() {
@@ -44,14 +44,10 @@ const CARDS: { title: string; when: string; mock: ReactNode }[] = [
     mock: (
       <>
         <h3>No agents running yet</h3>
-        <p className="muted">Start one here or in your terminal.</p>
-        <button
-          type="button"
-          className="btn primary sm"
-          onClick={() => useOfficeUi.getState().set({ newAgent: {} })}
-        >
-          New agent
-        </button>
+        <p className="muted">Build one in the agent builder or in your terminal.</p>
+        <a className="btn primary sm" href="#builder">
+          Start an agent
+        </a>
       </>
     ),
   },
@@ -120,26 +116,19 @@ const CARDS: { title: string; when: string; mock: ReactNode }[] = [
   },
 ];
 
-export function StatusScreens() {
+/** The six status screens, the Library's first tab. */
+export function StatusGrid() {
   return (
-    <section data-screen="states">
-      <div className="page">
-        <PageHead
-          title="Status screens"
-          description="What people see when something is missing or wrong. Each one names the problem and the one action that fixes it."
-        />
-        <div className="grid3">
-          {CARDS.map((card) => (
-            <article className="card statecard" key={card.title}>
-              <div>
-                <h2>{card.title}</h2>
-                <p className="help">{card.when}</p>
-              </div>
-              <div className="mock">{card.mock}</div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
+    <div className="grid3">
+      {CARDS.map((card) => (
+        <article className="card statecard" key={card.title}>
+          <div>
+            <h2>{card.title}</h2>
+            <p className="help">{card.when}</p>
+          </div>
+          <div className="mock">{card.mock}</div>
+        </article>
+      ))}
+    </div>
   );
 }

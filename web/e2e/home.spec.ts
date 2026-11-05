@@ -24,7 +24,7 @@ test('home is the default page after the first run', async ({ page, request }) =
   await request.post('/api/demo/load');
   await page.goto('/');
   await page.reload();
-  await expect(page.locator('#homeGreet')).toHaveText(/^(Morning|Afternoon|Evening)$/);
+  await expect(page.locator('#homeGreet')).toHaveText(/^Good (morning|afternoon|evening)$/);
   await expect(page.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
@@ -270,9 +270,10 @@ test('spoken replies can be switched on and read the reply aloud', async ({ page
   await expect(page.locator('#voiceLbl')).toHaveText('Voice off');
 });
 
-test('Mabari opens the new agent form when asked', async ({ page, request }) => {
+test('Mabari opens the agent builder when asked for a new agent', async ({ page, request }) => {
   await home(page, request);
   await page.getByLabel('Message Mabari').fill('Create a new agent');
   await page.getByLabel('Message Mabari').press('Enter');
-  await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Build an agent' });
+  await expect(dialog.locator('.mbnote')).toContainText('Tell me what the agent should do');
 });

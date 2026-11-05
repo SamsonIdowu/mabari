@@ -9,12 +9,12 @@ test.beforeEach(async ({ request }) => {
 const NAV: [name: string, label: string, heading: string][] = [
   ['Agents', 'Agents', 'Agents'],
   ['Projects', 'Projects', 'Projects'],
+  ['Agent builder', 'Builder', 'Agent builder'],
   ['Chats, conversations', 'Chats', 'Conversations'],
   ['Accounts', 'Accounts', 'Accounts'],
   ['Activity log', 'Activity', 'Activity log'],
   ['Settings', 'Settings', 'Settings'],
-  ['Components', 'Components', 'Component sheet'],
-  ['Status screens', 'Status', 'Status screens'],
+  ['Library', 'Library', 'Library'],
   ['First run', 'First run', 'See your AI agents at work, in a little office.'],
 ];
 
@@ -42,11 +42,9 @@ test('opens in light mode whatever the computer prefers', async ({ page }) => {
 test('the Notes switch shows and hides the design notes', async ({ page, request }) => {
   await request.post('/api/demo/load');
   await page.goto('/#office');
-  const note = page.locator('.cmdbar .note');
+  const note = page.locator('#noteQueue');
   await expect(note).toBeHidden();
   await page.locator('.topright').getByText('Notes').click();
-  await expect(note).toContainText('Query reads Mabari');
-  await expect(page.locator('.note.inline')).toContainText('Hidden agents keep working.');
   await expect(page.locator('.fnote:visible')).toHaveCount(3);
   await expect(page.locator('#noteQueue')).toContainText('Amber tag');
   await page.locator('.topright').getByText('Notes').click();
@@ -67,7 +65,7 @@ test('every nav link routes and marks itself current', async ({ page }) => {
 test('the top bar brand goes home', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Mabari, go home' }).click();
-  await expect(page.locator('#homeGreet')).toHaveText(/Morning|Afternoon|Evening/);
+  await expect(page.locator('#homeGreet')).toHaveText(/^Good (morning|afternoon|evening)$/);
 });
 
 test('the theme button switches themes and remembers the choice', async ({ page }) => {
@@ -128,9 +126,9 @@ test('the menu collapses, keeps tooltips and remembers the choice', async ({ pag
   await collapse.click();
   await expect.poll(width).toBe(58);
   await expect(page.locator('.rail .lbl').first()).toBeHidden();
-  await expect(rail.getByRole('link', { name: 'Status screens' })).toHaveAttribute(
+  await expect(rail.getByRole('link', { name: 'Library' })).toHaveAttribute(
     'title',
-    /^Status screens/,
+    /^Library/,
   );
   await expect(rail.getByRole('link', { name: 'Projects' })).toHaveAttribute('title', 'Projects');
 

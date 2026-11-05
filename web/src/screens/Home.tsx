@@ -29,14 +29,15 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
 
 const LOOK_EASE = 0.08;
+const HOME_SCALE = 0.78;
 const IDLE_MIN_MS = 7000;
 const IDLE_SPREAD_MS = 5000;
 
 const anyOf = (items: string[]) => items[Math.floor(Math.random() * items.length)]!;
 
 function greeting(hour: number) {
-  if (hour < 12) return 'Morning';
-  return hour < 18 ? 'Afternoon' : 'Evening';
+  if (hour < 12) return 'Good morning';
+  return hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
 function Summary({ office }: { office: Snapshot }) {
@@ -268,9 +269,10 @@ function useVeeStage(
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, w, h);
       context.imageSmoothingEnabled = true;
-      const scale = Math.min(w / 34, h / 45);
+      // About 20% smaller than the stage allows, and centred both ways, as in the prototype.
+      const scale = Math.min(w / 34, h / 45) * HOME_SCALE;
       const ox = (w - 32 * scale) / 2;
-      const oy = h - 40.5 * scale;
+      const oy = (h - 42 * scale) / 2;
       context.setTransform(scale, 0, 0, scale, ox, oy);
       drawMascot(context, t, { ...pose, scarf: '#F4F4F4', laptop: '#8E8E93', dark });
 

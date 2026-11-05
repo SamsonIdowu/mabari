@@ -1,0 +1,629 @@
+<!-- Captured from design/mabari-prototype.html (Library, Components tab), so the sheet cannot drift through retyping. -->
+<div class="libgrid">
+  <section class="card libtile">
+    <h2>Buttons</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+      <button type="button" tabindex="-1" class="btn primary">Primary</button
+      ><button type="button" tabindex="-1" class="btn">Secondary</button
+      ><button type="button" tabindex="-1" class="btn ghost">Ghost</button
+      ><button type="button" tabindex="-1" class="btn danger">Allow risky action</button
+      ><button type="button" tabindex="-1" class="btn danger-out">Stop</button
+      ><button type="button" tabindex="-1" class="btn" disabled="">Disabled</button>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+      <button type="button" tabindex="-1" class="btn sendbtn ins">Send instruction</button
+      ><button type="button" tabindex="-1" class="btn sendbtn qry">Ask</button
+      ><button type="button" tabindex="-1" class="mic" aria-label="Hold to talk">
+        <svg class="ico" viewBox="0 0 24 24">
+          <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="cxrow">
+      <button type="button" tabindex="-1" type="button" class="btn">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"></path></svg
+        >Interrupt</button
+      ><button type="button" tabindex="-1" type="button" class="btn primary">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M7 5l11 7-11 7z"></path></svg>Continue
+      </button>
+    </div>
+    <p class="help">
+      Interrupt turns into Continue. Instruct is solid, Query is dashed teal, so the two never look
+      alike.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Office controls</h2>
+    <div class="cxrow">
+      <span class="lbtn quiet" aria-pressed="false"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8"></circle>
+          <circle cx="12" cy="12" r="3"></circle></svg></span
+      ><span class="lbtn" aria-pressed="true"
+        ><svg class="ico" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"></path></svg></span
+      ><span class="lbtn" aria-pressed="true"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M3 12l9-9h8v8l-9 9zM15.5 8.5h.01"></path></svg></span
+      ><span class="lbtn" aria-pressed="false"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M3 6h18v12H3zM3 6l9 7 9-7"></path></svg></span
+      ><span class="lbtn" aria-pressed="true"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21a8 8 0 0 1 16 0"></path></svg
+      ></span>
+    </div>
+    <div class="cxrow">
+      <span class="bmini"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"></path></svg></span
+      ><span class="bmini has"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"></path></svg
+        ><span class="bcount">2</span></span
+      ><span class="wclock"
+        ><svg viewBox="0 0 32 32">
+          <circle cx="16" cy="16" r="14" class="wcf"></circle>
+          <circle cx="16" cy="16" r="11.5" class="wcp"></circle>
+          <line x1="16" y1="16" x2="20" y2="13" class="wch"></line>
+          <line x1="16" y1="16" x2="16" y2="7" class="wcm"></line>
+          <line x1="16" y1="16" x2="10" y2="20" class="wcs"></line></svg></span
+      ><span class="ctools cxstatic"
+        ><button type="button" tabindex="-1" type="button">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"></path></svg></button
+        ><span class="num" style="font-size: 12px; font-weight: 800">100%</span
+        ><button type="button" tabindex="-1" type="button">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button
+        ><button type="button" tabindex="-1" type="button">
+          <svg class="ico" viewBox="0 0 24 24">
+            <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"></path>
+          </svg></button
+      ></span>
+    </div>
+    <p class="help">
+      Filters and Quiet mode on the left of the wall bar, bell and clock on the right, zoom tools in
+      the bottom corner. A struck through grey filter is hidden.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Mabari</h2>
+    <div class="cxrow" style="align-items: flex-start">
+      <span class="mbhead" style="width: 44px; height: 44px"
+        ><svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+          <circle
+            cx="16"
+            cy="16.5"
+            r="13.6"
+            fill="#1E1E20"
+            style="stroke: var(--fg)"
+            stroke-width="1.4"
+          ></circle>
+          <path
+            d="M4.2 15.2A11.8 11.8 0 0 1 27.8 15.2"
+            fill="none"
+            stroke="#F4F4F4"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          ></path>
+          <ellipse cx="16" cy="18" rx="9.6" ry="7.6" fill="#FFFFFF"></ellipse>
+          <ellipse cx="12.4" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+          <ellipse cx="19.6" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+          <circle cx="11.9" cy="16.3" r=".6" fill="#fff"></circle>
+          <circle cx="19.1" cy="16.3" r=".6" fill="#fff"></circle>
+          <path
+            d="M12.6 21.3Q15.8 23.6 19.2 21"
+            fill="none"
+            stroke="#0C0C0C"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          ></path>
+          <path
+            d="M27.6 19.6Q27 23.4 21.6 22.6"
+            fill="none"
+            stroke="#0C0C0C"
+            stroke-width="1.1"
+            stroke-linecap="round"
+          ></path>
+          <circle cx="21.2" cy="22.5" r="1.1" fill="#0C0C0C"></circle>
+          <ellipse
+            cx="28.2"
+            cy="17.2"
+            rx="2.5"
+            ry="3.4"
+            fill="#F4F4F4"
+            stroke="#0C0C0C"
+            stroke-width="1.1"
+          ></ellipse></svg
+      ></span>
+      <div class="mbnote" style="margin: 0; flex: 1">
+        <span class="mbhead"
+          ><svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+            <circle
+              cx="16"
+              cy="16.5"
+              r="13.6"
+              fill="#1E1E20"
+              style="stroke: var(--fg)"
+              stroke-width="1.4"
+            ></circle>
+            <path
+              d="M4.2 15.2A11.8 11.8 0 0 1 27.8 15.2"
+              fill="none"
+              stroke="#F4F4F4"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            ></path>
+            <ellipse cx="16" cy="18" rx="9.6" ry="7.6" fill="#FFFFFF"></ellipse>
+            <ellipse cx="12.4" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+            <ellipse cx="19.6" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+            <circle cx="11.9" cy="16.3" r=".6" fill="#fff"></circle>
+            <circle cx="19.1" cy="16.3" r=".6" fill="#fff"></circle>
+            <path
+              d="M12.6 21.3Q15.8 23.6 19.2 21"
+              fill="none"
+              stroke="#0C0C0C"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            ></path>
+            <path
+              d="M27.6 19.6Q27 23.4 21.6 22.6"
+              fill="none"
+              stroke="#0C0C0C"
+              stroke-width="1.1"
+              stroke-linecap="round"
+            ></path>
+            <circle cx="21.2" cy="22.5" r="1.1" fill="#0C0C0C"></circle>
+            <ellipse
+              cx="28.2"
+              cy="17.2"
+              rx="2.5"
+              ry="3.4"
+              fill="#F4F4F4"
+              stroke="#0C0C0C"
+              stroke-width="1.1"
+            ></ellipse></svg
+        ></span>
+        <div>
+          <b>I suggest 2 changes to docs-writer:</b>
+          <ul>
+            <li>Asked for a short summary at the end.</li>
+            <li>Added a stop rule for failing commands.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cxrow">
+      <span class="btn fsmb" style="display: inline-flex"
+        ><svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+          <circle
+            cx="16"
+            cy="16.5"
+            r="13.6"
+            fill="#1E1E20"
+            style="stroke: var(--fg)"
+            stroke-width="1.4"
+          ></circle>
+          <path
+            d="M4.2 15.2A11.8 11.8 0 0 1 27.8 15.2"
+            fill="none"
+            stroke="#F4F4F4"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          ></path>
+          <ellipse cx="16" cy="18" rx="9.6" ry="7.6" fill="#FFFFFF"></ellipse>
+          <ellipse cx="12.4" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+          <ellipse cx="19.6" cy="17" rx="1.7" ry="2.1" fill="#0C0C0C"></ellipse>
+          <circle cx="11.9" cy="16.3" r=".6" fill="#fff"></circle>
+          <circle cx="19.1" cy="16.3" r=".6" fill="#fff"></circle>
+          <path
+            d="M12.6 21.3Q15.8 23.6 19.2 21"
+            fill="none"
+            stroke="#0C0C0C"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          ></path>
+          <path
+            d="M27.6 19.6Q27 23.4 21.6 22.6"
+            fill="none"
+            stroke="#0C0C0C"
+            stroke-width="1.1"
+            stroke-linecap="round"
+          ></path>
+          <circle cx="21.2" cy="22.5" r="1.1" fill="#0C0C0C"></circle>
+          <ellipse
+            cx="28.2"
+            cy="17.2"
+            rx="2.5"
+            ry="3.4"
+            fill="#F4F4F4"
+            stroke="#0C0C0C"
+            stroke-width="1.1"
+          ></ellipse></svg
+        ><span class="bcount">3</span></span
+      ><span class="chip">Manager</span><span class="chip ok"><i></i>Always on</span>
+    </div>
+    <p class="help">
+      Mabari's head marks its notes, its updates button in full screen and its builder card.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Toggles and switches</h2>
+    <div class="seg modeseg">
+      <button type="button" tabindex="-1" class="ins on">Instruct</button
+      ><button type="button" tabindex="-1" class="qry">Query</button>
+    </div>
+    <div class="seg modeseg">
+      <button type="button" tabindex="-1" class="ins">Instruct</button
+      ><button type="button" tabindex="-1" class="qry on">Query</button>
+    </div>
+    <label class="switch"><input type="checkbox" checked="" />Spoken replies</label
+    ><label class="switch"><input type="checkbox" />LAN access</label>
+    <div class="seg">
+      <button type="button" tabindex="-1" class="on">Live</button><button>Decision trail</button>
+    </div>
+  </section>
+  <section class="card libtile">
+    <h2>Project panels</h2>
+    <div class="cxrow">
+      <span class="pwin" style="--pc: #ff6b9a"
+        ><span class="pwn">Checkout revamp</span
+        ><span class="pws"
+          ><span class="pwb"><i style="width: 48%"></i></span>48%<b>1</b></span
+        ></span
+      ><span class="pwin on" style="--pc: #4fb3ff"
+        ><span class="pwn">Docs site</span
+        ><span class="pws"
+          ><span class="pwb"><i style="width: 58%"></i></span>58%</span
+        ></span
+      ><span class="pwin done" style="--pc: #3fd07f"
+        ><span class="pwn">Landing page</span
+        ><span class="pws"
+          ><span class="pwb"><i style="width: 100%"></i></span>✓</span
+        ></span
+      ><span class="pwin empty">+</span>
+    </div>
+    <p class="help">
+      Live progress on the wall. Outlined means it is the project in view; the red count is
+      approvals waiting; + starts a project.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Approval card</h2>
+    <div class="board" style="position: static; width: 100%; max-height: none">
+      <h4><span>Needs approval</span><span class="badge">1</span></h4>
+      <button type="button" tabindex="-1" class="bitem">
+        <i></i><span><b>Atlas</b>: npm run db:migrate -- --env=staging</span>Review
+      </button>
+    </div>
+    <p class="help">
+      Pops up from the bell in the top right of the office when something needs you. The red dot
+      blinks slowly until someone decides.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Message bars</h2>
+    <div class="h2box" style="margin: 0">
+      <span class="h2ic"
+        ><svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span
+      ><span style="flex: 1; color: var(--muted); padding: 0 6px">Ask Mabari anything</span
+      ><span class="h2ic"
+        ><svg class="ico" viewBox="0 0 24 24">
+          <path d="M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg
+      ></span>
+    </div>
+    <div class="cxpanel">
+      <div class="seg modeseg">
+        <button type="button" tabindex="-1" type="button" class="ins on">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6"></path></svg
+          >Instruct</button
+        ><button type="button" tabindex="-1" type="button" class="qry">? Query</button>
+      </div>
+      <div class="cmdin" style="min-height: 38px; flex: none">
+        <span class="muted" style="padding: 8px 0">Tell Sage what to do</span>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <span class="mic" style="width: 38px; height: 38px"
+          ><svg class="ico" viewBox="0 0 24 24">
+            <path d="M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span
+        ><button type="button" tabindex="-1" type="button" class="btn sendbtn ins" style="flex: 1">
+          Send instruction
+        </button>
+      </div>
+    </div>
+    <p class="help">Home uses the one line composer. The agent panel holds Instruct and Query.</p>
+  </section>
+  <section class="card libtile">
+    <h2>Provider colour tokens</h2>
+    <div class="swatches">
+      <div class="sw">
+        <i style="background: var(--claude)"></i><b>Claude</b><code>--claude</code>
+      </div>
+      <div class="sw">
+        <i style="background: var(--openai)"></i><b>OpenAI / Codex</b><code>--openai</code>
+      </div>
+      <div class="sw">
+        <i style="background: var(--custom)"></i><b>Custom</b><code>--custom</code>
+      </div>
+      <div class="sw"><i style="background: var(--red)"></i><b>Approval</b><code>--red</code></div>
+      <div class="sw">
+        <i style="background: var(--amber)"></i><b>Queued</b><code>--amber</code>
+      </div>
+      <div class="sw">
+        <i style="background: var(--accent)"></i><b>Accent</b><code>--accent</code>
+      </div>
+      <div class="sw"><i style="background: var(--query)"></i><b>Query</b><code>--query</code></div>
+    </div>
+    <p class="help">
+      Shirts, desk tags and dots use the provider colour. No provider logos anywhere.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Prompt card and toast</h2>
+    <div class="ptcard st-replied" style="--pc: var(--claude); animation: none">
+      <div class="pthead">
+        <span class="ptto">Mabari → <b>Sage</b> <span class="muted">Claude</span></span
+        ><span class="ptst">Replied</span>
+      </div>
+      <div class="ptq">Add pagination tests</div>
+      <div class="ptr">On it. Reading the routes first.</div>
+    </div>
+    <div class="toast" style="animation: none; max-width: none">
+      Mabari: Bolt finished the date picker fix.
+    </div>
+    <p class="help">
+      Prompt cards follow each message to an agent until the reply lands, then hide. Toasts confirm
+      actions and carry Mabari updates in full screen.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Status chips</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px">
+      <span class="chip">Thinking</span><span class="chip">Reading files</span
+      ><span class="chip">Editing</span><span class="chip">Running tests</span
+      ><span class="chip">Browsing</span><span class="chip red"><i></i>Needs approval</span
+      ><span class="chip">Starting a subagent</span><span class="chip">Idle</span
+      ><span class="chip ok"><i></i>Done</span><span class="chip red"><i></i>Error</span
+      ><span class="chip amber"><i></i>Interrupted</span
+      ><span class="chip amber"><i></i>Waiting to deliver</span>
+    </div>
+    <p class="help">
+      Only approvals and errors are red, only queued instructions are amber. Everything else stays
+      quiet.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Speech bubbles and name tags</h2>
+    <div
+      style="position: relative; height: 150px; background: var(--surface2); border-radius: 12px"
+    >
+      <div class="bub" style="left: 24%; top: 46%">Editing totals.ts</div>
+      <div class="tag p-claude" style="left: 24%; top: 54%">
+        <span class="nt"><b>Ledger</b><small>claude-sonnet-4-5</small><em>~4m</em></span>
+      </div>
+      <div class="bub reply" style="left: 74%; top: 46%">Got it. I'll add the pricing pages.</div>
+      <div class="tag p-openai attn" style="left: 74%; top: 54%">
+        <span class="nt"><b>Scout</b><small>gpt-5</small></span
+        ><span class="qd">Waiting to deliver</span>
+      </div>
+    </div>
+    <p class="help">
+      Grey bubble: what the agent is doing. Accent bubble: a reply to you. Red ring: needs you.
+      Amber label: queued instruction.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Agent tile</h2>
+    <article class="card defcard" style="height: auto; box-shadow: 0 0 0 1px var(--line)">
+      <div class="dchead">
+        <span class="davatar" style="--dc: #4fb3ff">C</span>
+        <div class="dctitle"><b>Code Reviewer</b><span class="mono muted">code-reviewer</span></div>
+        <span class="chip ok"><i></i>1 running</span>
+      </div>
+      <p class="dcdesc">Use after any change to review it for bugs and missing tests.</p>
+      <div class="dcmeta">
+        <span class="chip accent"><i></i>Account · every project</span
+        ><span class="chip">Sonnet</span>
+      </div>
+    </article>
+    <p class="help">
+      Every tile is the same size; click to expand it across the row with path, actions and stats.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Agent identity colours</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 12px">
+      <span class="idot" style="--ac: #ff6b9a; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #5ce1e6; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ffb547; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ffb8a0; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #4fb3ff; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #b5e35b; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ff8a5b; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ff8fcf; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #3fd07f; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ffd84d; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #7fa8ff; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #ff6f61; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #2de1c2; width: 22px; height: 22px"></span
+      ><span class="idot" style="--ac: #f8a5c2; width: 22px; height: 22px"></span>
+    </div>
+    <p class="help">
+      Every agent gets its own colour for its name tag, badge, selection ring and office outline, so
+      two Claude agents never look alike. The provider colour stays on the shirt and the small
+      square dot.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Decision colours</h2>
+    <div class="legend">
+      <span class="dec" style="--dc: #4fb3ff">Goal</span
+      ><span class="dec" style="--dc: #7ccfe0">Plan</span
+      ><span class="dec" style="--dc: #6ea8ff">Read</span
+      ><span class="dec" style="--dc: #ff9f43">Edit</span
+      ><span class="dec" style="--dc: #ff6fa8">Shell</span
+      ><span class="dec" style="--dc: #48dbfb">Browse</span
+      ><span class="dec" style="--dc: #1dd1a1">Subagent</span
+      ><span class="dec" style="--dc: #ff6b6b">Approval</span
+      ><span class="dec" style="--dc: #bdbdc2">Your instruction</span
+      ><span class="dec" style="--dc: #2ecc71">Success</span
+      ><span class="dec" style="--dc: #ff4757">Failure</span
+      ><span class="dec" style="--dc: #feca57">Retry</span
+      ><span class="dec" style="--dc: #8e8e93">Now</span>
+    </div>
+    <p class="help">
+      Each kind of decision keeps one colour in the decision trail, the tool call feed and the
+      envelopes that fly across the office.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Cards</h2>
+    <div class="card" style="background: var(--surface2)">
+      <div class="acchead">
+        <span class="accicon"
+          ><svg class="ico" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"></path></svg
+        ></span>
+        <div style="flex: 1">
+          <h3>Account card</h3>
+          <p class="help">Title, status, models, one main action.</p>
+        </div>
+        <span class="chip ok"><i></i>Connected</span>
+      </div>
+      <div class="models">
+        <span class="model">gpt-5-codex</span><span class="model">gpt-5</span>
+      </div>
+    </div>
+  </section>
+  <section class="card libtile">
+    <h2>Side panel</h2>
+    <div style="border: 1px solid var(--line); border-radius: 12px; overflow: hidden">
+      <div class="phd p-claude">
+        <h3 style="display: flex; gap: 8px; align-items: center">
+          <span class="pdot"></span>Ledger
+        </h3>
+        <div class="meta">
+          <b>Claude</b><span class="mono">claude-sonnet-4-5</span><span class="chip">Editing</span>
+        </div>
+      </div>
+      <div style="padding: 14px 20px; display: flex; flex-direction: column; gap: 10px">
+        <div class="eta">
+          <b>About 4 min left</b>
+          <div class="bar"><i style="width: 62%"></i></div>
+        </div>
+        <div class="fe">
+          <code>edit_file</code><span class="s">src/billing/totals.ts +18 −6</span
+          ><time>10:42</time>
+        </div>
+      </div>
+    </div>
+    <p class="help">
+      Opens when you click an agent. Live and Decision trail share the header and the message box.
+    </p>
+  </section>
+  <section class="card libtile">
+    <h2>Banners and tabs</h2>
+    <div class="persist" style="margin: 0">
+      <svg class="ico" viewBox="0 0 24 24">
+        <path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"></path></svg
+      ><span><b>Saved as files on this computer.</b> Loaded on every start.</span>
+    </div>
+    <div class="seg">
+      <button type="button" tabindex="-1" type="button" class="on">Components</button
+      ><button type="button" tabindex="-1" type="button">Status screens</button>
+    </div>
+    <div class="banner red" style="padding: 8px 10px">
+      <span class="grow">Delete billing-expert? Its file is removed.</span
+      ><button type="button" tabindex="-1" type="button" class="btn sm">Keep</button
+      ><button type="button" tabindex="-1" type="button" class="btn sm danger">Delete</button>
+    </div>
+  </section>
+  <section class="card notescard libtile">
+    <h2>Interaction notes</h2>
+    <div class="grid2" style="gap: 14px 28px">
+      <p>
+        <b>Push to talk.</b> Hold Space (when no text field has focus) or press and hold the mic.
+        Release to stop. Nothing is sent until you press Send (or Enter); Cancel or Esc throws it
+        away.
+      </p>
+      <p>
+        <b>Voice can't approve.</b> Saying “allow” opens the approval card. A click is always needed
+        for risky actions.
+      </p>
+      <p>
+        <b>Checkpoints.</b> Instructions to busy Claude Code agents wait in amber until the current
+        step ends, then the agent replies in a bubble.
+      </p>
+      <p>
+        <b>Queries never interrupt.</b> Answers come from the event log, show which events they
+        used, and the agent keeps working.
+      </p>
+      <p>
+        <b>Walking.</b> Agents walk between rooms when their state changes: cabinets to read, server
+        room to run things, library to browse, pantry when idle.
+      </p>
+      <p>
+        <b>Subagents.</b> A lead goes to the meeting room, sparkles appear, and the helper pops in
+        at the closest free desk.
+      </p>
+      <p>
+        <b>Time estimates.</b> Each agent shows "~4m" on its tag and a full estimate in the panel,
+        based on its own progress and pace.
+      </p>
+      <p>
+        <b>Auto approve.</b> The shield button in the office bar approves low risk actions for every
+        agent, or everything after an extra confirmation. An amber banner stays on the floor while
+        it is on.
+      </p>
+      <p>
+        <b>Team offices.</b> Subagents sit in a dashed office drawn around their lead. Open it from
+        the agent panel and the camera zooms in on that team.
+      </p>
+      <p>
+        <b>Model from settings.</b> New agents use the default in Settings. Subagents use whatever
+        their lead's agent settings say.
+      </p>
+      <p>
+        <b>Envelopes.</b> Handoffs, instructions and approvals fly across the floor as envelopes in
+        their decision colour.
+      </p>
+      <p>
+        <b>Conversations.</b> When agents talk, a dashed curve joins them on the floor, an envelope
+        flies across and the sender's bubble shows the message. The Conversations page keeps every
+        thread.
+      </p>
+      <p>
+        <b>Mabari dispatches.</b> Anything you tell Mabari on Home goes straight to the best agent,
+        or starts one, and Mabari reads you the reply when it lands. Click an agent on the floor to
+        talk to it directly from its panel.
+      </p>
+      <p>
+        <b>Projects from a brief.</b> New project opens a chat. Type or hold the mic, the planner
+        proposes a lead and subagents, you untick or refine, then Start project. The lead walks in
+        and brings its subagents.
+      </p>
+      <p>
+        <b>Start Claude Code.</b> Pick Claude Code in Start agent. The exact command is shown before
+        it runs, and the session walks in on its own through the hook.
+      </p>
+      <p>
+        <b>Project setup.</b> New project works like a project chat: attach files with + or by
+        dropping them, attach a repository by folder or Git URL, and keep instructions beside the
+        chat. A file called CLAUDE.md, AGENTS.md or similar becomes the instructions. Plan first
+        makes the lead post its plan on the approval card before anyone starts.
+      </p>
+      <p>
+        <b>Working folders.</b> Every folder field has Browse… to pick a folder on this computer,
+        accepts typed or pasted paths (file:// links and quoted paths are cleaned up), suggests
+        recent folders, and explains a path that won't work.
+      </p>
+      <p>
+        <b>Time estimates.</b> Name tags show minutes left. The panel adds the finish time, a likely
+        range and, for leads, when the whole team should be done. The header shows when everything
+        in view should finish, and the New project plan estimates the project before it starts.
+      </p>
+      <p>
+        <b>Filters.</b> Non matching agents fade to 20% and lose their tags, so the room stays
+        readable.
+      </p>
+    </div>
+  </section>
+</div>

@@ -5,7 +5,6 @@ import { useOfficeSync } from '../data/useOfficeSync.ts';
 import type { Route } from '../routes.ts';
 import { Accounts } from '../screens/Accounts.tsx';
 import { Activity } from '../screens/Activity.tsx';
-import { ComponentSheet } from '../screens/ComponentSheet.tsx';
 import { Conversations } from '../screens/Conversations.tsx';
 import { Home } from '../screens/Home.tsx';
 import { NewAgentDialog } from '../screens/NewAgentDialog.tsx';
@@ -14,7 +13,7 @@ import { Office } from '../screens/Office.tsx';
 import { Builder } from '../screens/Builder.tsx';
 import { Projects } from '../screens/Projects.tsx';
 import { Settings } from '../screens/Settings.tsx';
-import { StatusScreens } from '../screens/StatusScreens.tsx';
+import { Library } from '../screens/Library.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
 import { useHashRoute } from '../useHashRoute.ts';
@@ -42,9 +41,8 @@ function Screen({ route }: { route: Route }) {
     case 'preferences':
       return <Settings />;
     case 'components':
-      return <ComponentSheet />;
     case 'states':
-      return <StatusScreens />;
+      return <Library />;
     case 'office':
       return <Office />;
   }

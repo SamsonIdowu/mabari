@@ -65,8 +65,8 @@ const workNav: NavItem[] = [
     badge: 'live',
     icon: (
       <>
-        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
-        <path d="M8 11h8M8 14h5" />
+        <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" />
+        <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" />
       </>
     ),
   },
@@ -106,25 +106,14 @@ const manageNav: NavItem[] = [
 const referenceNav: NavItem[] = [
   {
     route: 'components',
-    label: 'Components',
+    label: 'Library',
+    title: 'Library: components and status screens',
     icon: (
       <>
         <rect x="3" y="3" width="7" height="7" rx="2" />
         <rect x="14" y="3" width="7" height="7" rx="2" />
         <rect x="3" y="14" width="7" height="7" rx="2" />
         <rect x="14" y="14" width="7" height="7" rx="2" />
-      </>
-    ),
-  },
-  {
-    route: 'states',
-    label: 'Status',
-    name: 'Status screens',
-    title: 'Status screens: empty, loading and error states',
-    icon: (
-      <>
-        <path d="M12 9v4M12 17h.01" />
-        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
       </>
     ),
   },

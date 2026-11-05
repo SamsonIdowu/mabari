@@ -23,8 +23,9 @@ const SCREENS: [route: string, heading: string][] = [
   ['#accounts', 'Accounts'],
   ['#activity', 'Activity log'],
   ['#preferences', 'Settings'],
-  ['#components', 'Component sheet'],
-  ['#states', 'Status screens'],
+  ['#builder', 'Agent builder'],
+  ['#components', 'Library'],
+  ['#states', 'Library'],
 ];
 
 test('first run opens the office, and home is the start page after that', async ({ page }) => {
@@ -270,11 +271,13 @@ test('a fresh install starts with My first project', async ({ page }) => {
   );
 });
 
-test('the status screens open New agent and show Mori on the floor', async ({ page }) => {
+test('the status screens point to the builder and show Mori on the floor', async ({ page }) => {
   await page.goto('/#states');
-  await page.getByRole('button', { name: 'New agent' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Create a new agent');
-  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#components$/);
+  await expect(page.getByRole('link', { name: 'Start an agent' })).toHaveAttribute(
+    'href',
+    '#builder',
+  );
   await page.getByRole('button', { name: 'See Mori on the floor' }).click();
   await expect(page.locator('h1')).toHaveText('Agents');
   const panel = page.getByRole('complementary', { name: 'Agent details' });

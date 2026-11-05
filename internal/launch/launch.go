@@ -128,14 +128,17 @@ func Command(ctx context.Context, goos string, lookPath func(string) (string, er
 	case "linux":
 		if program, err := lookPath("gnome-terminal"); err == nil {
 			args := append([]string{"--working-directory=" + request.Folder, "--"}, Args(request)...)
-			return exec.CommandContext(ctx, program, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
+			// nosemgrep -- program is a terminal found by its fixed name; args go in exec form, no shell.
+			return exec.CommandContext(ctx, program, args...) // #nosec G204
 		}
 		if program, err := lookPath("konsole"); err == nil {
 			args := append([]string{"--workdir", request.Folder, "-e"}, Args(request)...)
-			return exec.CommandContext(ctx, program, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
+			// nosemgrep -- program is a terminal found by its fixed name; args go in exec form, no shell.
+			return exec.CommandContext(ctx, program, args...) // #nosec G204
 		}
 		if program, err := lookPath("x-terminal-emulator"); err == nil {
-			return exec.CommandContext(ctx, program, "-e", "sh", "-c", ShellLine(request)) // #nosec G204 nosemgrep -- fixed program; every part is shell quoted
+			// nosemgrep -- program is a terminal found by its fixed name; every part of the line is shell quoted.
+			return exec.CommandContext(ctx, program, "-e", "sh", "-c", ShellLine(request)) // #nosec G204
 		}
 	}
 	return nil

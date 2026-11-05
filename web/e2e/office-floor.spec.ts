@@ -234,10 +234,11 @@ async function projectCards(page: Page) {
   );
 }
 
-for (const [width, height] of [
+const WINDOWS: [number, number][] = [
   [1280, 720],
   [1440, 900],
-]) {
+];
+for (const [width, height] of WINDOWS) {
   test(`the approval stack leaves the project cards readable and clickable at ${width} px`, async ({
     page,
     request,

@@ -5,7 +5,8 @@ import { exploreDemo } from '../data/demo.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText, shortMinutes } from '../format.ts';
 import type { Snapshot } from '../gen/models.ts';
-import { needsTone, openAgent, useOfficeUi, whoNeedsYou } from '../office/uiStore.ts';
+import { floorCounts, groupOf } from '../office/floorList.ts';
+import { counted, openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { mascotBox, MouseGestures } from '../office/mouseGestures.ts';
 import { drawMascot, IDLE_GESTURES, POKE_GESTURES, veeFrame } from '../office/vee.ts';
 import { useVee } from '../office/veeStore.ts';
@@ -30,24 +31,25 @@ function greeting(hour: number) {
 function Summary({ office }: { office: Snapshot }) {
   const { agents } = office;
   if (!agents.length) return <p id="homeSum">No agents yet</p>;
-  // Working comes from the server, so sessions that report no progress rate, such as Claude
-  // Code's, count too. Only agents with an estimate say when they will be done.
-  const working = agents.filter((agent) => agent.working);
-  const workflow = working.filter((agent) => agent.workflow).length;
+  // The same counts as the Agents page's header, from the same function: an agent is counted in
+  // one place, so one with an instruction queued, or waiting on you, is not also "working"
+  // (RT-1). Working comes from the server's flag, so sessions that report no progress rate, such
+  // as Claude Code's, count too. Who needs you is approvals, errors and questions, as the rail
+  // badge counts them: red only when an approval or an error waits, and calm for a question.
+  const here = counted(agents);
+  const { working, need, tone } = floorCounts(here);
+  const workflow = here.filter((agent) => groupOf(agent) === 'working' && agent.workflow).length;
+  // Only agents with an estimate say when they will be done.
   const estimated = agents.filter((agent) => agent.estimate);
-  // The one count of who needs you: approvals, errors and questions, as the rail badge and the
-  // floor header count them. Red only when an approval or an error waits; a question is calm.
-  const needing = whoNeedsYou(agents);
-  const need = needing.length;
   const finish = Math.max(0, ...estimated.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
     <p id="homeSum">
-      {working.length} working
+      {working} working
       {workflow ? ` (${workflow} workflow sub-agent${workflow === 1 ? '' : 's'})` : ''}
       {need ? (
         <>
           {' · '}
-          {needsTone(needing) === 'red' ? (
+          {tone === 'red' ? (
             <b style={{ color: 'var(--red)' }}>{need} need you</b>
           ) : (
             `${need} need you`

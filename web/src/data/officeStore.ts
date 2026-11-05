@@ -26,6 +26,8 @@ interface OfficeState {
   toasts: Toast[];
   setSnapshot: (snapshot: Snapshot) => void;
   apply: (message: ServerMessage) => void;
+  /** Applies messages in order, and tells the screens once, not once for each. */
+  applyAll: (messages: ServerMessage[]) => void;
   toast: (text: string) => void;
 }
 
@@ -33,13 +35,18 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
   office: null,
   toasts: [],
   setSnapshot: (office) => set({ office }),
-  apply: (message) => {
-    const { office } = get();
-    // A message already applied, replayed after a reload, does not toast again.
-    if (office && message.seq <= office.seq) return;
-    const { text } = message;
-    if (message.type === 'toast' && text && !quiet.some((drop) => drop(text))) get().toast(text);
-    if (office) set({ office: applyMessage(office, message) });
+  apply: (message) => get().applyAll([message]),
+  applyAll: (messages) => {
+    const before = get().office;
+    let office = before;
+    for (const message of messages) {
+      // A message already applied, replayed after a reload, does not toast again.
+      if (office && message.seq <= office.seq) continue;
+      const { text } = message;
+      if (message.type === 'toast' && text && !quiet.some((drop) => drop(text))) get().toast(text);
+      if (office) office = applyMessage(office, message);
+    }
+    if (office !== before) set({ office });
   },
   toast: (text) => {
     const id = nextToast++;

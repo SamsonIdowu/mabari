@@ -5,6 +5,7 @@ import { useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { api } from './api.ts';
+import { frameBatch } from './frameBatch.ts';
 import { useOfficeStore } from './officeStore.ts';
 import { socketProtocols } from './session.ts';
 
@@ -27,15 +28,20 @@ export function useOfficeSync(): void {
     // Messages that arrive while a snapshot is loading wait here. Those newer than the snapshot
     // are applied after it, so nothing is lost or applied twice.
     let waiting: ServerMessage[] | null = null;
-    const { setSnapshot, apply } = useOfficeStore.getState();
+    const { setSnapshot, applyAll } = useOfficeStore.getState();
+    // Changes that arrive in the same frame are applied together, so a burst of them costs the
+    // page one render, not one each.
+    const arrived = frameBatch<ServerMessage>(applyAll);
 
     const reload = async () => {
+      // What came before the snapshot was asked for goes in first, in order.
+      arrived.flush();
       waiting ??= [];
       try {
         const snapshot = await api.snapshot();
         if (stopped) return;
         setSnapshot(snapshot);
-        for (const message of waiting) apply(message);
+        applyAll(waiting);
       } finally {
         waiting = null;
       }
@@ -58,8 +64,10 @@ export function useOfficeSync(): void {
       socket.onmessage = (incoming: MessageEvent<string>) => {
         const message = JSON.parse(incoming.data) as ServerMessage;
         if (message.type === 'hello') return;
-        const seen = useOfficeStore.getState().office?.seq ?? 0;
         if (message.type === 'resync' || message.type === 'reset') {
+          // What is held is older than this message, so it counts as seen.
+          arrived.flush();
+          const seen = useOfficeStore.getState().office?.seq ?? 0;
           // A snapshot loaded after this message already includes it.
           if (message.seq !== 0 && message.seq <= seen) return;
           if (message.type === 'reset') forgetView();
@@ -67,9 +75,11 @@ export function useOfficeSync(): void {
           return;
         }
         if (waiting) waiting.push(message);
-        else apply(message);
+        else arrived.add(message);
       };
       socket.onclose = () => {
+        // The next connection resumes from what the office holds, so hand over what is waiting.
+        arrived.flush();
         if (!stopped) retry = setTimeout(connect, RETRY_MS);
       };
     };
@@ -88,6 +98,7 @@ export function useOfficeSync(): void {
 
     return () => {
       stopped = true;
+      arrived.discard();
       clearTimeout(retry);
       clearTimeout(reloadRetry);
       socket?.close();

@@ -186,3 +186,51 @@ func TestConnectNeedsABuiltBinary(t *testing.T) {
 		t.Errorf("connect without a binary = %d", recorder.Code)
 	}
 }
+
+// Making Mabari the default agent shows the change first, needs a confirming click, keeps a
+// backup, leaves every other setting alone, and is undone just as cleanly.
+func TestMakingMabariTheDefaultAgent(t *testing.T) {
+	o := newClaudeOffice(t)
+	plan := decode[defaultAgentStatus](t, o.do(t, http.MethodGet, "/api/accounts/claude/default-agent", ""))
+	if plan.On || len(plan.Diff) == 0 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	if response := o.do(t, http.MethodPost, "/api/accounts/claude/default-agent", `{"on":true}`); response.Code != http.StatusBadRequest {
+		t.Errorf("unconfirmed = %d", response.Code)
+	}
+	if response := o.do(t, http.MethodPost, "/api/accounts/claude/default-agent", `{"on":true,"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("on = %d %s", response.Code, response.Body)
+	}
+	if got := claudecode.DefaultAgent(o.dir); got != "mabari" {
+		t.Errorf("default agent = %q", got)
+	}
+	settings, _ := os.ReadFile(filepath.Join(o.dir, "settings.json"))
+	if !strings.Contains(string(settings), `"model": "claude-opus-4-1"`) {
+		t.Errorf("other settings changed: %s", settings)
+	}
+	if _, err := os.Stat(filepath.Join(o.dir, "settings.json"+claudecode.BackupSuffix)); err != nil {
+		t.Errorf("no backup: %v", err)
+	}
+	if response := o.do(t, http.MethodPost, "/api/accounts/claude/default-agent", `{"on":false,"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("off = %d", response.Code)
+	}
+	if got := claudecode.DefaultAgent(o.dir); got != "" {
+		t.Errorf("still the default: %q", got)
+	}
+}
+
+// Turning Mabari off never removes an agent someone else chose as the default.
+func TestAnotherDefaultAgentIsLeftAlone(t *testing.T) {
+	o := newClaudeOffice(t)
+	if err := os.WriteFile(filepath.Join(o.dir, "settings.json"), []byte(`{"agent": "reviewer"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := decode[defaultAgentStatus](t, o.do(t, http.MethodGet, "/api/accounts/claude/default-agent", ""))
+	if plan.On || plan.Other != "reviewer" {
+		t.Errorf("plan = %+v", plan)
+	}
+	_ = o.do(t, http.MethodPost, "/api/accounts/claude/default-agent", `{"on":false,"confirm":true}`)
+	if got := claudecode.DefaultAgent(o.dir); got != "reviewer" {
+		t.Errorf("default agent = %q", got)
+	}
+}

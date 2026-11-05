@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/SamsonIdowu/mabari/internal/agentdefs"
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
@@ -36,6 +37,8 @@ func (a *api) claudeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/accounts/claude", a.claudePlan)
 	mux.HandleFunc("POST /api/accounts/claude/connect", a.claudeConnect)
 	mux.HandleFunc("POST /api/accounts/claude/disconnect", a.claudeDisconnect)
+	mux.HandleFunc("GET /api/accounts/claude/default-agent", a.defaultAgentPlan)
+	mux.HandleFunc("POST /api/accounts/claude/default-agent", a.setDefaultAgent)
 }
 
 // claudeHook takes one hook call. Only a call signed with the install's token gets in, because a
@@ -209,4 +212,77 @@ func (a *api) setClaudeAccount(status models.AccountStatus) {
 			a.engine.SetAccount(account)
 		}
 	}
+}
+
+// defaultAgentStatus says whether Mabari is the agent every Claude Code session runs as, and
+// exactly what switching it would change in settings.json.
+type defaultAgentStatus struct {
+	On bool `json:"on"`
+	// Other names another agent someone set as the default, which Mabari won't replace silently.
+	Other  string            `json:"other"`
+	Path   string            `json:"path"`
+	Diff   []models.DiffLine `json:"diff"`
+	Backup string            `json:"backup"`
+}
+
+// defaultAgentPlan shows what making Mabari the default agent, or not, would change, before
+// anything is written.
+func (a *api) defaultAgentPlan(w http.ResponseWriter, _ *http.Request) {
+	if a.inDocker(w) {
+		return
+	}
+	current := claudecode.DefaultAgent(a.claude.ConfigDir)
+	on := current == agentdefs.MabariName
+	plan, err := claudecode.PlanDefaultAgent(a.claude.ConfigDir, agentdefs.MabariName, !on)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	other := current
+	if on {
+		other = ""
+	}
+	writeJSON(w, http.StatusOK, defaultAgentStatus{
+		On: on, Other: other, Path: plan.Path, Diff: plan.Diff, Backup: plan.Path + claudecode.BackupSuffix,
+	})
+}
+
+// setDefaultAgent makes Mabari the agent every new Claude Code session runs as, or stops it,
+// after a backup of settings.json. It needs confirm: true, sent only after the person has seen
+// the change.
+func (a *api) setDefaultAgent(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		On      bool `json:"on"`
+		Confirm bool `json:"confirm"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if a.inDocker(w) {
+		return
+	}
+	if !body.Confirm {
+		writeError(w, http.StatusBadRequest, "this changes settings.json, so it needs confirm: true")
+		return
+	}
+	plan, err := claudecode.PlanDefaultAgent(a.claude.ConfigDir, agentdefs.MabariName, body.On)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err := claudecode.Apply(plan); err != nil {
+		internalError(w, err)
+		return
+	}
+	slog.Info("changed Claude Code's default agent", "settings", plan.Path, "mabari", body.On)
+	_ = a.engine.Do(func() {
+		if body.On {
+			a.engine.Log("Mabari", models.LogSession, "Mabari is the default agent", "New Claude Code sessions run as Mabari", "ok")
+			a.engine.Toast("New Claude Code sessions run as Mabari, with its map of the projects.")
+		} else {
+			a.engine.Log("Mabari", models.LogSession, "Mabari is no longer the default agent", "Claude Code's own agent again", "")
+			a.engine.Toast("New Claude Code sessions run as Claude Code's own agent again.")
+		}
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"on": body.On})
 }

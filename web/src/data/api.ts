@@ -199,6 +199,16 @@ export interface ClaudePlan {
   backup: string;
 }
 
+/** Whether Mabari is Claude Code's default agent, and what switching would change. */
+export interface DefaultAgentPlan {
+  on: boolean;
+  /** Another agent someone set as the default, which making Mabari the default replaces. */
+  other: string;
+  path: string;
+  diff: DiffLine[];
+  backup: string;
+}
+
 export interface PlanMember {
   role: string;
   label: string;
@@ -399,4 +409,8 @@ export const api = {
   connectClaude: () =>
     send<{ ok: boolean }>('POST', '/api/accounts/claude/connect', { confirm: true }),
   disconnectClaude: () => send<{ ok: boolean }>('POST', '/api/accounts/claude/disconnect'),
+  defaultAgentPlan: () => request<DefaultAgentPlan>('/api/accounts/claude/default-agent'),
+  /** Makes Mabari the agent every new Claude Code session runs as, or stops it, after a backup. */
+  setDefaultAgent: (on: boolean) =>
+    send<{ on: boolean }>('POST', '/api/accounts/claude/default-agent', { on, confirm: true }),
 };

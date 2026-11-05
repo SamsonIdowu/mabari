@@ -148,6 +148,7 @@ install_binary() {
     echo "    Start it:            mabari, then open http://localhost:4317"
     echo "    Start it at login:   mabari service install"
   fi
+  echo "    Make Mabari the default agent for Claude Code: open Accounts in Mabari, then Default agent"
 }
 
 case "$(uname -s)" in

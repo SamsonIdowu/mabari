@@ -40,8 +40,9 @@ const MabariName = "mabari"
 // Skills Mabari has, as in the prototype.
 var mabariSkills = []string{"agent-creator", "agent-improver"}
 
-// mabariDefault is what ~/.claude/agents/mabari.md holds when Mabari writes it for the first time.
-var mabariDefault = models.AgentDef{
+// mabariBefore is what earlier versions wrote as ~/.claude/agents/mabari.md. A file still exactly
+// like it was never edited, so it is brought up to date; an edited one is left as it is.
+var mabariBefore = models.AgentDef{
 	Name: MabariName,
 	Description: "Office manager. Manages every other agent and helps them improve. Routes every request to the " +
 		"right agent, starts one when nobody is free, creates new agents and improves existing ones, and reports " +
@@ -60,6 +61,25 @@ var mabariDefault = models.AgentDef{
 		"when no agent fits a kind of work that keeps coming up. Always show the user the agent file and wait for " +
 		"a yes before saving it.\n\nReporting: pass on every reply from Claude, Codex or any other AI in plain " +
 		"language, and keep the user informed about finished tasks, approvals and errors.",
+}
+
+// mabariMap is the paragraph that sends Mabari to its map of the projects.
+const mabariMap = "\n\nThe map: the Mabari app keeps a map of every project in %s: where each one lives, " +
+	"who works there and on what, what waits to be delivered, what finished lately, the agents each " +
+	"project keeps, and what you were asked lately. A session running as you is given it when it starts. " +
+	"Read it before you route a request or answer about a project, send work to the project it fits, " +
+	"and ask which project when it is not clear. You are the default agent on this computer, so most " +
+	"sessions run as you: when a request is for this session's own project, do it here."
+
+// mabariDefault is what ~/.claude/agents/mabari.md holds when Mabari writes it, with where its map
+// of the projects is.
+func mabariDefault(mapFile string) models.AgentDef {
+	def := mabariBefore
+	def.Description = "Office manager and the default agent. Knows every project from its map, routes " +
+		"every request to the right project and agent, starts one when nobody is free, creates and " +
+		"improves agents, and reports every reply and update back in the chat."
+	def.Instructions += fmt.Sprintf(mabariMap, mapFile)
+	return def
 }
 
 // Tools an agent file may list, as Claude Code names them.
@@ -103,6 +123,15 @@ type Folders struct {
 	State string
 	// Home is the home folder, used to show paths with ~.
 	Home string
+}
+
+// mapShown is where Mabari's map of the projects is, as the agent file names it: map.md next to
+// the agents' state, in Mabari's data folder, as a full path, so the Read tool finds it.
+func (l *Library) mapShown() string {
+	if l.folders.State == "" {
+		return "~/.mabari/map.md"
+	}
+	return filepath.Join(filepath.Dir(l.folders.State), "map.md")
 }
 
 // Report says how many agents a scan found in each place.
@@ -253,8 +282,11 @@ func (l *Library) Scan() ([]models.AgentDef, Report, error) {
 		report.Problems = append(report.Problems, l.shown(l.folders.State)+": "+err.Error())
 	}
 	mabariPath := filepath.Join(l.folders.Account, MabariName+".md")
-	if _, err := os.Stat(mabariPath); errors.Is(err, fs.ErrNotExist) {
-		if err := writeAtomic(mabariPath, Render(mabariDefault)); err != nil {
+	fresh := Render(mabariDefault(l.mapShown()))
+	existing, err := os.ReadFile(mabariPath) // #nosec G304 -- Mabari's own agent file
+	switch {
+	case errors.Is(err, fs.ErrNotExist), err == nil && bytes.Equal(existing, Render(mabariBefore)):
+		if err := writeAtomic(mabariPath, fresh); err != nil {
 			return nil, report, fmt.Errorf("write %s: %w", mabariPath, err)
 		}
 	}

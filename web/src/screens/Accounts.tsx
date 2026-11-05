@@ -220,6 +220,7 @@ function ClaudeCard({ account }: { account: Account }) {
         {account.status === 'connected' ? (
           <p className="help">Hook reporting. Mabari never sees your Claude sign-in.</p>
         ) : null}
+        <DefaultAgent />
         {showCommand ? (
           <div className="field">
             <span className="flabel">Run this in your project folder</span>
@@ -269,6 +270,74 @@ function ClaudeCard({ account }: { account: Account }) {
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * Mabari as the agent every new Claude Code session runs as: with Mabari's instructions and its
+ * map of the projects. Like attaching, it shows exactly what changes in settings.json, and
+ * nothing changes until the button is pressed.
+ */
+function DefaultAgent() {
+  const queryClient = useQueryClient();
+  const toast = useOfficeStore((state) => state.toast);
+  const plan = useQuery({ queryKey: ['defaultAgent'], queryFn: api.defaultAgentPlan });
+  const [busy, setBusy] = useState(false);
+  if (!plan.data) return null;
+  const { on, other, path, diff, backup } = plan.data;
+  const change = () => {
+    setBusy(true);
+    api
+      .setDefaultAgent(!on)
+      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'))
+      .finally(() => {
+        setBusy(false);
+        void queryClient.invalidateQueries({ queryKey: ['defaultAgent'] });
+      });
+  };
+  return (
+    <div className="field" data-testid="defaultAgent">
+      <span className="flabel">Default agent</span>
+      <p className="help">
+        {on
+          ? 'Mabari is the default agent: new Claude Code sessions run as Mabari, with its map of every project.'
+          : other
+            ? `New Claude Code sessions run as ${other} now. Make Mabari the default instead, so they run with its map of every project.`
+            : 'Make Mabari the default agent, so new Claude Code sessions run as Mabari, with its map of every project.'}
+      </p>
+      <span className="flabel">
+        {on ? 'This line will be taken out of' : 'This line will be set in'} <code>{path}</code>
+      </span>
+      <div
+        className="codebox"
+        tabIndex={0}
+        role="region"
+        aria-label="The change to Claude Code's settings"
+      >
+        {diff
+          .filter((line) => line.kind !== 'ctx')
+          .map((line, index) => (
+            <span className={line.kind} key={index}>
+              {DIFF_MARK[line.kind as keyof typeof DIFF_MARK] ?? '  '}
+              {line.text}
+              {'\n'}
+            </span>
+          ))}
+      </div>
+      <p className="help">
+        A backup is saved first, to <code>{backup}</code>.
+      </p>
+      <div>
+        <button
+          type="button"
+          className={on ? 'btn' : 'btn primary'}
+          disabled={busy}
+          onClick={change}
+        >
+          {on ? "Use Claude Code's own agent again" : 'Make Mabari the default agent'}
+        </button>
+      </div>
+    </div>
   );
 }
 

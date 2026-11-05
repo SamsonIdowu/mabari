@@ -17,6 +17,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/projectmap"
 	"github.com/SamsonIdowu/mabari/internal/redact"
 	"github.com/SamsonIdowu/mabari/internal/risk"
 )
@@ -103,6 +104,9 @@ type Connector struct {
 	delivered map[string]time.Time
 	// refused are the subagents already told there was no desk for them, by id.
 	refused map[string]bool
+	// MapFile is where Mabari keeps its map of the projects, which a session running as Mabari
+	// gets at its start. Empty leaves it out.
+	MapFile string
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -549,7 +553,7 @@ func (c *Connector) observe(in input) []byte {
 	}
 	switch in.Event {
 	case "SessionStart":
-		return nil
+		return c.startingAsMabari(agent)
 	case "UserPromptSubmit":
 		// A session Mabari opened for a prompt reports it as its first prompt. It counts as sent
 		// to this session, and its reply is passed on like any other.
@@ -623,6 +627,22 @@ func (c *Connector) observe(in input) []byte {
 		return nil
 	}
 	return nil
+}
+
+// mapBrief is how much of the map a session gets at its start; the rest is in the map file.
+const mapBrief = 8000
+
+// startingAsMabari gives a session running as Mabari, the default agent, Mabari's map of the
+// projects as it starts, so it knows every project, where it lives and what is being done there.
+// Any other session gets nothing. Call inside Do.
+func (c *Connector) startingAsMabari(agent *models.LiveAgent) []byte {
+	if agent.DefID != models.MabariDef || c.MapFile == "" {
+		return nil
+	}
+	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName":     "SessionStart",
+		"additionalContext": projectmap.Of(c.engine).Brief(mapBrief, c.MapFile),
+	}})
 }
 
 // deliver hands every waiting instruction to Claude as context at a checkpoint. The text reads as

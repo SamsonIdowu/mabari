@@ -30,6 +30,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/projectmap"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/server"
 	"github.com/SamsonIdowu/mabari/internal/store"
@@ -53,6 +54,9 @@ Usage:
   mabari access-key           Print the key browsers sign in with (--rotate makes a new one)
   mabari version              Print the version
 `
+
+// mapEvery is how often Mabari brings map.md, its map of the projects, up to date.
+const mapEvery = 10 * time.Second
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
@@ -176,6 +180,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 	handler.Store(&built)
 	httpServer := &http.Server{Handler: built, ReadHeaderTimeout: 10 * time.Second}
 	go office.engine.Run(ctx)
+	go projectmap.Keep(ctx, office.engine, projectmap.File(cfg.DataDir), mapEvery)
 	go watchClaude(ctx, office)
 	go func() {
 		if err := office.codex.Launch(ctx); err != nil {
@@ -257,6 +262,7 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 		return nil, err
 	}
 	claude := claudecode.New(engine)
+	claude.MapFile = projectmap.File(cfg.DataDir)
 	engine.AddConnector(claudecode.Source, claude)
 	_ = engine.Do(func() {
 		claude.TidyNames()

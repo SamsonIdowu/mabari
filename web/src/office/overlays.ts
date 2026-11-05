@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { clockText, etaLong, etaShort, modelLabel, STATE_CHIPS, stateLabel } from '../format.ts';
-import type { LiveAgent } from '../gen/models.ts';
+import { MabariDef, type LiveAgent } from '../gen/models.ts';
 import { decisionColors, decisionLabels, providers, type ProviderName } from '../shared/tokens.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { R } from './background.ts';
@@ -71,6 +71,10 @@ function scaleTags(layer: HTMLElement, scene: OfficeScene): void {
   overlay.classList.toggle('far', Number(scale) < 0.86);
 }
 
+/** A session running as Mabari, the default agent, is "Mabari · Shop", after its folder. */
+const shownName = (agent: Pick<LiveAgent, 'name' | 'defId'>) =>
+  agent.defId === MabariDef ? `Mabari · ${agent.name}` : agent.name;
+
 function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {
   const ui = useOfficeUi.getState();
   const { width, height } = scene.size;
@@ -106,7 +110,7 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     const where = walker.workflow ? whereWorking(walker, projects) : null;
     setHtml(
       tag.firstElementChild!,
-      `<span class="nn"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(walker.name)}</b></span>` +
+      `<span class="nn"><span class="pdot" style="width:7px;height:7px;border-radius:2px"></span><b>${esc(shownName(walker))}</b></span>` +
         (where
           ? `<span class="pj"><i style="background:${esc(where.color)}"></i><span class="pjn">${esc(where.name)}</span></span>`
           : '') +

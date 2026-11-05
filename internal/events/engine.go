@@ -1154,6 +1154,11 @@ func (e *Engine) dismissals(now int64) {
 	}
 }
 
+// RecentLog is the newest activity log rows, newest first, as copies. Call inside Do.
+func (e *Engine) RecentLog(limit int) []models.LogEntry {
+	return append([]models.LogEntry{}, e.log[:min(limit, len(e.log))]...)
+}
+
 // Sweep clears speech bubbles that have run out, on agents nothing else is changing, prompts
 // that waited too long for a Claude Code session, and agents whose time to leave has come. Call
 // inside Do.

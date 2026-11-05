@@ -9,6 +9,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/projectmap"
 )
 
 func withDefs(office *office, defs ...models.AgentDef) {
@@ -163,5 +164,20 @@ func TestStartingAtADeskInTheDemo(t *testing.T) {
 	agent := agentNamed(t, office, "planner")
 	if agent.DefID != "account:planner" || agent.Task != "Plan the release" || agent.Desk < 0 {
 		t.Errorf("agent = %+v", agent.Agent)
+	}
+}
+
+// Mabari's map of the projects is served as JSON and as the Markdown it keeps for any AI.
+func TestTheProjectMapIsServed(t *testing.T) {
+	office := newOffice(t)
+	office.demo(t)
+	m := decode[projectmap.Map](t, office.do(t, http.MethodGet, "/api/map", ""))
+	if len(m.Projects) == 0 || len(m.Projects[0].Agents) == 0 {
+		t.Fatalf("map = %+v", m)
+	}
+	md := office.do(t, http.MethodGet, "/api/map?format=md", "")
+	if !strings.HasPrefix(md.Body.String(), "# Mabari's map of the projects") ||
+		!strings.Contains(md.Body.String(), "## "+m.Projects[0].Name) {
+		t.Errorf("markdown = %s", md.Body)
 	}
 }

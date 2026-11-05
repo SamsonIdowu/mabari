@@ -445,3 +445,41 @@ func TestCodexFilesStayValidTOML(t *testing.T) {
 		t.Errorf("not valid TOML: %v\n%s", err, RenderCodex(def))
 	}
 }
+
+// Mabari's own file sends it to its map of the projects. One an earlier version wrote, and nobody
+// edited, is brought up to date; an edited one is left as it is.
+func TestMabarisFileKnowsWhereTheMapIs(t *testing.T) {
+	home := t.TempDir()
+	agents := filepath.Join(home, ".claude", "agents")
+	library := New(Folders{Account: agents, State: filepath.Join(home, ".mabari", "state.json"), Home: home})
+	path := filepath.Join(agents, "mabari.md")
+	mapFile := filepath.Join(home, ".mabari", "map.md")
+
+	if _, _, err := library.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	if text, _ := os.ReadFile(path); !strings.Contains(string(text), mapFile) {
+		t.Errorf("a new file doesn't name the map:\n%s", text)
+	}
+
+	if err := os.WriteFile(path, Render(mabariBefore), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := library.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	if text, _ := os.ReadFile(path); !strings.Contains(string(text), mapFile) {
+		t.Error("an unedited earlier file wasn't brought up to date")
+	}
+
+	edited := strings.Replace(string(Render(mabariBefore)), "You are Mabari", "You are Mabari, my way", 1)
+	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := library.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	if text, _ := os.ReadFile(path); string(text) != edited {
+		t.Error("an edited file was changed")
+	}
+}

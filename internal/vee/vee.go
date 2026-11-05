@@ -304,6 +304,8 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
 		"responses", "answers"):
 		return office.replies()
+	case (isQ || has(q, "show", "list")) && asksForMap(q):
+		return office.fromMap(text, in, now)
 	}
 	if route, ask := office.forProject(text, in); ask != nil {
 		return *ask

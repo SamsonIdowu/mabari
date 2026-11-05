@@ -131,6 +131,12 @@ The container runs as a user without privileges, on a read-only file system, wit
 
 Agent files load on their own: `~/.claude/agents` and `~/.codex/agents` for your account, and a project's `.claude/agents` and `.codex/agents` once the project has its folder.
 
+## Mabari, the default agent
+
+Mabari keeps a map of every project: where each one lives, who works there and on what, what waits to be delivered and what finished lately. It answers from it on Home ("what projects do we have?", "what's being done in Shop?") and keeps it in `~/.mabari/map.md` for any AI to read.
+
+Under **Accounts → Claude Code → Default agent**, make Mabari the agent every new Claude Code session runs as. Mabari shows the one line it sets in `~/.claude/settings.json` and saves a backup first. Those sessions start with the map, so they know every project, and show in the office as the Mabari mascot, named after their folder.
+
 ## Projects
 
 A project works in its own folder. **New project** makes the folder (or clones a repository into it) and opens Claude Code there. On the **Projects** page, each card has **Chat**: send a message or a `/command` and it goes to the Claude Code session working in that project, or opens Claude Code in the folder with it. On Home, pick the project in the dock, or name it ("send /review to Shop"), and Mabari passes it on.

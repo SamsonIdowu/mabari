@@ -143,6 +143,7 @@ function Install-Binary {
     Write-Host '    Start it:            mabari, then open http://localhost:4317'
     Write-Host '    Start it at login:   mabari service install'
   }
+  Write-Host '    Make Mabari the default agent for Claude Code: open Accounts in Mabari, then Default agent'
 }
 
 if ($Docker) { Install-Docker } else { Install-Binary }

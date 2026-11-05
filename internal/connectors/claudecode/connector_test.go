@@ -796,3 +796,30 @@ func TestASubagentsStepsDeliverInstructionsAndPause(t *testing.T) {
 		}
 	})
 }
+
+// A session running as Mabari, the default agent, gets Mabari's map of the projects as it starts,
+// and is a contractor: at a desk only while it works. Any other session gets no map.
+func TestASessionRunningAsMabariGetsTheMap(t *testing.T) {
+	c, engine := newConnector(t)
+	c.MapFile = "/home/me/.mabari/map.md"
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "p1", Name: "Shop", Repository: &models.Repository{Path: "/home/me/shop"}})
+		engine.SetDefs([]models.AgentDef{{ID: models.MabariDef, Kind: models.DefClaude, Name: "mabari", Scope: models.DefAccount, System: true}})
+	})
+	reply := hook(t, c, "SessionStart", map[string]any{"agent_type": "mabari"})
+	if !strings.Contains(string(reply), `"additionalContext"`) || !strings.Contains(string(reply), "## Shop") {
+		t.Errorf("reply = %s", reply)
+	}
+	agent := agentOf(t, engine)
+	if agent.DefID != models.MabariDef || agent.Desk != models.OffFloor || agent.Name != "Shop" {
+		t.Errorf("agent = %+v", agent.Agent)
+	}
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Fix the cart"})
+	if agent := agentOf(t, engine); agent.Desk < 0 {
+		t.Errorf("working, but off the floor: %+v", agent.Agent)
+	}
+	body, _ := json.Marshal(map[string]any{"session_id": "other", "cwd": "/home/me/shop", "hook_event_name": "SessionStart"})
+	if reply := c.Handle(context.Background(), body); reply != nil {
+		t.Errorf("a plain session got %s", reply)
+	}
+}

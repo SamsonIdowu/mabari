@@ -596,11 +596,9 @@ export class OfficeScene {
     }
     const office = useOfficeStore.getState().office;
     const agents = onFloor(office?.agents ?? []);
-    // Mabari doesn't check in with itself, when its own agent file is at work.
-    const mabariFiles = new Set(
-      (office?.defs ?? []).filter((def) => def.system).map((def) => def.id),
-    );
-    const round = onRound(agents.filter((agent) => !mabariFiles.has(agent.defId)));
+    // Sessions running as Mabari, the default agent, are on the round like any agent at work:
+    // each works in its own project.
+    const round = onRound(agents);
     if (m.visiting) {
       const still = round.some((agent) => agent.id === m.visiting);
       if (still && now < m.until) return;

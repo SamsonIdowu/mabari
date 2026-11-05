@@ -493,3 +493,62 @@ func sameJSON(a, b []byte) bool {
 	return json.Compact(&left, a) == nil && json.Compact(&right, b) == nil &&
 		bytes.Equal(left.Bytes(), right.Bytes())
 }
+
+// agentKey is Claude Code's setting that names the agent every new session runs as, unless one
+// is started with --agent. Checked against Claude Code 2.1.318's docs, which show it in a
+// project's settings; Mabari sets it in the account's, which applies to every project.
+const agentKey = "agent"
+
+// DefaultAgent is the agent the account's settings make every session run as, or "".
+func DefaultAgent(configDir string) string {
+	data, existed, err := readSettings(filepath.Join(configDir, "settings.json"))
+	if err != nil || !existed {
+		return ""
+	}
+	settings, err := parseObject(data)
+	if err != nil {
+		return ""
+	}
+	var name string
+	if raw, ok := settings.values[agentKey]; ok && json.Unmarshal(raw, &name) == nil {
+		return name
+	}
+	return ""
+}
+
+// PlanDefaultAgent works out the settings with `name` as the agent every session runs as, or,
+// with on false, without it. Turning it off only takes out Mabari's own choice: an agent someone
+// else set is left as it is. Every other entry and the order of the keys stay.
+func PlanDefaultAgent(configDir, name string, on bool) (Plan, error) {
+	path := filepath.Join(configDir, "settings.json")
+	before, existed, err := readSettings(path)
+	if err != nil {
+		return Plan{}, err
+	}
+	settings, err := parseObject(before)
+	if err != nil {
+		return Plan{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
+	}
+	current := DefaultAgent(configDir)
+	switch {
+	case on:
+		settings.set(agentKey, mustJSON(name))
+	case current == name:
+		settings.remove(agentKey)
+	default:
+		return Plan{Path: path, Before: before, After: before, Existed: existed}, nil
+	}
+	after, err := indent(settings)
+	if err != nil {
+		return Plan{}, err
+	}
+	if bytes.Equal(pretty(before), after) {
+		after = before
+	}
+	shown := before
+	if !existed {
+		shown = nil
+	}
+	return Plan{Path: path, Before: shown, After: after, Diff: Diff(pretty(before), after),
+		Existed: existed}, nil
+}

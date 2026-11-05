@@ -124,6 +124,11 @@ export const StateError: AgentState = "error";
  */
 export const StatePaused: AgentState = "paused";
 /**
+ * MabariDef is the ID of Mabari's own agent file, ~/.claude/agents/mabari.md, which Claude Code
+ * can run as its default agent for every session.
+ */
+export const MabariDef = "account:mabari";
+/**
  * Subagents are ephemeral. A finished one leaves the floor at once and is removed WalkOut
  * later. One that nothing has been heard from for SubagentStale has finished unseen, so it goes
  * too. Both are milliseconds.

@@ -145,6 +145,21 @@ test('Attach Claude Code shows the real change first, and never runs from go run
   await expect(page.getByText('start Mabari from its built binary')).toBeVisible();
 });
 
+test('Mabari can be made the default agent, showing the change first, and undone', async ({
+  page,
+}) => {
+  await page.goto('/#accounts');
+  const section = page.getByTestId('defaultAgent');
+  await expect(section).toContainText('"agent": "mabari"');
+  await expect(section).toContainText('.mabari-backup');
+  await section.getByRole('button', { name: 'Make Mabari the default agent' }).click();
+  await expect(section).toContainText('Mabari is the default agent');
+  await section.getByRole('button', { name: "Use Claude Code's own agent again" }).click();
+  await expect(
+    section.getByRole('button', { name: 'Make Mabari the default agent' }),
+  ).toBeVisible();
+});
+
 test('settings are saved on the server', async ({ page, request }) => {
   await page.goto('/#preferences');
   await page.getByLabel('Keep events for').selectOption('90');

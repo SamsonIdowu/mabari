@@ -16,6 +16,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/projectmap"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
@@ -47,6 +48,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/claude", a.openProjectClaude)
 	mux.HandleFunc("POST /api/projects/{id}/send", a.sendToProject)
 	mux.HandleFunc("POST /api/desks/start", a.startAtDesk)
+	mux.HandleFunc("GET /api/map", a.projectMap)
 	mux.HandleFunc("DELETE /api/instructions/{id}", a.removeInstruction)
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)
@@ -751,4 +753,20 @@ func (a *api) activity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// projectMap is Mabari's map of the projects: as JSON, or with ?format=md as the Markdown it keeps
+// in map.md for any AI to read.
+func (a *api) projectMap(w http.ResponseWriter, r *http.Request) {
+	var m projectmap.Map
+	if err := a.engine.Do(func() { m = projectmap.Of(a.engine) }); err != nil {
+		internalError(w, err)
+		return
+	}
+	if r.URL.Query().Get("format") == "md" {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(m.Markdown()))
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
 }

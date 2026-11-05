@@ -42,9 +42,16 @@ func (s AgentState) Active() bool {
 	}
 }
 
+// MabariDef is the ID of Mabari's own agent file, ~/.claude/agents/mabari.md, which Claude Code
+// can run as its default agent for every session.
+const MabariDef = "account:mabari"
+
 // Contractor reports whether an agent is in the office only while it is on duty: a workflow
-// sub-agent, or any subagent. Permanent agents, from agent files, stay when they rest.
-func (a *LiveAgent) Contractor() bool { return a.Workflow || a.Lead != nil }
+// sub-agent, any subagent, or a session running as Mabari, the default agent. Permanent agents,
+// from the other agent files, stay when they rest.
+func (a *LiveAgent) Contractor() bool {
+	return a.Workflow || a.Lead != nil || a.DefID == MabariDef
+}
 
 // OnDuty reports whether a contractor belongs in the office: while it works, and while it
 // waits on you with an approval or an error. Idle, finished and paused ones leave the floor.

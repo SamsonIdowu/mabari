@@ -39,7 +39,7 @@ test('Mabari is always there, as the office manager, saved as a file', async ({ 
   await expect(mabari).toContainText('Always on');
   await expect(mabari).toContainText('Manager');
   await expect(mabari).toContainText(
-    'Office manager. Manages every other agent and helps them improve.',
+    'Office manager and the default agent. Knows every project from its map',
   );
   await expect(mabari.locator('.dcskills')).toBeHidden();
   await mabari.click();

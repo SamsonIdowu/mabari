@@ -104,3 +104,21 @@ func TestTheHubPlaceholderIsNeverTheQueryModel(t *testing.T) {
 		t.Errorf("query model = %q, changes = %q", fixed.QueryModel, changes)
 	}
 }
+
+func TestPickModel(t *testing.T) {
+	offered := []string{"a", "b", "c"}
+	for _, tc := range []struct {
+		name      string
+		offered   []string
+		preferred string
+		want      string
+	}{
+		{"the preference is offered", offered, "b", "b"},
+		{"the preference is not, so the first offered", offered, "z", "a"},
+		{"nothing is offered, so the preference stands", nil, "z", "z"},
+	} {
+		if got := PickModel(tc.offered, tc.preferred); got != tc.want {
+			t.Errorf("%s: PickModel = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

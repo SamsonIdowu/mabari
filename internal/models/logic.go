@@ -146,12 +146,7 @@ func CorrectModels(settings Settings, accounts []Account) (Settings, []string) {
 	}
 	standard := DefaultSettings()
 	var changes []string
-	pick := func(valid []string, preferred string) string {
-		if slices.Contains(valid, preferred) {
-			return preferred
-		}
-		return valid[0]
-	}
+	pick := PickModel
 	for _, kind := range AccountKinds {
 		key, list := DefaultsKey[kind], offered[kind]
 		if key == "" || len(list) == 0 {
@@ -177,6 +172,15 @@ func CorrectModels(settings Settings, accounts []Account) (Settings, []string) {
 		settings.QueryModel = replacement
 	}
 	return settings, changes
+}
+
+// PickModel is the preferred model if the list offers it, and else the first model the list offers.
+// With nothing offered there is nothing to correct against, so the preference stands.
+func PickModel(offered []string, preferred string) string {
+	if len(offered) == 0 || slices.Contains(offered, preferred) {
+		return preferred
+	}
+	return offered[0]
 }
 
 // NeedsMe reports whether the state asks for the user's attention.

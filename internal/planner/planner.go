@@ -8,6 +8,7 @@ package planner
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -102,6 +103,36 @@ type Office struct {
 	ProjectCount int
 	// Defaults are the default models by account, keyed as in Settings.Defaults.
 	Defaults map[string]string
+	// Models are the models each account offers. A plan names only models its account offers, so
+	// what it falls back on comes from here. An account missing from it offers the standard list.
+	Models map[models.AccountKind][]string
+}
+
+// helperModel is the small model each account's helpers use, when the account offers it.
+var helperModel = map[models.AccountKind]string{
+	models.AccountClaudeCode: "claude-haiku-4-5", models.AccountCodex: "gpt-5-mini",
+	models.AccountAnthropicKey: "claude-haiku-5-5", models.AccountOpenAIKey: "gpt-5-mini",
+}
+
+// teamModels picks the lead's model and the helpers' for an account. The lead uses the account's
+// default from Settings. Without one it uses the standard default, or else the first model the
+// account offers, so a plan never names a model its account lacks (NEW-6). The helpers use the
+// small model if the account offers it, and otherwise the lead's, as an agent does that says its
+// helpers use "the same model".
+func teamModels(office Office, choice models.AccountKind) (lead, sub string) {
+	offered := office.Models[choice]
+	if len(offered) == 0 {
+		offered = models.Models[choice]
+	}
+	lead = models.PickModel(offered, models.DefaultSettings().Defaults[defaultsKey[choice]])
+	if model := office.Defaults[defaultsKey[choice]]; model != "" {
+		lead = model
+	}
+	sub = lead
+	if small := helperModel[choice]; slices.Contains(offered, small) {
+		sub = small
+	}
+	return lead, sub
 }
 
 // defaultsKey is how Settings.Defaults names each account.
@@ -423,14 +454,7 @@ func Make(all, latest string, old *Plan, office Office) Plan {
 		taken = append(taken, member.Name)
 		members = append(members, member)
 	}
-	claudeFamily := choice == models.AccountClaudeCode || choice == models.AccountAnthropicKey
-	leadModel, subModel := "gpt-5-codex", "gpt-5-mini"
-	if claudeFamily {
-		leadModel, subModel = "claude-sonnet-4-5", "claude-haiku-4-5"
-	}
-	if model := office.Defaults[defaultsKey[choice]]; model != "" {
-		leadModel = model
-	}
+	leadModel, subModel := teamModels(office, choice)
 	color := models.ProjectColors[office.ProjectCount%len(models.ProjectColors)]
 	if old != nil {
 		color = old.Color

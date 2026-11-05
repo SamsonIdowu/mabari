@@ -90,11 +90,14 @@ func clipRunes(text string, limit int) string {
 // officeForPlanner is what the planner needs from the office. Call inside Do.
 func (a *api) officeForPlanner() planner.Office {
 	connected := map[models.AccountKind]bool{}
+	offered := map[models.AccountKind][]string{}
 	for _, account := range a.engine.Accounts() {
 		connected[account.Kind] = account.Status == models.AccountConnected
+		offered[account.Kind] = account.Models
 	}
 	return planner.Office{
 		Connected:  connected,
+		Models:     offered,
 		Taken:      func(name string) bool { return a.engine.AgentByName(name) != nil },
 		AgentCount: len(a.engine.Agents()), ProjectCount: len(a.engine.Projects()),
 		Defaults: a.engine.Settings().Defaults,

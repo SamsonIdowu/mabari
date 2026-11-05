@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +50,22 @@ func TestThePlannerAnswersEachMessage(t *testing.T) {
 	big := `{"said":["x"],"files":[{"name":"a","text":"` + strings.Repeat("a", maxAttachedText+1) + `"}]}`
 	if response := office.do(t, http.MethodPost, "/api/planner", big); response.Code != http.StatusBadRequest {
 		t.Errorf("a large file = %d", response.Code)
+	}
+}
+
+// A plan from an account names models that account offers (NEW-6): with only an Anthropic API key
+// connected, the team uses that key's models, not Claude Code's.
+func TestAPlanUsesTheModelsOfTheAccountItWillRunOn(t *testing.T) {
+	office := newOffice(t)
+	office.connect(models.AccountAnthropicKey)
+	reply := decode[planReply](t, office.do(t, http.MethodPost, "/api/planner", `{"said":["Build a coffee shop site"]}`))
+	plan := reply.Plan
+	if plan.Account != models.AccountAnthropicKey {
+		t.Fatalf("account = %s", plan.Account)
+	}
+	offered := models.Models[models.AccountAnthropicKey]
+	if !slices.Contains(offered, plan.LeadModel) || !slices.Contains(offered, plan.SubModel) {
+		t.Errorf("lead %s and helpers %s are not both in %v", plan.LeadModel, plan.SubModel, offered)
 	}
 }
 

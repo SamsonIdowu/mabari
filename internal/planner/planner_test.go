@@ -3,6 +3,7 @@
 package planner
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -118,5 +119,69 @@ func TestReplyWording(t *testing.T) {
 	plan.Members[1].On = false
 	if got := Reply(plan, false, nil); !strings.HasPrefix(got, "Updated. Juniper") || !strings.Contains(got, "1 subagent sits") {
 		t.Errorf("reply = %q", got)
+	}
+}
+
+// A plan only names models its account offers (NEW-6). With no default in Settings, the lead and the
+// helpers fall back on the account's own list: the Anthropic API key's models are not Claude Code's,
+// and the OpenAI API key has no Codex model.
+func TestAPlanNamesOnlyModelsItsAccountOffers(t *testing.T) {
+	for _, kind := range []models.AccountKind{
+		models.AccountClaudeCode, models.AccountCodex, models.AccountAnthropicKey, models.AccountOpenAIKey,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			only := Office{Connected: map[models.AccountKind]bool{kind: true}}
+			// Say which account, as "use Codex" does, so each kind is the one chosen.
+			plan := Make("build", "", &Plan{Account: kind}, only)
+			if plan.Account != kind {
+				t.Fatalf("account = %s", plan.Account)
+			}
+			offered := models.Models[kind]
+			if !slices.Contains(offered, plan.LeadModel) || !slices.Contains(offered, plan.SubModel) {
+				t.Errorf("lead %s and helpers %s are not both in %v", plan.LeadModel, plan.SubModel, offered)
+			}
+		})
+	}
+}
+
+func TestTheFallbackModelsComeFromTheAccountsList(t *testing.T) {
+	cases := []struct {
+		name      string
+		kind      models.AccountKind
+		offered   []string
+		defaults  map[string]string
+		lead, sub string
+	}{
+		{"claude code's standard pair", models.AccountClaudeCode, nil, nil, "claude-sonnet-4-5", "claude-haiku-4-5"},
+		{"codex's standard pair", models.AccountCodex, nil, nil, "gpt-5-codex", "gpt-5-mini"},
+		{"the anthropic key has its own generation", models.AccountAnthropicKey, nil, nil, "claude-sonnet-5-5", "claude-haiku-5-5"},
+		{"the openai key has no codex model", models.AccountOpenAIKey, nil, nil, "gpt-5", "gpt-5-mini"},
+		{
+			"a list without the standard models gives its first, and helpers share it",
+			models.AccountClaudeCode, []string{"claude-future-1", "claude-future-2"}, nil,
+			"claude-future-1", "claude-future-1",
+		},
+		{
+			"a list with the standard lead but not the small model: helpers share the lead",
+			models.AccountClaudeCode, []string{"claude-opus-4-1", "claude-sonnet-4-5"}, nil,
+			"claude-sonnet-4-5", "claude-sonnet-4-5",
+		},
+		{
+			"the default from Settings leads, and helpers still use the small model",
+			models.AccountAnthropicKey, nil, map[string]string{"anthropic": "claude-opus-5-5"},
+			"claude-opus-5-5", "claude-haiku-5-5",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			office := Office{Defaults: tc.defaults}
+			if tc.offered != nil {
+				office.Models = map[models.AccountKind][]string{tc.kind: tc.offered}
+			}
+			plan := Make("build", "", &Plan{Account: tc.kind}, office)
+			if plan.LeadModel != tc.lead || plan.SubModel != tc.sub {
+				t.Errorf("lead %s, helpers %s; want %s, %s", plan.LeadModel, plan.SubModel, tc.lead, tc.sub)
+			}
+		})
 	}
 }

@@ -68,6 +68,9 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
       {/* Collapsed, the label is hidden. A link is named from what is inside it, so with a badge
           showing it would be just "2", or "live". This keeps its name for a screen reader. */}
       {collapsed ? <span className="sr">{item.label}</span> : null}
+      {/* A space between the label and the badge, which a flex container never draws, so the
+          visible text reads "Agents 2" and the link's name, "Agents, 2 need you", contains it. */}
+      {item.badge === 'needs' || item.badge === 'unread' ? ' ' : null}
       {item.badge === 'needs' ? <NeedsBadge count={needs} /> : null}
       {/* Neutral, not amber: amber means a queued instruction, and only red and amber ask for attention. */}
       {live ? <span className="badge calm">live</span> : null}

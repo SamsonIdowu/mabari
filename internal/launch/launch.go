@@ -126,19 +126,19 @@ func Command(ctx context.Context, goos string, lookPath func(string) (string, er
 		apple := "tell application \"Terminal\"\nactivate\ndo script " + appleScriptString(line) + "\nend tell"
 		return exec.CommandContext(ctx, "osascript", "-e", apple) // #nosec G204 -- fixed program; the line names only the script
 	case "linux":
-		if program, err := lookPath("gnome-terminal"); err == nil {
+		// Each terminal is named literally; lookPath only checks it is installed, and exec finds it
+		// on PATH the same way. Arguments go in exec form, so no shell reads them, except the
+		// fallback's line, where every part is shell quoted.
+		if _, err := lookPath("gnome-terminal"); err == nil {
 			args := append([]string{"--working-directory=" + request.Folder, "--"}, Args(request)...)
-			// nosemgrep -- program is a terminal found by its fixed name; args go in exec form, no shell.
-			return exec.CommandContext(ctx, program, args...) // #nosec G204
+			return exec.CommandContext(ctx, "gnome-terminal", args...) // #nosec G204 -- fixed program, exec form
 		}
-		if program, err := lookPath("konsole"); err == nil {
+		if _, err := lookPath("konsole"); err == nil {
 			args := append([]string{"--workdir", request.Folder, "-e"}, Args(request)...)
-			// nosemgrep -- program is a terminal found by its fixed name; args go in exec form, no shell.
-			return exec.CommandContext(ctx, program, args...) // #nosec G204
+			return exec.CommandContext(ctx, "konsole", args...) // #nosec G204 -- fixed program, exec form
 		}
-		if program, err := lookPath("x-terminal-emulator"); err == nil {
-			// nosemgrep -- program is a terminal found by its fixed name; every part of the line is shell quoted.
-			return exec.CommandContext(ctx, program, "-e", "sh", "-c", ShellLine(request)) // #nosec G204
+		if _, err := lookPath("x-terminal-emulator"); err == nil {
+			return exec.CommandContext(ctx, "x-terminal-emulator", "-e", "sh", "-c", ShellLine(request)) // #nosec G204 -- fixed program, quoted line
 		}
 	}
 	return nil

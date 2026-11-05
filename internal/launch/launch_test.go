@@ -59,7 +59,7 @@ func TestCommandPerSystem(t *testing.T) {
 		}
 		return "", errors.New("missing")
 	}, request, "")
-	if gnome == nil || strings.Join(gnome.Args[1:], "|") != "--working-directory=/w|--|claude|--|"+request.Prompt {
+	if gnome == nil || gnome.Args[0] != "gnome-terminal" || strings.Join(gnome.Args[1:], "|") != "--working-directory=/w|--|claude|--|"+request.Prompt {
 		t.Errorf("gnome = %q", gnome.Args)
 	}
 	if Command(context.Background(), "linux", none, request, "") != nil || Command(context.Background(), "windows", none, request, "") != nil {

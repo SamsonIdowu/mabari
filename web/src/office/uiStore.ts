@@ -2,9 +2,13 @@
 import { create } from 'zustand';
 import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
 import type { LiveAgent } from '../gen/models.ts';
+import { hashWith } from '../routes.ts';
 import { nextZoom } from './camera.ts';
 
 export type StatusFilter = 'all' | 'needs' | 'active';
+
+/** The Projects page's tab: every project, the open ones, or the completed ones. */
+export type ProjectsTab = 'all' | 'open' | 'done';
 
 export interface OfficeFilters {
   project: string;
@@ -55,6 +59,7 @@ interface OfficeUi extends OfficeFilters {
   thread: string;
   /** The Conversations page's project tab. */
   threadProject: string;
+  projectsTab: ProjectsTab;
   zoomBy: (direction: number) => void;
   fit: () => void;
   set: (patch: Partial<OfficeUiFields>) => void;
@@ -96,6 +101,7 @@ const FRESH_VIEW = {
   teamAnswer: null,
   thread: 'all',
   threadProject: 'all',
+  projectsTab: 'all',
 } satisfies Partial<OfficeUiFields>;
 
 export const useOfficeUi = create<OfficeUi>((set) => ({
@@ -125,7 +131,8 @@ export function openAgent(agent: LiveAgent, agents: LiveAgent[]): void {
   const ui = useOfficeUi.getState();
   const widen = inScope(agent, ui, agents) ? {} : { project: 'all', team: null };
   ui.set({ ...widen, selected: agent.id, target: 'selected' });
-  window.location.hash = '#office';
+  // The address names the agent, so a link or a reload opens its panel and Back closes it.
+  window.location.hash = hashWith('office', 'agent', agent.id);
 }
 
 /**

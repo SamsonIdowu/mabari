@@ -15,6 +15,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shell } from './shell/Shell.tsx';
 import { SessionGate } from './shell/SignIn.tsx';
+import { startViewState } from './viewState.ts';
 
 // Mabari only talks to this computer, so a lost internet connection must not pause requests. If it
 // did, the status dot could stay green after the local server stopped.
@@ -24,6 +25,9 @@ const queryClient = new QueryClient({
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
+
+// The office filters, the tabs, and the agent or chat named in the address come back after a reload.
+startViewState();
 
 createRoot(root).render(
   <StrictMode>

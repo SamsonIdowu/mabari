@@ -117,7 +117,8 @@ test('a resting agent file in the list opens its panel, as an agent does', async
   const file = lounge.getByRole('button', { name: /^list-reader Agent file/ });
   await expect(file).toContainText('Agent file');
   await file.click();
-  await expect(page).toHaveURL(/#office$/);
+  // The address names the open panel, so a link opens it.
+  await expect(page).toHaveURL(/#office\?agent=def%3A/);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel).toContainText('list-reader');
   await expect(panel).toContainText('Use to read the docs.');

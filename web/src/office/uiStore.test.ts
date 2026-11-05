@@ -92,7 +92,8 @@ describe('opening an agent', () => {
     openAgent(docs, [docs]);
     const ui = useOfficeUi.getState();
     expect([ui.selected, ui.target, ui.project]).toEqual(['d', 'selected', 'docs']);
-    expect(window.location.hash).toBe('#office');
+    // The address names the agent, so a link opens its panel and Back closes it.
+    expect(window.location.hash).toBe('#office?agent=d');
   });
 
   it('widens the floor when the agent is out of view', () => {

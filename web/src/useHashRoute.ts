@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useSyncExternalStore } from 'react';
 import { useLibrary } from './office/libraryStore.ts';
-import { isRoute, resolveRoute, type Route } from './routes.ts';
+import { isRoute, resolveRoute, routeOf, type Route } from './routes.ts';
 
 function subscribe(onChange: () => void): () => void {
   window.addEventListener('hashchange', onChange);
@@ -15,11 +15,11 @@ function subscribe(onChange: () => void): () => void {
 export function useHashRoute(firstRun: boolean | null): Route | null {
   const hash = useSyncExternalStore(subscribe, () => window.location.hash);
   // Status screens became the Library's first tab, so old #states links open it there.
-  if (hash === '#states') {
+  if (routeOf(hash) === 'states') {
     useLibrary.getState().set('states');
     window.history.replaceState(null, '', '#components');
     return 'components';
   }
-  if (firstRun === null && !isRoute(hash.replace('#', ''))) return null;
+  if (firstRun === null && !isRoute(routeOf(hash))) return null;
   return resolveRoute(hash, firstRun ?? false);
 }

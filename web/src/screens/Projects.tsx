@@ -14,7 +14,7 @@ import {
   stateLabel,
 } from '../format.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
-import { openAgent, useOfficeUi } from '../office/uiStore.ts';
+import { openAgent, useOfficeUi, type ProjectsTab } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
 import { ProjectChat } from './ProjectChat.tsx';
@@ -427,11 +427,13 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
   );
 }
 
-type Filter = 'all' | 'open' | 'done';
+type Filter = ProjectsTab;
 
 export function Projects() {
   const office = useOfficeStore((state) => state.office);
-  const [filter, setFilter] = useState<Filter>('all');
+  // Kept in the store, which remembers it across screens and reloads.
+  const filter = useOfficeUi((state) => state.projectsTab);
+  const setFilter = (projectsTab: Filter) => useOfficeUi.getState().set({ projectsTab });
   const chatting = useOfficeUi((state) => state.projectChat);
   if (!office) return null;
   const chat = office.projects.find((project) => project.id === chatting);

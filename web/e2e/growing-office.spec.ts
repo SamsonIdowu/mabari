@@ -142,7 +142,7 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
   // Clicking a resting agent file opens its panel, as clicking an agent does.
   const tag = (await resting.boundingBox())!;
   await page.mouse.click(tag.x + tag.width / 2, tag.y - 20);
-  await expect(page).toHaveURL(/#office$/);
+  await expect(page).toHaveURL(/#office\?agent=def%3A/);
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel).toContainText('lounge-reader');
   await expect(panel).toContainText('Resting');

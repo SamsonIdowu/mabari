@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import { api, type VeeReply } from '../data/api.ts';
-import { setToastFilter, useOfficeStore } from '../data/officeStore.ts';
+import { addToastFilter, useOfficeStore } from '../data/officeStore.ts';
 import { mabariCreate, mabariImprove } from './builderStore.tsx';
 import { slug } from './defs.ts';
 import { holderOf, relayLine, replyFor, stillWaiting, type Relay } from './relay.ts';
@@ -343,7 +343,7 @@ function watch() {
 }
 
 // On Home, Mabari reads the reply out itself, so the server's "Ledger replied" toast would repeat it.
-setToastFilter((text) => {
+addToastFilter((text) => {
   const { onHome, relays } = useVee.getState();
   if (!onHome) return false;
   const office = useOfficeStore.getState().office;

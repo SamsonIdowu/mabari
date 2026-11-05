@@ -35,13 +35,15 @@ test('the reply to an instruction can be read in full in the agent panel', async
   await target(page, 'Scout');
   await message(page).fill('Add the pricing pages');
   await page.getByRole('button', { name: 'Send instruction' }).click();
-  await expect(page.getByText('Scout replied. Open Scout to read it.')).toBeVisible();
-  // Sending to one agent opens its panel.
+  // Sending to one agent opens its panel, and the reply shows there as it lands.
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel.getByRole('heading', { name: 'Scout', exact: true })).toBeVisible();
   const item = panel.locator('.askitem').first();
   await expect(item).toContainText('“Add the pricing pages”');
   await expect(item.getByTestId('agentReply')).toHaveText("Got it. I'll add the pricing pages.");
+  // So the toast that points to the reply doesn't repeat it: "Sent to Scout" is the one toast.
+  await expect(page.getByText('Sent to Scout')).toBeVisible();
+  await expect(page.getByText('Scout replied. Open Scout to read it.')).toHaveCount(0);
   await page.getByRole('link', { name: 'Activity log' }).click();
   await expect(page.locator('tr', { hasText: 'Add the pricing pages' })).toContainText('Replied');
 });

@@ -44,6 +44,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
 	mux.HandleFunc("POST /api/projects/{id}/complete", a.completeProject)
 	mux.HandleFunc("POST /api/projects/{id}/reopen", a.reopenProject)
+	mux.HandleFunc("POST /api/projects/{id}/claude", a.openProjectClaude)
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)
 	mux.HandleFunc("POST /api/agents", a.createAgent)
@@ -149,6 +150,8 @@ type projectBody struct {
 	Name         *string `json:"name"`
 	Color        *string `json:"color"`
 	Instructions *string `json:"instructions"`
+	// Folder attaches a folder on this computer to the project.
+	Folder *string `json:"folder"`
 }
 
 func validProjectName(name string) bool {
@@ -187,12 +190,18 @@ func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var saved *models.Project
+	var problem string
 	err := a.engine.Do(func() {
 		existing := a.engine.Project(r.PathValue("id"))
 		if existing == nil {
 			return
 		}
 		project := *existing
+		if body.Folder != nil {
+			if problem = a.attachFolder(&project, *body.Folder); problem != "" {
+				return
+			}
+		}
 		if body.Name != nil {
 			project.Name = strings.TrimSpace(*body.Name)
 		}
@@ -205,6 +214,10 @@ func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 		result := a.engine.SaveProject(project)
 		saved = &result
 	})
+	if problem != "" {
+		writeError(w, http.StatusBadRequest, problem)
+		return
+	}
 	respond(w, saved, err, "no such project")
 }
 

@@ -308,12 +308,14 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 		folder = "~/code/" + strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
 	}
 	var (
-		project models.Project
-		lead    *models.LiveAgent
-		problem string
-		notice  string
+		project    models.Project
+		lead       *models.LiveAgent
+		problem    string
+		notice     string
+		realClaude bool
 	)
 	err := a.engine.Do(func() {
+		realClaude = body.Plan.Account == models.AccountClaudeCode && !a.simulator.DemoActive()
 		problem, notice = a.seatProject(body, name, folder, url, &project, &lead)
 	})
 	switch {
@@ -324,8 +326,28 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, problem)
 		return
 	}
-	if url != "" {
+	switch {
+	case realClaude && url != "":
+		// The session opens once the repository is cloned.
+		go func() {
+			if a.cloneFor(project, lead, url, body.Branch, folder) {
+				notice := a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
+				_ = a.engine.Do(func() { a.engine.Toast(notice) })
+			}
+		}()
+		notice = "Cloning into " + folder + ". Claude Code opens there when it's done."
+	case realClaude:
+		notice = a.openClaude(name, folder, briefFor(name, body), body.Mode == "plan")
+	case url != "":
 		go a.cloneFor(project, lead, url, body.Branch, folder)
+	default:
+		// A real Codex team works in the folder too, so it exists from the start. Only where Mabari
+		// can open things on this computer, never in a container or a test.
+		if a.launcher != nil && !a.simulator.DemoActive() {
+			if _, err := projectFolder(folder); err != nil {
+				notice = "Couldn't make the folder " + folder + ": " + err.Error()
+			}
+		}
 	}
 	leadID := ""
 	if lead != nil {
@@ -391,8 +413,8 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 	a.engine.SetFirstRun(false)
 	a.engine.SetMeta(metaRecentFolder, mustJSON(rememberFolder(a.recent(), body.Folder)))
 	if realClaude {
-		a.engine.Log(name, models.LogSession, "cd "+folder+" && claude", "Waiting for a session", "")
-		return "", "Run claude in " + folder + ". The session joins " + name + " when it starts."
+		// Claude Code opens in the project's own folder once the request is answered.
+		return "", ""
 	}
 	created, failure := a.simulator.CreateAgent(simulator.NewAgent{
 		Name: plan.LeadName, Account: plan.Account, Model: plan.LeadModel, Task: plan.LeadTask,
@@ -471,7 +493,7 @@ func mustJSON(value any) string {
 }
 
 // cloneFor clones the project's repository in the background, and shows a failure on the lead.
-func (a *api) cloneFor(project models.Project, lead *models.LiveAgent, url, branch, folder string) {
+func (a *api) cloneFor(project models.Project, lead *models.LiveAgent, url, branch, folder string) bool {
 	dest, err := workspace.Expand(folder)
 	if err == nil {
 		err = workspace.Clone(context.Background(), url, branch, dest)
@@ -487,4 +509,5 @@ func (a *api) cloneFor(project models.Project, lead *models.LiveAgent, url, bran
 		}
 		a.engine.Log(project.Name, models.LogSession, "git clone "+url, "Cloned into "+folder, "ok")
 	})
+	return err == nil
 }

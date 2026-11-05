@@ -19,6 +19,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/whisper"
 )
@@ -51,6 +52,8 @@ type Options struct {
 	AnyHost bool
 	// Defs keeps reusable agents as files. With nil, the builder's routes aren't served.
 	Defs *agentdefs.Library
+	// Launcher opens Claude Code in a project's folder. With nil, Mabari says how to start it.
+	Launcher launch.Launcher
 	// Login runs Mabari at login. With nil, Settings shows LoginReason instead.
 	Login       LoginService
 	LoginReason string
@@ -71,6 +74,7 @@ type api struct {
 	access      *Access
 	anyHost     func() bool
 	defs        *agentdefs.Library
+	launcher    launch.Launcher
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -85,7 +89,7 @@ func New(options Options) http.Handler {
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
 		login: options.Login, loginReason: options.LoginReason, access: options.Access,
-		defs: options.Defs,
+		defs: options.Defs, launcher: options.Launcher,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }

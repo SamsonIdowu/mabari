@@ -44,6 +44,8 @@ export default defineConfig({
         CODEX_HOME: codexDir,
         MABARI_SECRETS: 'encrypted-file',
         MABARI_TEST_FAKE_LAN: '1',
+        // Never open real terminal windows running Claude Code.
+        MABARI_NO_TERMINAL: '1',
         MABARI_MASTER_KEY: 'end-to-end-tests-only-master-key-0123456789',
       },
       url: `http://127.0.0.1:${apiPort}/api/health`,

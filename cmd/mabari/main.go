@@ -28,6 +28,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/connectors/hub"
 	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/server"
@@ -169,7 +170,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		Hub:       office.hub,
 		Codex:     office.codex,
 		Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
-		Login:     login, LoginReason: loginReason, Defs: defs,
+		Login:     login, LoginReason: loginReason, Defs: defs, Launcher: launcher(inContainer),
 		Access: access, AnyHost: !config.IsLoopback(cfg.Bind),
 	})
 	handler.Store(&built)
@@ -335,3 +336,12 @@ func agentLibrary(ctx context.Context, cfg config.Config, o *office) *agentdefs.
 
 // agentWatchEvery is how often the agent folders are checked for changes.
 const agentWatchEvery = 1500 * time.Millisecond
+
+// launcher opens Claude Code in a terminal window, except in a container, which has none, and
+// when MABARI_NO_TERMINAL=1, as in the end-to-end tests. Then Mabari says what to run instead.
+func launcher(inContainer bool) launch.Launcher {
+	if inContainer || os.Getenv("MABARI_NO_TERMINAL") == "1" {
+		return nil
+	}
+	return launch.Terminal{}
+}

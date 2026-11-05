@@ -195,9 +195,7 @@ test('a reply that lands while you are elsewhere shows on the Home badge', async
   const badge = page.locator('.rail a.nav[href="#home"] .badge');
   await expect(badge).toHaveText('1', { timeout: 10000 });
   // The count is read as words too, not as "Home 1".
-  await expect(page.locator('.rail a.nav[href="#home"]')).toHaveAccessibleName(
-    /^Home ?, 1 new reply$/,
-  );
+  await expect(page.locator('.rail a.nav[href="#home"]')).toHaveAccessibleName('Home, 1 new reply');
   await expect(tray).toContainText('Replied');
   await page.locator('.rail a.nav[href="#home"]').click();
   await expect(badge).toHaveCount(0);

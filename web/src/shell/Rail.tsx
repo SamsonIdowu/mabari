@@ -5,6 +5,7 @@ import { needsTone, whoNeedsYou } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import type { Route } from '../routes.ts';
 import { Icon } from './Icon.tsx';
+import { linkName } from './linkName.ts';
 import { navGroups, type NavItem } from './navItems.tsx';
 import { useRailStore } from './railStore.ts';
 
@@ -12,37 +13,24 @@ const LIVE_MS = 6000;
 
 /** Everyone who needs you, by the one definition every count uses. Red only when an approval or an
  * error waits; a question alone is calm. */
-function NeedsBadge() {
-  const count = useOfficeStore((state) => whoNeedsYou(state.office?.agents ?? []).length);
+function NeedsBadge({ count }: { count: number }) {
   const tone = useOfficeStore((state) => needsTone(whoNeedsYou(state.office?.agents ?? [])));
   if (!count) return null;
-  // A screen reader would say "Agents 2". The digits are for the eye, and the words follow the
-  // link's name, so it reads "Agents, 2 need you".
+  // The digits are for the eye. The link's own name says what they count (see linkName).
   return (
-    <>
-      <span className={tone === 'red' ? 'badge' : `badge ${tone}`} aria-hidden="true">
-        {count}
-      </span>
-      <span className="sr">
-        , {count} {count === 1 ? 'needs' : 'need'} you
-      </span>
-    </>
+    <span className={tone === 'red' ? 'badge' : `badge ${tone}`} aria-hidden="true">
+      {count}
+    </span>
   );
 }
 
 /** Replies Mabari relayed while you were on another page. */
-function UnreadBadge() {
-  const unread = useVee((state) => state.unread);
+function UnreadBadge({ unread }: { unread: number }) {
   if (!unread) return null;
   return (
-    <>
-      <span className="badge" aria-hidden="true">
-        {unread > 9 ? '9+' : unread}
-      </span>
-      <span className="sr">
-        , {unread} new {unread === 1 ? 'reply' : 'replies'}
-      </span>
-    </>
+    <span className="badge" aria-hidden="true">
+      {unread > 9 ? '9+' : unread}
+    </span>
   );
 }
 
@@ -59,25 +47,20 @@ function useLive() {
   return live;
 }
 
-/** The visible label must be part of the name, for people who speak to their computer. While
- * the "live" badge shows, the link's own text names it, so the badge is part of the name too. */
-function linkName(item: NavItem, live: boolean) {
-  if (live || !item.name) return undefined;
-  return item.name.toLowerCase().includes(item.label.toLowerCase())
-    ? item.name
-    : `${item.label}, ${item.name.toLowerCase()}`;
-}
-
 function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
   const isCurrent = item.route === current;
   const live = useLive() && item.badge === 'live';
   const collapsed = useRailStore((state) => state.collapsed);
+  const needs = useOfficeStore((state) =>
+    item.badge === 'needs' ? whoNeedsYou(state.office?.agents ?? []).length : 0,
+  );
+  const unread = useVee((state) => (item.badge === 'unread' ? state.unread : 0));
   return (
     <a
       className={isCurrent ? 'nav on' : 'nav'}
       href={`#${item.route}`}
       title={item.title ?? item.label}
-      aria-label={linkName(item, live)}
+      aria-label={linkName(item, live, { needs, unread })}
       aria-current={isCurrent ? 'page' : undefined}
     >
       <Icon>{item.icon}</Icon>
@@ -85,10 +68,10 @@ function NavLink({ item, current }: { item: NavItem; current: Route | null }) {
       {/* Collapsed, the label is hidden. A link is named from what is inside it, so with a badge
           showing it would be just "2", or "live". This keeps its name for a screen reader. */}
       {collapsed ? <span className="sr">{item.label}</span> : null}
-      {item.badge === 'needs' ? <NeedsBadge /> : null}
+      {item.badge === 'needs' ? <NeedsBadge count={needs} /> : null}
       {/* Neutral, not amber: amber means a queued instruction, and only red and amber ask for attention. */}
       {live ? <span className="badge calm">live</span> : null}
-      {item.badge === 'unread' ? <UnreadBadge /> : null}
+      {item.badge === 'unread' ? <UnreadBadge unread={unread} /> : null}
     </a>
   );
 }

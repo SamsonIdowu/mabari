@@ -85,6 +85,22 @@ test('the list works from the keyboard', async ({ page }) => {
   await expect(scout).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('the list says it is one Tab stop with arrow keys, to a screen reader', async ({ page }) => {
+  await loadDemo(page);
+  // A toolbar is the pattern for one stop with arrows inside, and a hint says so in words. Both
+  // are in what a screen reader is given, which the aria snapshot shows.
+  await expect(list(page)).toMatchAriaSnapshot(`
+    - complementary "Everyone on the floor":
+      - text: /Tab stops on one agent. The up and down arrow keys move between agents, and Home and End go to the first and last./
+      - toolbar "Pick an agent":
+        - group /Needs you/:
+          - button /^Atlas Needs approval/
+  `);
+  const toolbar = list(page).getByRole('toolbar', { name: 'Pick an agent' });
+  await expect(toolbar).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(toolbar).toHaveAccessibleDescription(/arrow keys move between agents/);
+});
+
 test('the Project filter narrows the list as it narrows the floor', async ({ page }) => {
   await loadDemo(page);
   await expect(entry(page, 'Scout')).toBeVisible();

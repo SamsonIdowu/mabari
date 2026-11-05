@@ -91,9 +91,18 @@ export function FloorList({ office, filters }: { office: Snapshot; filters: Offi
       <div className="flhead">
         <b>On the floor</b>
         <span className="help num">{ids.length}</span>
+        <span className="sr" id="flKeys">
+          Tab stops on one agent. The up and down arrow keys move between agents, and Home and End
+          go to the first and last.
+        </span>
       </div>
+      {/* A toolbar is the pattern for one Tab stop with arrow keys inside it. */}
       <div
         className="flbody"
+        role="toolbar"
+        aria-label="Pick an agent"
+        aria-orientation="vertical"
+        aria-describedby="flKeys"
         ref={body}
         onKeyDown={moveFocus}
         onFocus={() => (inside.current = true)}

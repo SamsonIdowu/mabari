@@ -566,6 +566,56 @@ test('the approvals card covers no agent at 1440x900, with agents resting in the
   expect((await bell.boundingBox())!.y).toBeLessThan(stage.y + 40);
 });
 
+// RT-11: with nineteen agents, six or seven identical "Working out what to do next" bubbles showed
+// at once, a grid of the same words. A quiet bubble now shows once for the same words in a row.
+test('with many agents at work, identical quiet bubbles show once per row', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
+    token: string;
+  };
+  for (let index = 1; index <= 9; index++) {
+    const sent = await request.post(`http://127.0.0.1:${apiPort}/hub/v1/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { agent: `rt11-${index}`, name: `Crew${index}`, state: 'thinking' },
+    });
+    expect(sent.status()).toBe(200);
+  }
+  await page.goto('/#office');
+  await expect(page.locator('.tag .nt').first()).toBeVisible();
+  await expect(page.locator('#officeClock')).toContainText('19 agents');
+
+  /** Each showing bubble's words, with the row of the agent it belongs to. */
+  const showing = () =>
+    page.evaluate(() => {
+      const stage = document.querySelector('#stage')!.getBoundingClientRect();
+      return [...document.querySelectorAll<HTMLElement>('#stage [data-o]')]
+        .filter((wrap) => !wrap.hidden)
+        .flatMap((wrap) => {
+          const bubble = wrap.querySelector<HTMLElement>('.bub:not([hidden])');
+          if (!bubble || !bubble.textContent) return [];
+          const tag = wrap.querySelector('.tag')!.getBoundingClientRect();
+          return [{ text: bubble.textContent, row: Math.round((tag.top - stage.top) / 40) }];
+        });
+    });
+  // Quiet bubbles come and go as agents change what they are doing, so look for a while.
+  const words = 'Working out what to do next';
+  let sawSome = false;
+  for (let look = 0; look < 12; look++) {
+    const bubbles = await showing();
+    const perRow = new Map<string, number>();
+    for (const { row } of bubbles.filter((one) => one.text === words)) {
+      perRow.set(String(row), (perRow.get(String(row)) ?? 0) + 1);
+    }
+    sawSome ||= perRow.size > 0;
+    for (const [row, count] of perRow) expect(count, `row ${row} says it ${count} times`).toBe(1);
+    await page.waitForTimeout(500);
+  }
+  expect(sawSome).toBe(true);
+});
+
 // RT-8: at 200% zoom the floor fills most of the view, and a wheel over it always zoomed it, so a
 // trackpad could not scroll the page from there. Where the page scrolls, a plain wheel scrolls it
 // and Ctrl or a pinch zooms. Where it fits, the wheel zooms as it always did.

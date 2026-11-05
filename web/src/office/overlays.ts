@@ -9,6 +9,7 @@ import {
   MAX_SETTLE,
   PINNED_RANK,
   placeBubbles,
+  rowOf,
   tagBox,
   type Box,
   type BubbleItem,
@@ -134,6 +135,8 @@ interface Placing {
   rank: number;
   /** Not wanted at all: nothing to say, walking, or in the spotlight. */
   quiet: boolean;
+  /** What the bubble says, so quiet bubbles that say the same in a row show once. */
+  text: string;
   /** May be cut to one line to make room. A reply is read in full, and an approval is brief. */
   shortenable: boolean;
   tagKey: string;
@@ -224,6 +227,7 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
       settle: MAX_SETTLE + Math.max(0, usual - bubblePoint.y),
       rank,
       quiet,
+      text: walker.bubble ?? '',
       shortenable: rank < 3 && !isReply,
       tagKey: `${tagHtml}|${chip?.text ?? ''}|${queued}|${tag.className}`,
       bubbleKey: `${walker.bubble}|${bubbleClass}`,
@@ -267,7 +271,15 @@ function placeOnFloor(layer: HTMLElement, scene: OfficeScene, placing: Placing[]
         entry.shortenable && size.oneLine < size.height - 1
           ? bubbleBox(x, y, size.width, size.oneLine, scale)
           : undefined;
-      items.push({ id: entry.id, rank: entry.rank, box, short, settle: entry.settle });
+      items.push({
+        id: entry.id,
+        rank: entry.rank,
+        box,
+        short,
+        settle: entry.settle,
+        text: entry.text,
+        row: rowOf(entry.at.y),
+      });
     }
   }
   const placed = placeBubbles(items, tags, width);

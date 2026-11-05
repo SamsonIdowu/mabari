@@ -76,6 +76,12 @@ export interface BubbleItem {
    * the default is MAX_SETTLE.
    */
   settle?: number | undefined;
+  /**
+   * What the bubble says, and the row of the floor its agent stands in (see `rowOf`). A quiet
+   * bubble (rank 0) shows once for the same words in a row.
+   */
+  text?: string | undefined;
+  row?: number | undefined;
 }
 
 export interface Placement {
@@ -86,6 +92,39 @@ export interface Placement {
   /** Cut it to one line. */
   short: boolean;
   hidden: boolean;
+}
+
+/** Agents whose feet are within this many pixels of the same height are in the same row. */
+const ROW_HEIGHT = 40;
+
+/** The row of the floor an agent stands in, from the height of its feet in pixels. */
+export function rowOf(y: number): number {
+  return Math.round(y / ROW_HEIGHT);
+}
+
+/**
+ * The quiet bubbles to leave out because another says the same in the same row. Rows of desks are
+ * rows of agents at the same work, and a bubble for each says "Working out what to do next" over
+ * and over. The leftmost stays. Only what an agent is doing (rank 0) is thinned: what needs you,
+ * answers you, reports an error or is said to another agent is never hidden for being alike.
+ */
+function repeats(bubbles: BubbleItem[]): Set<string> {
+  const first = new Map<string, BubbleItem>();
+  const hidden = new Set<string>();
+  for (const bubble of bubbles) {
+    if (bubble.rank !== 0 || !bubble.text || bubble.row === undefined) continue;
+    const key = `${bubble.row}|${bubble.text}`;
+    const kept = first.get(key);
+    if (!kept) {
+      first.set(key, bubble);
+    } else if (bubble.box.left < kept.box.left) {
+      hidden.add(kept.id);
+      first.set(key, bubble);
+    } else {
+      hidden.add(bubble.id);
+    }
+  }
+  return hidden;
 }
 
 /** The lifts to try, in order: where it is, then nearer its agent, never a long way. */
@@ -107,10 +146,16 @@ export function placeBubbles(
 ): Map<string, Placement> {
   const placed: Box[] = [];
   const result = new Map<string, Placement>();
+  const alike = repeats(bubbles);
   const order = bubbles
     .map((bubble, index) => ({ bubble, index }))
     .sort((a, b) => b.bubble.rank - a.bubble.rank || a.index - b.index);
   for (const { bubble } of order) {
+    // Another in the row says the same, so this one is left out, and takes no room from the rest.
+    if (alike.has(bubble.id)) {
+      result.set(bubble.id, { lift: 0, shift: 0, short: false, hidden: true });
+      continue;
+    }
     // A bubble that runs off the floor slides back in, as far as it can.
     const room = width - 2 * EDGE;
     let shift = 0;
@@ -127,12 +172,15 @@ export function placeBubbles(
     // Only what reaches where the bubble may go can stop it, which keeps a crowded floor cheap:
     // this runs for every bubble, every frame.
     const down = settles(bubble.settle ?? MAX_SETTLE);
+    // The one line bubble hangs from the same place, and at a scale above 1 its bottom edge is
+    // lower than the full bubble's, so what can stop it is what either reaches (REV-4).
+    const boxes = bubble.short ? [bubble.box, bubble.short] : [bubble.box];
     const reach: Box = {
-      left: bubble.box.left + shift,
-      right: bubble.box.right + shift,
-      top: bubble.box.top - MAX_LIFT,
+      left: Math.min(...boxes.map((one) => one.left)) + shift,
+      right: Math.max(...boxes.map((one) => one.right)) + shift,
+      top: Math.min(...boxes.map((one) => one.top)) - MAX_LIFT,
       // The lowest it may settle is the last, most negative, lift.
-      bottom: bubble.box.bottom - down[down.length - 1]!,
+      bottom: Math.max(...boxes.map((one) => one.bottom)) - down[down.length - 1]!,
     };
     const nearTags = tags.filter((tag) => overlaps(reach, tag, CLEARANCE));
     const nearPlaced = placed.filter((other) => overlaps(reach, other, CLEARANCE));

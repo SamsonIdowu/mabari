@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
+import { clockText } from '../format.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
 import { openAgent } from '../office/uiStore.ts';
 import { CHAT_STATUS, projectChat, removable, type ChatItem } from '../office/projectChat.ts';
@@ -20,9 +21,7 @@ const toast = (text: string) => useOfficeStore.getState().toast(text);
 /** The message box grows with what is typed, up to this many pixels. */
 const BOX_MAX_PX = 140;
 
-function timeOf(at: number) {
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+const timeOf = clockText;
 
 function Message({ item, agents }: { item: ChatItem; agents: LiveAgent[] }) {
   const remove = () => api.removeInstruction(item.id).catch((error: Error) => toast(error.message));

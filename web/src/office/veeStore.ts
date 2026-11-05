@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import { api, type VeeReply } from '../data/api.ts';
-import { setToastFilter, useOfficeStore } from '../data/officeStore.ts';
+import { addToastFilter, useOfficeStore } from '../data/officeStore.ts';
 import { mabariCreate, mabariImprove } from './builderStore.tsx';
 import { slug } from './defs.ts';
 import { holderOf, relayLine, replyFor, stillWaiting, type Relay } from './relay.ts';
@@ -36,6 +36,8 @@ export interface MabariUpdate {
 }
 
 const UPDATES_KEPT = 30;
+/** How many of Mabari's replies the bubble's pager can go back through. */
+const LOG_KEPT = 20;
 let nextUpdate = 1;
 
 /** In full screen Home can't be seen, so Mabari's news also shows as a toast. */
@@ -48,6 +50,12 @@ function toastInFullscreen(text: string) {
 interface VeeStore {
   state: VeeState;
   said: VeeReply;
+  /** Everything Mabari said on Home, oldest first, so an earlier reply can be read again. */
+  log: VeeReply[];
+  /** Which of the log the bubble shows, or null for the latest. */
+  view: number | null;
+  /** Steps the bubble to an earlier (-1) or later (+1) reply, as the prototype's pager does. */
+  look: (step: number) => void;
   heard: string;
   gesture: PlayingGesture | null;
   talkUntil: number;
@@ -75,8 +83,11 @@ interface VeeStore {
    * replaces the last one about the same project, so the rounds never crowd out replies.
    */
   report: (about: string, text: string) => void;
-  /** Sends a message, to the project given or else the one picked next to the box. */
-  hear: (text: string, project?: string) => Promise<void>;
+  /**
+   * Sends a message, to the project given or else the one picked next to the box. False when the
+   * message never reached Mabari, so the words can be put back in the box.
+   */
+  hear: (text: string, project?: string) => Promise<boolean>;
   setOnHome: (on: boolean) => void;
   /** Mabari posts an update in the Home chat, read aloud with Voice on, counted when elsewhere. */
   post: (text: string, gesture?: string) => void;
@@ -170,6 +181,14 @@ function savedProject(): string {
 export const useVee = create<VeeStore>((set, get) => ({
   state: 'idle',
   said: VEE_HELLO,
+  log: [],
+  view: null,
+  look: (step) =>
+    set((state) => {
+      const last = state.log.length - 1;
+      const next = Math.max(0, Math.min(last, (state.view ?? last) + step));
+      return { view: next === last ? null : next };
+    }),
   heard: '',
   gesture: null,
   talkUntil: 0,
@@ -205,6 +224,7 @@ export const useVee = create<VeeStore>((set, get) => ({
         -UPDATES_KEPT,
       ),
     }));
+    set((state) => ({ log: [...state.log, reply].slice(-LOG_KEPT), view: null }));
     set({
       said: reply,
       state: 'talk',
@@ -230,8 +250,10 @@ export const useVee = create<VeeStore>((set, get) => ({
         set((state) => ({ relays: [...state.relays, result.reply.relay!] }));
         watch();
       }
+      return true;
     } catch (error) {
       get().say(fail(error as Error));
+      return false;
     }
   },
   setOnHome: (on) => set(on ? { onHome: true, unread: 0 } : { onHome: false }),
@@ -248,6 +270,8 @@ export const useVee = create<VeeStore>((set, get) => ({
     set({
       state: 'idle',
       said: VEE_HELLO,
+      log: [],
+      view: null,
       heard: '',
       gesture: null,
       talkUntil: 0,
@@ -270,6 +294,9 @@ function relay(item: Relay, reply: string) {
   if (holder && !item.agentId) item = { ...item, agentId: holder.id, agent: holder.name };
   const line = relayLine(item, reply);
   const store = useVee.getState();
+  // The acknowledgement that came when this was sent stays with the reply, so who got it and why
+  // can still be read once the reply lands.
+  const ack = store.log.find((said) => said.relay?.instructionId === item.instructionId)?.text;
   store.say(
     {
       ...VEE_HELLO,
@@ -278,6 +305,7 @@ function relay(item: Relay, reply: string) {
       kind: 'relayed',
       spoken: line.spoken,
       agentId: line.clipped ? item.agentId : undefined,
+      ack,
     },
     true,
   );
@@ -315,7 +343,7 @@ function watch() {
 }
 
 // On Home, Mabari reads the reply out itself, so the server's "Ledger replied" toast would repeat it.
-setToastFilter((text) => {
+addToastFilter((text) => {
   const { onHome, relays } = useVee.getState();
   if (!onHome) return false;
   const office = useOfficeStore.getState().office;

@@ -83,7 +83,10 @@ test('the activity log searches and filters', async ({ page }) => {
   await page.getByLabel('Type').selectOption('Approval');
   await expect(page.locator('tbody tr')).toHaveCount(2);
   await page.getByLabel('Search the log').fill('no such thing');
-  await expect(page.getByText('Nothing matches. Try a different word or type.')).toBeVisible();
+  // The log can be narrowed by agent too, so the hint names it.
+  await expect(
+    page.getByText('Nothing matches. Try a different word, type or agent.'),
+  ).toBeVisible();
 });
 
 test('conversations list threads and open one', async ({ page }) => {

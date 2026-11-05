@@ -80,6 +80,41 @@ describe('Mabari relays replies', () => {
     expect(useVee.getState().said.text).toBe('Ledger (Claude) replied: Got it.');
   });
 
+  it('keeps the acknowledgement with the reply, and pages back through what it said', async () => {
+    useVee.getState().setOnHome(true);
+    await useVee.getState().hear('update the README');
+    useOfficeStore.setState({ office: office('Updated the install steps.') });
+    await vi.advanceTimersByTimeAsync(1000);
+    const store = useVee.getState();
+    expect(store.said.text).toBe('Ledger (Claude) replied: Updated the install steps.');
+    expect(store.said.ack).toContain('On it, sent to Ledger (Claude).');
+    expect(store.log).toHaveLength(2);
+    expect(store.view).toBeNull();
+    // Back to the acknowledgement, which stops at the first, and forward to the latest again.
+    store.look(-1);
+    expect(useVee.getState().view).toBe(0);
+    store.look(-1);
+    expect(useVee.getState().view).toBe(0);
+    store.look(1);
+    expect(useVee.getState().view).toBeNull();
+    store.look(1);
+    expect(useVee.getState().view).toBeNull();
+    // Something new jumps to it, wherever the pager was.
+    store.look(-1);
+    store.say({ ...VEE_HELLO, text: 'Another thing.' });
+    expect(useVee.getState().view).toBeNull();
+    expect(useVee.getState().log).toHaveLength(3);
+  });
+
+  it('says whether the message reached Mabari, so the words can go back in the box', async () => {
+    await expect(useVee.getState().hear('update the README')).resolves.toBe(true);
+    vi.spyOn(api, 'vee').mockRejectedValue(
+      new Error("Can't reach Mabari. Your message was not sent."),
+    );
+    await expect(useVee.getState().hear('update the README')).resolves.toBe(false);
+    expect(useVee.getState().said.text).toBe("Can't reach Mabari. Your message was not sent.");
+  });
+
   it("keeps one update from Mabari's rounds per project, so replies aren't crowded out", () => {
     const store = useVee.getState();
     store.report('shop', 'Shop: 2 working.');

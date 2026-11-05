@@ -54,8 +54,7 @@ function Replies({ agent }: { agent: LiveAgent }) {
   const toast = useOfficeStore((state) => state.toast);
   const asked = [...(agent.asked ?? [])].reverse();
   if (!asked.length) return null;
-  const time = (at: number) =>
-    new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = clockText;
   return (
     <Section title="From you">
       <div className="asked" id="asked">

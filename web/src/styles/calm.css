@@ -270,6 +270,20 @@ body.notes .note.inline {
 section[data-screen]:not([data-screen='office']) {
   zoom: 0.88;
 }
+/*
+ * The Library is drawn at full size, so its header takes the 0.88 the other screens are drawn at.
+ * That puts its title at the same size and place as theirs.
+ */
+#screen section[data-screen='components'] .page {
+  padding: calc(28px * 0.88) calc(24px * 0.88) calc(32px * 0.88);
+  gap: calc(20px * 0.88);
+}
+section[data-screen='components'] .page .phead {
+  zoom: 0.88;
+}
+section[data-screen='components'] .page h1 {
+  font-size: 34px;
+}
 
 /* home 2: Vee fills the page, replies come from its mouth, one simple box */
 section[data-screen='home'] {
@@ -321,6 +335,10 @@ section[data-screen='home'] {
 .veesay2 {
   position: absolute;
   max-width: min(380px, 44%);
+  /* Never taller than the stage, so a long reply can't cover the box and the dock under it. */
+  max-height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
   padding: 14px 18px;
   border-radius: 20px;
   background: var(--surface);
@@ -352,11 +370,78 @@ section[data-screen='home'] {
   border-right: 1px solid var(--line2);
   border-top: 1px solid var(--line2);
 }
+/* The reply scrolls inside the bubble, so the tail and the pager stay in place. */
+.veesay2 .vsay {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A soft edge shows where there is more to scroll to, and only then. */
+  background:
+    linear-gradient(var(--surface) 30%, transparent) center top,
+    linear-gradient(transparent, var(--surface) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.16), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.16), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size:
+    100% 24px,
+    100% 24px,
+    100% 10px,
+    100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
 .veesay2 p {
   margin: 0 0 6px;
 }
 .veesay2 p:last-child {
   margin: 0;
+}
+/* what the reply answers: who got the message and why, kept above it */
+.veesay2 p.vack {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+/* back and forward through what Mabari said, as the prototype has it */
+.vpager {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.vpager span {
+  flex: 1;
+  text-align: center;
+}
+.vpager button {
+  border: 0;
+  background: var(--surface2);
+  color: var(--fg);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.vpager button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* A narrow window has no room beside Mabari, so the bubble takes the stage's width. */
+@media (max-width: 600px) {
+  .veesay2 {
+    max-width: calc(100% - 16px);
+  }
 }
 .veesay2 .hclist {
   margin: 6px 0;

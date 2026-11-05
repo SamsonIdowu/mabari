@@ -251,6 +251,7 @@ function Said({ reply }: { reply: VeeReply }) {
       const { agentId } = reply;
       return (
         <>
+          {reply.ack ? <p className="vack">{reply.ack}</p> : null}
           <p>{reply.text}</p>
           {agentId ? (
             <p>
@@ -368,6 +369,12 @@ function useVeeStage(
         '--ty',
         `${Math.max(14, Math.min(say.offsetHeight - 14, mouthY - y))}px`,
       );
+      // A reply taller than the stage scrolls inside the bubble. Then the keyboard can reach it.
+      const scroller = say.querySelector<HTMLElement>('.vsay');
+      if (scroller) {
+        const overflowing = scroller.scrollHeight > scroller.clientHeight + 1;
+        if (overflowing !== (scroller.tabIndex === 0)) scroller.tabIndex = overflowing ? 0 : -1;
+      }
     };
 
     document.addEventListener('mousemove', onMove);
@@ -387,9 +394,38 @@ export function Home() {
   return office ? <HomeScreen office={office} /> : null;
 }
 
+/** The prototype's pager: back and forward through what Mabari said, when it has said more than once. */
+function Pager() {
+  const count = useVee((state) => state.log.length);
+  const view = useVee((state) => state.view);
+  const shownKind = useVee((state) => state.log[view ?? state.log.length - 1]?.kind);
+  const look = useVee((state) => state.look);
+  if (count < 2) return null;
+  const at = view ?? count - 1;
+  return (
+    <div className="vpager">
+      <button type="button" aria-label="Earlier update" disabled={at <= 0} onClick={() => look(-1)}>
+        ‹
+      </button>
+      <span>
+        {at + 1} of {count}
+        {shownKind === 'relayed' ? ' · Reply' : ''}
+      </span>
+      <button
+        type="button"
+        aria-label="Later update"
+        disabled={at >= count - 1}
+        onClick={() => look(1)}
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
 function HomeScreen({ office }: { office: Snapshot }) {
   const thinking = useVee((state) => state.state === 'think');
-  const said = useVee((state) => state.said);
+  const said = useVee((state) => (state.view === null ? state.said : state.log[state.view]!));
   const play = useVee((state) => state.play);
   const setOnHome = useVee((state) => state.setOnHome);
   useEffect(() => {
@@ -415,16 +451,19 @@ function HomeScreen({ office }: { office: Snapshot }) {
             aria-label="Mabari, your office assistant"
             onClick={() => play(anyOf(POKE_GESTURES))}
           />
-          <div className="veesay2" id="veeSay" aria-live="polite" ref={bubble}>
-            {thinking ? (
-              <div className="typing">
-                <i />
-                <i />
-                <i />
-              </div>
-            ) : (
-              <Said reply={said} />
-            )}
+          <div className="veesay2" id="veeSay" ref={bubble}>
+            <div className="vsay" aria-live="polite">
+              {thinking ? (
+                <div className="typing">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              ) : (
+                <Said reply={said} />
+              )}
+            </div>
+            {thinking ? null : <Pager />}
           </div>
         </div>
         <HomeDock spoken={office.settings.spokenReplies} />

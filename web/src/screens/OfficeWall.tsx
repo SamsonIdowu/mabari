@@ -3,6 +3,7 @@
 // left; project panels, a live clock and the approval bell on the right. Also the Mabari updates
 // button and panel that full screen adds to the header.
 import { useEffect, useState } from 'react';
+import { clockText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { isQuiet, LAYERS, useLayers } from '../office/layers.ts';
 import { inScope, useOfficeUi } from '../office/uiStore.ts';
@@ -132,11 +133,7 @@ function WallClock() {
   const hours = (now.getHours() % 12) + minutes / 60;
   const turn = Math.PI * 2;
   return (
-    <div
-      className="wclock"
-      id="wClock"
-      title={now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-    >
+    <div className="wclock" id="wClock" title={clockText(now.getTime())}>
       <svg viewBox="0 0 32 32" aria-hidden="true">
         <circle cx="16" cy="16" r="14" className="wcf" />
         <circle cx="16" cy="16" r="11.5" className="wcp" />
@@ -282,8 +279,7 @@ export function MabariUpdatesButton() {
   );
 }
 
-const timeOf = (at: number) =>
-  new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const timeOf = clockText;
 
 export function MabariUpdates() {
   const open = useOfficeUi((state) => state.mabariUpdates);

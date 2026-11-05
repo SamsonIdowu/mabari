@@ -85,9 +85,10 @@ test('the acknowledgement stays with the reply, and earlier replies can be read 
   const say = page.locator('#veeSay');
   await expect(say).toContainText('On it, sent to Ledger (Claude) in Checkout revamp.');
   // The reply lands a moment later, and the acknowledgement is still there above it.
-  await expect(say.locator('p').last()).toContainText('Ledger (Claude) replied: Got it.', {
-    timeout: 10_000,
-  });
+  await expect(say.locator('p').last()).toContainText(
+    'Ledger (Claude) replied: Got it: the invoice rounding is wrong.',
+    { timeout: 10_000 },
+  );
   await expect(say.locator('.vack')).toContainText('On it, sent to Ledger (Claude)');
   await expect(say.locator('.vack')).toContainText("I'll read you the reply the moment it lands.");
 
@@ -99,7 +100,9 @@ test('the acknowledgement stays with the reply, and earlier replies can be read 
   await expect(say).toContainText('On it, sent to Ledger (Claude)');
   await expect(say).not.toContainText('replied:');
   await pager.getByRole('button', { name: 'Later update' }).click();
-  await expect(say).toContainText('Ledger (Claude) replied: Got it.');
+  await expect(say).toContainText(
+    'Ledger (Claude) replied: Got it: the invoice rounding is wrong.',
+  );
 
   // A new message from you shows the newest reply, not the one you were reading.
   await page.getByLabel('Message Mabari').fill('what is the status?');

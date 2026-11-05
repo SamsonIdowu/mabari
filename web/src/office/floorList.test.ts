@@ -70,6 +70,25 @@ describe('floorGroups', () => {
     });
   });
 
+  it('lists an agent asking a question under Needs you, calmly', () => {
+    const question = {
+      id: 'q1',
+      agentId: 'a',
+      time: 0,
+      items: [{ question: 'Which branch?', header: 'Branch', options: [], multiSelect: false }],
+    };
+    const agents = [
+      agent({ id: 'a', name: 'Ada', state: 'thinking', question }),
+      agent({ id: 'p', name: 'Pax', state: 'approval' }),
+    ];
+    const [needs] = floorGroups({ agents, defs: [], projects }, filters());
+    const rows = needs!.entries.flatMap((entry) => (entry.kind === 'agent' ? [entry] : []));
+    expect(rows.map((row) => [row.name, row.detail, row.red])).toEqual([
+      ['Ada', 'Asking you · Which branch?', false],
+      ['Pax', 'Needs approval · Fix the login page', true],
+    ]);
+  });
+
   it('says what each one is doing in a few words', () => {
     const agents = [
       agent({ id: 'w', name: 'Wren', state: 'editing', task: 'Fix the footer' }),

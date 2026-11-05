@@ -79,11 +79,13 @@ test("the office grows only sideways, keeps its agents' size, and scrolls along"
   }
   // The rest of the office is a sideways scroll away, and the bar under the floor says so.
   await expect(page.locator('.oscroll')).toBeVisible();
-  const rooms = await page.evaluate(() => {
-    const thumb = document.querySelector<HTMLElement>('.oscroll span')!;
-    return thumb.style.left;
-  });
-  expect(parseFloat(rooms)).toBe(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        parseFloat(document.querySelector<HTMLElement>('.oscroll span')!.style.left),
+      ),
+    )
+    .toBe(0);
   const last = page.locator('.tag .nt', { hasText: 'Grower 11' });
   const from = (await last.boundingBox())!.x;
   await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);

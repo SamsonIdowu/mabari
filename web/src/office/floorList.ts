@@ -21,6 +21,8 @@ export type FloorEntry =
       where: { name: string; color: string } | null;
       /** Faded, as the floor fades it, when the Models or status filter leaves it out. */
       dim: boolean;
+      /** Waiting on an approval or stopped by an error: the only red lines in the list. */
+      red: boolean;
     }
   | { kind: 'file'; id: string; def: AgentDef; name: string; color: string; detail: string };
 
@@ -67,8 +69,11 @@ export function useFloorList(): { shown: boolean; toggle: () => void } {
   return { shown, toggle };
 }
 
-/** Only approvals and errors are red, so only they need you here. */
-const needsAttention = (agent: LiveAgent) => agent.state === 'approval' || agent.state === 'error';
+/** Approvals and errors are red. */
+const urgent = (agent: LiveAgent) => agent.state === 'approval' || agent.state === 'error';
+
+/** Agents waiting on you: approvals and errors, and questions, which wait calmly. */
+const needsAttention = (agent: LiveAgent) => urgent(agent) || Boolean(agent.question);
 
 /** In the lounge, as the floor seats it: idle, and not a contractor, who leaves instead. */
 const inLounge = (agent: LiveAgent) => STATE_LOCATIONS[agent.state] === 'lounge' && !agent.workflow;
@@ -77,6 +82,8 @@ const byName = (a: { name: string; id: string }, b: { name: string; id: string }
   a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 
 function detailOf(agent: LiveAgent): string {
+  const asked = agent.question?.items[0]?.question;
+  if (asked && !urgent(agent)) return `Asking you · ${asked}`;
   if (inLounge(agent)) return 'Resting';
   const label = stateLabel(agent.state);
   const what = agent.state === 'error' && agent.error ? agent.error : agent.task;
@@ -97,12 +104,13 @@ function agentEntry(
     detail: detailOf(agent),
     where: agent.workflow ? whereWorking(agent, projects) : null,
     dim: !matches(agent, filters),
+    red: urgent(agent),
   };
 }
 
 /**
- * Everyone on the floor, grouped as the floor shows them: those who need you first (approvals
- * and errors), then those at their desks, then the lounge, where idle agents and the agent files
+ * Everyone on the floor, grouped as the floor shows them: those who need you first (approvals,
+ * errors and questions), then those at their desks, then the lounge, where idle agents and the agent files
  * with nothing running rest. Project and team decide who is listed, as they decide who is on
  * the floor; the Models and status filters only fade entries. Empty groups are left out.
  */

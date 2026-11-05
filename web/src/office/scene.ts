@@ -1034,10 +1034,13 @@ export class OfficeScene {
       const pan = { x: target.cx - home.x, y: target.cy - home.y };
       if (pan.x !== ui.pan.x || pan.y !== ui.pan.y) ui.set({ pan });
     }
+    // Easing only ever closes part of the gap, so the last fraction of a pixel snaps into place.
     const ease = Math.min(1, dt / 140);
-    this.view.s += (target.s - this.view.s) * ease;
-    this.view.cx += (target.cx - this.view.cx) * ease;
-    this.view.cy += (target.cy - this.view.cy) * ease;
+    const near = (from: number, to: number, close: number) =>
+      Math.abs(to - from) < close ? to : from + (to - from) * ease;
+    this.view.s = near(this.view.s, target.s, 0.0005);
+    this.view.cx = near(this.view.cx, target.cx, 0.05);
+    this.view.cy = near(this.view.cy, target.cy, 0.05);
 
     this.fitCanvas();
     this.drawSurroundings(theme);

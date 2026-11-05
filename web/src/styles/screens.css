@@ -95,8 +95,7 @@
   justify-content: space-between;
   padding: 10px 10px 4px;
 }
-.fl-needs .mhead,
-.fl-needs .fldet {
+.flrow.red .fldet {
   color: var(--red);
 }
 .flrow {

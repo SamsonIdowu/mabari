@@ -258,14 +258,74 @@ var addressedTo = regexp.MustCompile(`^[A-Za-z]+,\s*`)
 // WithoutName drops a leading "Sage, " from an instruction.
 func WithoutName(text string) string { return addressedTo.ReplaceAllString(text, "") }
 
-// Ack is an agent's reply to an instruction, such as "I'll update the docs."
-func Ack(text string) string {
-	body := WithoutName(text)
-	// Characters, not bytes, so an instruction in another language is measured fairly.
-	if utf8.RuneCountInString(body) > 60 {
-		return "I'll do that next."
+// ackLimit is the longest instruction an acknowledgement repeats back, in characters.
+const ackLimit = 60
+
+// verbs are words that start an instruction on their own: "fix the bug", "run the tests". An
+// instruction starting with one can be promised back as "I'll fix the bug." Anything else
+// ("after this step, run the linter", "we need tests") would make nonsense after "I'll", so it is
+// echoed instead.
+var verbs = map[string]bool{
+	"add": true, "analyse": true, "analyze": true, "ask": true, "benchmark": true, "build": true,
+	"cache": true, "change": true, "check": true, "choose": true, "clean": true, "close": true,
+	"commit": true, "compare": true, "configure": true, "continue": true, "copy": true,
+	"create": true, "debug": true, "delete": true, "deploy": true, "disable": true, "document": true,
+	"downgrade": true, "draft": true, "drop": true, "edit": true, "enable": true, "explain": true,
+	"extract": true, "find": true, "finish": true, "fix": true, "focus": true, "format": true,
+	"generate": true, "give": true, "go": true, "handle": true, "implement": true, "improve": true,
+	"increase": true, "install": true, "investigate": true, "keep": true, "limit": true,
+	"lint": true, "list": true, "look": true, "make": true, "merge": true, "move": true,
+	"open": true, "optimize": true, "optimise": true, "pause": true, "pick": true, "plan": true,
+	"prepare": true, "profile": true, "push": true, "read": true, "reduce": true, "refactor": true,
+	"remove": true, "rename": true, "replace": true, "rerun": true, "retry": true, "review": true,
+	"revert": true, "rewrite": true, "round": true, "run": true, "search": true, "select": true,
+	"send": true, "set": true, "show": true, "simplify": true, "split": true, "start": true,
+	"stop": true, "summarise": true, "summarize": true, "switch": true, "take": true, "test": true,
+	"try": true, "update": true, "upgrade": true, "use": true, "validate": true, "verify": true,
+	"wait": true, "work": true, "write": true,
+}
+
+// promiseAdverbs may come before the verb: "also update the docs" is "I'll also update the docs".
+var promiseAdverbs = map[string]bool{"also": true, "then": true, "now": true, "first": true, "next": true, "just": true}
+
+// promise gives what follows "I'll" for an instruction, and reports whether it can: only when the
+// instruction starts with a verb, after "please" and a word like "also". "please" is dropped.
+func promise(body string) (string, bool) {
+	words := strings.Fields(body)
+	if len(words) > 0 && strings.EqualFold(words[0], "please") {
+		words = words[1:]
 	}
-	return "I'll " + strings.TrimSuffix(LowerFirst(body), ".") + "."
+	verb := 0
+	for verb < len(words) && promiseAdverbs[strings.ToLower(words[verb])] {
+		verb++
+	}
+	if verb >= len(words) || !verbs[strings.ToLower(words[verb])] {
+		return "", false
+	}
+	return LowerFirst(strings.Join(words, " ")), true
+}
+
+// Ack is an agent's reply to an instruction. An instruction that starts with a verb is promised
+// back, "Got it. I'll update the docs."; any other is echoed, "Got it: after this step, run the
+// linter.", which can't come out garbled whatever the person typed. A long one only gets "I'll do
+// that next." It is the whole reply, "Got it" included.
+func Ack(text string) string {
+	body := strings.Join(strings.Fields(WithoutName(text)), " ")
+	// Characters, not bytes, so an instruction in another language is measured fairly.
+	if utf8.RuneCountInString(body) > ackLimit {
+		return "Got it. I'll do that next."
+	}
+	body = strings.TrimSuffix(body, ".")
+	if said, ok := promise(body); ok {
+		return "Got it. I'll " + said + "."
+	}
+	if body == "" {
+		return "Got it."
+	}
+	if strings.HasSuffix(body, "?") || strings.HasSuffix(body, "!") {
+		return "Got it: " + body
+	}
+	return "Got it: " + body + "."
 }
 
 // LowerFirst lowers the first character, which may take more than one byte.

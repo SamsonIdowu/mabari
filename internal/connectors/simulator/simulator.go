@@ -458,7 +458,7 @@ func (s *Simulator) checkpoint(agent *models.LiveAgent) {
 		return
 	}
 	s.engine.AddEvent(agent, "instruction", "Received: "+instruction.Text, nil)
-	said := "Got it. " + models.Ack(instruction.Text)
+	said := models.Ack(instruction.Text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
 }
@@ -800,7 +800,7 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 		agent.Rate = s.between(0.0012, 0.002)
 		s.setState(agent, models.StateThinking)
 	}
-	said := "Got it. " + models.Ack(text)
+	said := models.Ack(text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
 }

@@ -170,10 +170,12 @@ func clip(text string, limit int) string {
 
 // said puts text that people or other sessions wrote in quotation marks, so a session reading the
 // map can tell it apart from the map's own words. Quotation marks inside become single ones, so the
-// text cannot close the quote and go on as if the map said it.
-func said(text string) string {
-	return `"` + strings.ReplaceAll(text, `"`, "'") + `"`
-}
+// text cannot close the quote and go on as if the map said it. Marks that look like quotation
+// marks to a reader are changed too.
+func said(text string) string { return `"` + unquote.Replace(text) + `"` }
+
+var unquote = strings.NewReplacer(`"`, "'", "\u201c", "'", "\u201d", "'", "\u201e", "'", "\u201f", "'",
+	"\uff02", "'", "\u00ab", "'", "\u00bb", "'", "\u2033", "'", "\u301d", "'", "\u301e", "'")
 
 // oneLine keeps a name on one line, so it cannot start a heading or a list of its own.
 func oneLine(text string) string { return strings.Join(strings.Fields(text), " ") }

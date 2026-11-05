@@ -461,6 +461,13 @@ func Check(def models.AgentDef) error {
 			return Problem("Mabari doesn't know the tool " + strconv.Quote(tool) + ".")
 		}
 	}
+	// Skills are written into the front matter as they are, so each must be a plain name: nothing
+	// that could end the line and add another field.
+	for _, skill := range def.Skills {
+		if !validName.MatchString(skill) {
+			return Problem("Skill names are lowercase words with dashes, like agent-improver.")
+		}
+	}
 	return nil
 }
 

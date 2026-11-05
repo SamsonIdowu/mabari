@@ -206,6 +206,7 @@ func TestSaveChecksTheDefinition(t *testing.T) {
 		"instructions":   func(d *models.AgentDef) { d.Instructions = "" },
 		"doesn't know":   func(d *models.AgentDef) { d.Tools = []string{"Teleport"} },
 		"office manager": func(d *models.AgentDef) { d.Name = MabariName },
+		"Skill names":    func(d *models.AgentDef) { d.Skills = []string{"ok\nmodel: opus"} },
 	}
 	for want, change := range cases {
 		def := reviewer()

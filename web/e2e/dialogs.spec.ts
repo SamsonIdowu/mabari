@@ -120,6 +120,20 @@ test('the approval dialog holds focus and gives it back to Review', async ({ pag
   await behavesAsModal(page, review);
 });
 
+test('answering an approval from the keyboard leaves focus on the page, not nowhere', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  const review = page.locator('#board .bitem', { hasText: 'Atlas' });
+  await press(page, review);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await press(page, page.getByRole('button', { name: 'Allow once' }));
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Review goes once the approval is answered. Focus does not fall to the top of the page.
+  await expect(review).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe('screen');
+});
+
 test('the auto approve dialog takes focus when it opens, and gives it back', async ({ page }) => {
   await loadDemo(page);
   const button = page.getByRole('button', { name: 'Auto approve' });

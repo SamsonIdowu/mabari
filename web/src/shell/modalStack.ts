@@ -140,18 +140,32 @@ function focusInto(scrim: HTMLElement) {
   dialog.focus({ preventScroll: true });
 }
 
-/**
- * Puts focus back on the control that opened a dialog or panel. If that control is gone, it goes
- * to the page's main area, so the next Tab does not start again from the top of the page.
- */
-export function returnFocus(opener: HTMLElement | null) {
-  if (!opener) return;
-  if (opener.isConnected) opener.focus();
-  if (document.activeElement === opener) return;
+function focusMain() {
   const main = document.getElementById('screen');
   if (!main) return;
   if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
   main.focus({ preventScroll: true });
+}
+
+/** How long to wait to see whether the control focus went back to is taken away by what was decided. */
+const SETTLE_MS = 500;
+
+/**
+ * Puts focus back on the control that opened a dialog or panel. If that control is gone, it goes
+ * to the page's main area, so the next Tab does not start again from the top of the page. The
+ * same if the control goes a moment later, as an approval's Review does once it is answered.
+ */
+export function returnFocus(opener: HTMLElement | null) {
+  if (!opener) return;
+  if (opener.isConnected) opener.focus();
+  if (document.activeElement !== opener) {
+    focusMain();
+    return;
+  }
+  window.setTimeout(() => {
+    const active = document.activeElement;
+    if (!opener.isConnected && (!active || active === document.body)) focusMain();
+  }, SETTLE_MS);
 }
 
 /** Opens a dialog. Returns the function that closes it. */

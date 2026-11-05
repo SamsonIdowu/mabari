@@ -405,7 +405,7 @@ function loungeColours(theme: 'dark' | 'light') {
 }
 
 /**
- * The lounge: a patterned rug with a coffee bar, a sofa and an armchair round a coffee table, a
+ * The lounge: an open space with no boundary, with a coffee bar, a sofa and an armchair round a coffee table, a
  * floor lamp, a bookshelf and plants in its nook, and a fish tank and a beanbag once it is big
  * enough. It grows with the number resting in it. Its residents wander about it with their
  * coffee (scene.ts), which also brings the steam, the lamp's glow and the fish to life.
@@ -419,21 +419,8 @@ function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
   const width = x1 - x0;
   const seats = width - LOUNGE_NOOK;
   floorLabel(c, 'Lounge', x0, LABEL_Y, P);
-  /* the rug: a border, a stripe just inside it, and a quiet diamond pattern */
-  R(c, x0 - 4, y0, width + 8, y1 - y0, P.rug);
-  R(c, x0 + 2, y0 + 6, width - 4, y1 - y0 - 12, P.rugB);
-  R(c, x0 + 8, y0 + 12, width - 16, 2, P.rug);
-  R(c, x0 + 8, y1 - 14, width - 16, 2, P.rug);
-  R(c, x0 + 8, y0 + 12, 2, y1 - y0 - 24, P.rug);
-  R(c, x1 - 10, y0 + 12, 2, y1 - y0 - 24, P.rug);
-  c.globalAlpha = theme === 'dark' ? 0.35 : 0.5;
-  for (let y = y0 + 30; y < y1 - 20; y += 24) {
-    for (let x = x0 + 24 + ((y - y0) % 48 ? 12 : 0); x < x1 - 20; x += 24) {
-      R(c, x, y, 2, 2, P.rug);
-    }
-  }
-  c.globalAlpha = 1;
-
+  /* no rug, wall or border: the lounge's furniture stands on the open floor, so it reads as part
+     of one free space the resting agents roam, with soft round rugs only under the tables */
   /* the coffee bar: a counter with the machine, a glass of pastries and a row of mugs */
   blk(c, x0 + 12, y0 + 18, 76, 10, 14, P.desk, P.deskFront, P, P.deskEdge);
   blk(

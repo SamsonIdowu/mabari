@@ -130,6 +130,7 @@ export function floorFor(
   use: DeskUse = { taken: [], working: [] },
   residents = 0,
   inUse: Room[] = [],
+  minWidth = 0,
 ): Floor {
   const taken = new Set(use.taken);
   let free = 0;
@@ -141,27 +142,36 @@ export function floorFor(
   const gridStart = DeskX * TILE;
   // The work area keeps room for its shelves and servers, however few desks it has.
   const gridEnd = Math.max((DeskX + (columns - 1) * 5) * TILE + 68, WORK_MIN_END);
-  // From the end of the grid's last desk, each area takes its own stretch of floor.
-  let cursor = gridEnd + 56;
+  const rooms = ROOMS.filter((room) => inUse.includes(room));
+  const loungeColumns = Math.ceil(residents / LOUNGE_ROWS);
+  // The office is two equal halves: the work area on the left, the open lounge on the right,
+  // each at least half the view. Whichever needs more room sets both.
+  const workNeeds = gridEnd + 56;
+  // The rooms' space is kept whether or not one is open, so opening one moves nothing else.
+  const loungeNeeds =
+    48 + (residents > 0 ? loungeColumns * LOUNGE_PITCH.x + LOUNGE_NOOK + GAP : 0) + ROOMS_W + 24;
+  // A half the view sets is rounded down, so the floor never scrolls by a sliver.
+  const half = Math.max(
+    Math.floor(minWidth / 2 / TILE) * TILE,
+    Math.ceil(Math.max(workNeeds, loungeNeeds) / TILE) * TILE,
+  );
+  const width = half * 2;
   let lounge: Floor['lounge'] = null;
   if (residents > 0) {
     // Only as many armchairs as there are residents.
-    const loungeColumns = Math.ceil(residents / LOUNGE_ROWS);
-    const rows = Math.min(residents, LOUNGE_ROWS);
+    const x = half + 48;
     lounge = {
-      x: cursor,
-      first: { x: cursor + 44, y: 148 },
+      x,
+      first: { x: x + 44, y: 148 },
       columns: loungeColumns,
-      rows,
+      rows: Math.min(residents, LOUNGE_ROWS),
       seats: residents,
     };
-    cursor += loungeColumns * LOUNGE_PITCH.x + LOUNGE_NOOK + GAP;
   }
-  const rooms = ROOMS.filter((room) => inUse.includes(room));
-  // The rooms move along whole tiles, as the floor's tiles are drawn on that grid.
-  const shift = Math.ceil((cursor + 24 - WALL_X) / TILE) * TILE;
-  const wall = rooms.length ? WALL_X + shift : null;
-  const width = wall === null ? Math.ceil((cursor + 8) / TILE) * TILE : wall + ROOMS_W;
+  // The rooms stand at the lounge half's right end, moved along whole tiles.
+  const wall = rooms.length ? width - ROOMS_W : null;
+  const shift = (wall ?? width - ROOMS_W) - WALL_X;
+  const workEnd = half - 40;
   return {
     width,
     height: BASE_H,
@@ -169,12 +179,12 @@ export function floorFor(
     shift,
     wall,
     rooms,
-    door: Math.round((gridStart + gridEnd) / 2),
-    workEnd: gridEnd,
+    door: Math.round((gridStart + workEnd) / 2),
+    workEnd,
     desks,
     free,
     lounge,
-    key: [columns, desks.join('.'), lounge?.seats ?? 0, ...rooms].join(':'),
+    key: [width, columns, desks.join('.'), lounge?.seats ?? 0, ...rooms].join(':'),
   };
 }
 
@@ -194,7 +204,8 @@ export function loungeArea(
   return {
     x0: workWalls(floor).right + 30,
     y0: LABEL_Y + 64,
-    x1: (floor.wall ?? floor.width) - 30,
+    // It stops short of where the rooms open, open or not.
+    x1: floor.width - ROOMS_W - 30,
     y1: floor.height - 70,
   };
 }
@@ -318,7 +329,12 @@ export const restKey = (def: AgentDef) => `def:${def.id}`;
  * idle agents in the order they arrived, so nobody shares a spot. `keep` are rooms to keep open
  * though nobody's state is in them, while someone is still walking out.
  */
-export function seatingFor(agents: LiveAgent[], defs: AgentDef[], keep: Room[] = []): Seating {
+export function seatingFor(
+  agents: LiveAgent[],
+  defs: AgentDef[],
+  keep: Room[] = [],
+  minWidth = 0,
+): Seating {
   const use: DeskUse = { taken: [], working: [] };
   for (const agent of agents) {
     if (agent.desk < 0) continue;
@@ -347,7 +363,7 @@ export function seatingFor(agents: LiveAgent[], defs: AgentDef[], keep: Room[] =
     const location = STATE_LOCATIONS[agent.state];
     if (agent.desk >= 0 && !agent.leaving && location && isRoom(location)) rooms.add(location);
   }
-  return { floor: floorFor(use, lounge.size, [...rooms]), lounge, resting };
+  return { floor: floorFor(use, lounge.size, [...rooms], minWidth), lounge, resting };
 }
 
 type Seated = Pick<LiveAgent, 'id' | 'state' | 'desk'>;
@@ -362,23 +378,99 @@ export function spotFor(agent: Seated, number: number, seating: Seating): Point 
   return spots[number % spots.length]!;
 }
 
-/** The route to a spot: along a corridor, and through the gap in the wall for the rooms. */
+/**
+ * The route to a spot. The work area is enclosed, so going in or out means its doorway: inside,
+ * agents walk up and down the aisles beside the desks, never through them; outside, they go
+ * along the lobby and round the end of the work area's wall, round Mabari's desk on the way to
+ * the door, and through the gap in the glass for the rooms.
+ */
 export function pathTo(from: Point, to: Point, floor: Floor = BASE_FLOOR): Point[] {
   if (Math.abs(from.x - to.x) < 1 && Math.abs(from.y - to.y) < 1) return [];
-  // The work area is enclosed: going in or out means going through its doorway.
   const inside = inWorkArea(floor);
-  if (inside(from) !== inside(to)) {
-    const way = workDoorway(floor);
-    const [first, second] = inside(from) ? [way.in, way.out] : [way.out, way.in];
-    const there = inside(from)
-      ? [{ x: from.x, y: way.in.y }, first, second]
-      : [...openPath(from, first, floor), second, { x: to.x, y: way.in.y }];
-    const rest = inside(from) ? openPath(second, to, floor) : [to];
-    return [...there, ...rest].filter(
-      (point, index, all) =>
-        index === 0 ||
-        Math.abs(point.x - all[index - 1]!.x) + Math.abs(point.y - all[index - 1]!.y) > 0.5,
-    );
+  const way = workDoorway(floor);
+  let route: Point[];
+  if (inside(from) && inside(to)) {
+    route = insidePath(from, to);
+  } else if (inside(from)) {
+    route = [...insidePath(from, way.in), way.out, ...outsidePath(way.out, to, floor)];
+  } else if (inside(to)) {
+    route = [...outsidePath(from, way.out, floor), way.in, ...insidePath(way.in, to)];
+  } else {
+    route = outsidePath(from, to, floor);
+  }
+  // Leave out steps that go nowhere.
+  return route.filter((point, index) => {
+    const before = index ? route[index - 1]! : from;
+    return Math.abs(point.x - before.x) + Math.abs(point.y - before.y) > 0.5;
+  });
+}
+
+/** The aisle beside a desk column, between its desks and the next column's. */
+function aisleOf(x: number): number {
+  const first = DeskX * TILE;
+  const column = Math.max(0, Math.floor((x - first) / (5 * TILE)));
+  return first + column * 5 * TILE + 114;
+}
+
+/** A route inside the work area: up or down the aisle, never through a desk. */
+function insidePath(from: Point, to: Point): Point[] {
+  if (Math.abs(to.y - from.y) <= 40) {
+    return [
+      { x: from.x, y: from.y },
+      { x: to.x, y: to.y },
+    ];
+  }
+  const aisle = aisleOf(from.x);
+  return [
+    { x: aisle, y: from.y },
+    { x: aisle, y: to.y },
+    { x: to.x, y: to.y },
+  ];
+}
+
+/**
+ * A route outside the work area. From the lobby below it, agents go along the lobby to the end
+ * of its wall before turning up, and the other way round; going to the door, they step round
+ * Mabari's desk.
+ */
+function outsidePath(from: Point, to: Point, floor: Floor): Point[] {
+  const walls = workWalls(floor);
+  const lobby = (point: Point) => point.y > walls.front && point.x < walls.right + 16;
+  const corner = walls.right + 16;
+  const door = doorOf(floor);
+  // Across the lobby, agents keep to the walkway between the wall and Mabari's desk, and step
+  // round the desk to and from anywhere behind it, such as the door.
+  const walkway = 626;
+  const behindDesk = (point: Point) => point.y > 640 && Math.abs(point.x - door.x) < 56;
+  const aside = (point: Point) => ({ x: door.x + (point.x < door.x ? -64 : 64), y: point.y });
+  if (behindDesk(from)) {
+    const step = aside(from);
+    return [step, ...outsidePath(step, to, floor)];
+  }
+  if (behindDesk(to)) {
+    const step = aside(to);
+    return [...outsidePath(from, step, floor), to];
+  }
+  if (lobby(from) && !lobby(to)) {
+    return [
+      { x: from.x, y: walkway },
+      { x: corner, y: walkway },
+      ...openPath({ x: corner, y: walkway }, to, floor),
+    ];
+  }
+  if (!lobby(from) && lobby(to)) {
+    return [
+      ...openPath(from, { x: corner, y: walkway }, floor),
+      { x: to.x, y: walkway },
+      { x: to.x, y: to.y },
+    ];
+  }
+  if (lobby(from) && lobby(to)) {
+    return [
+      { x: from.x, y: walkway },
+      { x: to.x, y: walkway },
+      { x: to.x, y: to.y },
+    ];
   }
   return openPath(from, to, floor);
 }

@@ -7,6 +7,7 @@ import {
   deskSeat,
   deskTile,
   desksUpTo,
+  doorOf,
   floorFor,
   inWorkArea,
   loungeArea,
@@ -16,6 +17,7 @@ import {
   loungeSeat,
   onFloor,
   pathTo,
+  receptionOf,
   restingDefs,
   seatingFor,
   spotFor,
@@ -123,11 +125,27 @@ describe('floorFor', () => {
     expect(floorFor(desksUpTo(16)).columns).toBe(5);
     const wide = floorFor(desksUpTo(17));
     expect(wide.columns).toBe(5);
-    expect(floorFor(desksUpTo(20)).width).toBe(wide.width + 160);
+    // Each half grows with it, so another column of desks widens the office by two.
+    expect(floorFor(desksUpTo(20)).width).toBe(wide.width + 2 * 160);
     expect(wide.height).toBe(BASE_H);
-    // The door stays below the middle of the desks.
-    const gridEnd = deskTile(16).x * 32 + 68;
-    expect(wide.door).toBe(Math.round((64 + gridEnd) / 2));
+    // The door stays below the middle of the work area.
+    expect(wide.door).toBe(Math.round((64 + wide.workEnd) / 2));
+  });
+
+  it('is two equal halves, the work area and the open lounge, at least as wide as the view', () => {
+    for (const floor of [
+      floorFor(desksUpTo(3), 2),
+      floorFor(desksUpTo(40), 9, ['meeting']),
+      floorFor(desksUpTo(2), 30),
+      floorFor(desksUpTo(2), 1, [], 1600),
+    ]) {
+      expect(workWalls(floor).right + 8).toBe(floor.width / 2);
+      expect(floor.lounge!.x).toBeGreaterThan(floor.width / 2);
+      expect(floor.width % 64).toBe(0);
+    }
+    expect(floorFor(desksUpTo(2), 1, [], 1600).width).toBe(1600);
+    // A view that isn't a whole number of tiles doesn't leave the floor a sliver too wide.
+    expect(floorFor(desksUpTo(2), 1, [], 1650).width).toBeLessThanOrEqual(1650);
   });
 
   it('opens a room only while someone is in it, at the right end of the office', () => {
@@ -136,7 +154,7 @@ describe('floorFor', () => {
     expect(meeting.rooms).toEqual(['meeting']);
     expect(meeting.wall).toBeGreaterThan(meeting.lounge!.x + LOUNGE_PITCH.x);
     expect(meeting.width).toBe(meeting.wall! + 288);
-    expect(meeting.width).toBeGreaterThan(empty.width);
+    expect(meeting.wall!).toBeGreaterThan(meeting.width / 2);
     // Opening it moves nothing else.
     expect(meeting.lounge).toEqual(empty.lounge);
     expect(meeting.key).not.toBe(empty.key);
@@ -171,7 +189,6 @@ describe('floorFor', () => {
       rows: LOUNGE_ROWS,
     });
     expect(floorFor(desksUpTo(0), 40).width).toBeGreaterThan(floorFor(desksUpTo(0), 10).width);
-    expect(floorFor(desksUpTo(0), 1).width).toBeLessThan(floorFor(desksUpTo(0), 6).width);
     // Resting agents roam the open floor outside the work area's walls, the lounge included.
     const floor = floorFor(desksUpTo(4), 7);
     const area = loungeArea(floor)!;
@@ -285,8 +302,10 @@ describe('spotFor', () => {
     expect(busy.floor.rooms).toEqual(['meeting']);
     expect(spotFor(lead, 1, busy)).toEqual({ x: 1078 + busy.floor.shift, y: 362 });
     expect(spotFor(lead, 1, busy).x).toBeGreaterThan(busy.floor.wall!);
+    // It stays at the right end of the lounge half as the office grows.
     const wide = seatingFor([lead, agent({ id: 'b', desk: 16 })], []);
-    expect(spotFor(lead, 1, wide).x).toBe(spotFor(lead, 1, busy).x + 160);
+    expect(spotFor(lead, 1, wide).x).toBeGreaterThan(wide.floor.wall!);
+    expect(spotFor(lead, 1, wide).x).toBeLessThan(wide.floor.width);
   });
 
   it('closes the meeting room once nobody is in it', () => {
@@ -300,12 +319,72 @@ describe('pathTo', () => {
     expect(pathTo({ x: 10, y: 10 }, { x: 10.5, y: 10.5 })).toEqual([]);
   });
 
-  it('walks along a corridor for short moves', () => {
-    expect(pathTo({ x: 100, y: 200 }, { x: 300, y: 220 })).toEqual([
-      { x: 100, y: 200 },
-      { x: 300, y: 200 },
-      { x: 300, y: 220 },
-    ]);
+  it('walks straight across for short moves', () => {
+    expect(pathTo({ x: 100, y: 200 }, { x: 300, y: 220 })).toEqual([{ x: 300, y: 220 }]);
+  });
+
+  /** Every step of a route, as a pair of points. */
+  const steps = (from: Point, route: Point[]) =>
+    route.map((point, index) => [index ? route[index - 1]! : from, point] as const);
+
+  /** Whether a straight step crosses a box, given as its corners. */
+  const crosses = (
+    [a, b]: readonly [Point, Point],
+    box: { x0: number; y0: number; x1: number; y1: number },
+  ) => {
+    for (let k = 0; k <= 40; k++) {
+      const x = a.x + ((b.x - a.x) * k) / 40;
+      const y = a.y + ((b.y - a.y) * k) / 40;
+      if (x > box.x0 && x < box.x1 && y > box.y0 && y < box.y1) return true;
+    }
+    return false;
+  };
+
+  it.each([
+    ['a big office', floorFor(desksUpTo(16), 6, ['meeting'], 1600)],
+    ['a small one', floorFor(desksUpTo(3), 2, ['meeting'])],
+    ['a wide one', floorFor(desksUpTo(40), 12, ['meeting'], 1300)],
+  ])("never walks through the work area's walls, desks or Mabari's desk in %s", (_, floor) => {
+    const walls = workWalls(floor);
+    const way = workDoorway(floor);
+    const reception = receptionOf(floor);
+    const boxes = [
+      // The right wall, and the front wall either side of the doorway.
+      { x0: walls.right - 4, y0: 44, x1: walls.right + 4, y1: walls.front + 4 },
+      { x0: 0, y0: walls.front - 4, x1: way.in.x - 30, y1: walls.front + 4 },
+      { x0: way.in.x + 30, y0: walls.front - 4, x1: walls.right + 4, y1: walls.front + 4 },
+      // Mabari's desk by the door.
+      { x0: reception.x - 46, y0: reception.y - 6, x1: reception.x + 46, y1: reception.y + 22 },
+      // Every desk top on the floor.
+      ...floor.desks.map((desk) => {
+        const corner = deskTile(desk);
+        return {
+          x0: corner.x * 32 + 4,
+          y0: corner.y * 32,
+          x1: corner.x * 32 + 64,
+          y1: corner.y * 32 + 34,
+        };
+      }),
+    ];
+    const places = [
+      ...floor.desks.filter((desk) => desk % 5 === 0).map((desk) => deskSeat({ desk })),
+      loungeSeat(floor, 0),
+      loungeSeat(floor, 5),
+      doorOf(floor),
+      { x: 1078 + floor.shift, y: 362 },
+      { x: 60, y: 660 },
+    ];
+    for (const from of places) {
+      for (const to of places) {
+        for (const step of steps(from, pathTo(from, to, floor))) {
+          for (const box of boxes) {
+            expect(crosses(step, box), `${JSON.stringify(from)} to ${JSON.stringify(to)}`).toBe(
+              false,
+            );
+          }
+        }
+      }
+    }
   });
 
   it('leaves and enters the work area through its doorway', () => {
@@ -316,7 +395,8 @@ describe('pathTo', () => {
     expect(inWorkArea(floor)(desk)).toBe(true);
     expect(inWorkArea(floor)(lounge)).toBe(false);
     const out = pathTo(desk, lounge, floor);
-    expect(out.slice(0, 3)).toEqual([{ x: desk.x, y: way.in.y }, way.in, way.out]);
+    expect(out).toContainEqual(way.in);
+    expect(out).toContainEqual(way.out);
     expect(out.at(-1)).toEqual(lounge);
     const back = pathTo(lounge, desk, floor);
     expect(back).toContainEqual(way.out);
@@ -334,9 +414,5 @@ describe('pathTo', () => {
       { x: wall + 70, y: 520 },
       { x: wall + 120, y: 520 },
     ]);
-  });
-
-  it('walks straight inside the work area', () => {
-    expect(pathTo({ x: 300, y: 200 }, { x: 400, y: 400 })[0]).toEqual({ x: 300, y: 200 });
   });
 });

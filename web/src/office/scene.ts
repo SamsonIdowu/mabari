@@ -167,10 +167,11 @@ export class OfficeScene {
   /** Agent definitions resting in the lounge, in seat order. */
   resting: Resting[] = [];
   seating: Seating = seatingFor([], []);
-  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[]; inRooms: boolean } = {
+  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[]; inRooms: boolean; view: number } = {
     agents: [],
     defs: [],
     inRooms: false,
+    view: 0,
   };
   view: View = { cx: BASE_W / 2, cy: BASE_H / 2, s: 1 };
   size = { width: BASE_W, height: BASE_H };
@@ -370,15 +371,26 @@ export class OfficeScene {
     const defs = office?.defs ?? [];
     // The store replaces these lists when they change, so the seating is worked out only then,
     // and when the last agent walks out of a room, which stays open until then.
+    // Only an agent that went to a room keeps it open, not one resting nearby.
     const wall = this.floor.wall;
-    const inRooms = wall !== null && [...this.walkers.values()].some((walker) => walker.x > wall);
+    const inRooms =
+      wall !== null &&
+      [...this.walkers.values()].some(
+        (walker) => walker.x > wall && STATE_LOCATIONS[walker.state] !== 'lounge',
+      );
+    // The floor fills at least the view, half work area and half lounge, so it's worked out
+    // again whenever the half the view sets changes, a tile at a time.
+    const view = Math.round(this.visible().width);
     if (
       agents !== this.seatedFrom.agents ||
       defs !== this.seatedFrom.defs ||
-      inRooms !== this.seatedFrom.inRooms
+      inRooms !== this.seatedFrom.inRooms ||
+      Math.floor(view / 64) !== Math.floor(this.seatedFrom.view / 64)
     ) {
-      this.seating = seatingFor(agents, defs, inRooms ? this.floor.rooms : []);
-      this.seatedFrom = { agents, defs, inRooms };
+      const before = this.floor;
+      this.seating = seatingFor(agents, defs, inRooms ? this.floor.rooms : [], view);
+      this.seatedFrom = { agents, defs, inRooms, view };
+      this.reshaped(before, this.floor);
     }
     const floor = this.floor;
     const present = new Set(agents.map((agent) => agent.id));
@@ -430,6 +442,44 @@ export class OfficeScene {
     this.syncResting();
   }
 
+  /**
+   * After the floor changed shape: whoever rests moves with the lounge at once, so nobody is left
+   * inside the work area's walls, and everyone still walking, Mabari too, takes a new route
+   * through the doorway where it is now. The dust shaft moves with the work area.
+   */
+  private reshaped(before: Floor, after: Floor): void {
+    if (
+      before.width === after.width &&
+      before.workEnd === after.workEnd &&
+      before.door === after.door &&
+      before.lounge?.x === after.lounge?.x
+    ) {
+      return;
+    }
+    const dx = before.lounge && after.lounge ? after.lounge.x - before.lounge.x : 0;
+    const lounging = [
+      ...[...this.walkers.values()].filter(
+        (walker) => STATE_LOCATIONS[walker.state] === 'lounge' && !walker.leaving,
+      ),
+      ...this.resting.map((item) => item.walker),
+    ];
+    for (const walker of lounging) {
+      walker.x += dx;
+      if (walker.goal) walker.goal = { x: walker.goal.x + dx, y: walker.goal.y };
+      walker.path = [];
+      walker.strolling = false;
+    }
+    for (const walker of this.walkers.values()) {
+      const end = walker.path.at(-1);
+      if (!end) continue;
+      walker.path = pathTo(walker, walker.leaving ? doorOf(after) : (walker.goal ?? end), after);
+    }
+    const m = this.manager;
+    const end = m.path.at(-1);
+    if (end) m.path = pathTo(m, end, after);
+    for (const mote of this.motes) mote.x += after.door - before.door;
+  }
+
   /** Seats the resting definitions, keeping each one's walker so it bobs on its own time. */
   private syncResting(): void {
     const seen = new Set<string>();
@@ -457,9 +507,10 @@ export class OfficeScene {
       // A new resident starts at its own spot, and goes back to it when the lounge moves.
       const goal = walker.goal;
       if (!goal || Math.abs(goal.x - seat.x) > 0.5 || Math.abs(goal.y - seat.y) > 0.5) {
-        if (!goal) {
+        if (!goal || reducedMotion()) {
           walker.x = seat.x;
           walker.y = seat.y;
+          walker.path = [];
         } else {
           walker.path = [{ x: seat.x, y: seat.y }];
         }

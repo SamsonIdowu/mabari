@@ -108,7 +108,8 @@ describe('clampView', () => {
 
   it('holds a small office at its left edge, even zoomed', () => {
     const small = sizeOf(floorFor(desksUpTo(2)));
-    for (const s of [0.5, 1, 1.25]) {
+    expect(small.width).toBeLessThanOrEqual(visible.width);
+    for (const s of [0.5, 0.8, 1]) {
       expect(clampView({ cx: 999, cy: 999, s }, small, visible).cx).toBe(visible.width / 2 / s);
     }
   });

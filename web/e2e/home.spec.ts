@@ -160,7 +160,10 @@ test('dispatches anything else at once and relays the reply when it lands', asyn
   expect(Date.now() - started).toBeLessThan(1500);
   await expect(page.getByRole('button', { name: 'Send to the team' })).toHaveCount(0);
   // Ledger is mid step, so it takes the instruction at its next checkpoint and Mabari relays it.
-  await expect(say).toContainText('Ledger (Claude) replied: Got it.', { timeout: 10000 });
+  await expect(say).toContainText(
+    'Ledger (Claude) replied: Got it: the invoice rounding is wrong.',
+    { timeout: 10000 },
+  );
   // Mabari already said it, so the toast doesn't repeat it.
   await expect(page.getByText('Ledger replied. Open Ledger to read it.')).toHaveCount(0);
 });
@@ -194,7 +197,9 @@ test('a reply that lands while you are elsewhere shows on the Home badge', async
   await expect(tray).toContainText('Replied');
   await page.locator('.rail a.nav[href="#home"]').click();
   await expect(badge).toHaveCount(0);
-  await expect(page.locator('#veeSay')).toContainText('Ledger (Claude) replied: Got it.');
+  await expect(page.locator('#veeSay')).toContainText(
+    'Ledger (Claude) replied: Got it: the invoice rounding is wrong.',
+  );
 });
 
 test('the dock has the project, Type, the mic, Voice and Gestures, with no message bar', async ({

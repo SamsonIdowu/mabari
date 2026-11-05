@@ -99,9 +99,10 @@ test('conversations list threads and open one', async ({ page }) => {
 test('accounts show connections without pretending to connect', async ({ page }) => {
   await page.goto('/#accounts');
   await expect(page.locator('.chip', { hasText: 'Not connected' })).toHaveCount(3);
-  // The test machine has no Codex CLI, so signing in explains what is missing.
-  await page.getByRole('button', { name: 'Sign in with ChatGPT' }).click();
-  await expect(page.getByText("the Codex CLI isn't installed")).toBeVisible();
+  // The test machine has no Codex CLI, so the card says what is missing, and keeps saying it,
+  // instead of offering a button that fails with a message that fades.
+  await expect(page.getByTestId('codexMissing')).toContainText("Needs the Codex CLI, which isn't");
+  await expect(page.getByRole('button', { name: 'Install the Codex CLI first' })).toBeDisabled();
 });
 
 test('API keys are checked, saved without being shown, and removed', async ({ page }) => {
@@ -123,7 +124,10 @@ test('a hub token is shown once and can be revoked', async ({ page }) => {
   await page.goto('/#accounts');
   await page.getByRole('button', { name: 'Generate a token' }).click();
   await expect(page.getByTestId('hubToken')).toContainText(/^mab_[0-9a-f]{48}$/);
-  await page.getByRole('button', { name: 'Revoke' }).click();
+  // Revoking cuts off every app using the token, so it asks first.
+  await page.getByRole('button', { name: 'Revoke', exact: true }).click();
+  await expect(page.getByTestId('hubConfirm')).toContainText('stop reporting right away');
+  await page.getByRole('button', { name: 'Yes, revoke it' }).click();
   await expect(page.getByTestId('hubToken')).toHaveCount(0);
 });
 

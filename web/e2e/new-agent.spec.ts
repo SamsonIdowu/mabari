@@ -234,8 +234,14 @@ test('with no account the dialog sends you to Accounts', async ({ page, request 
   await page.goto('/#accounts');
   await page.getByRole('button', { name: 'New agent' }).click();
   const form = dialog(page);
-  await expect(form).toContainText('Connect ChatGPT or add an API key first.');
-  await expect(form.getByRole('button', { name: 'Create agent' })).toBeDisabled();
+  // No form that can't succeed: the dialog says what an agent needs, and where to get it.
+  await expect(form).toContainText(
+    'Connect an account first: sign in with ChatGPT or attach Claude Code.',
+  );
+  await expect(form).not.toContainText('API key');
+  await expect(form.getByRole('button', { name: 'Create agent' })).toHaveCount(0);
+  await form.getByRole('link', { name: 'Go to Accounts' }).click();
+  await expect(form).toBeHidden();
 });
 
 test('Mark as complete moves a finished project to Completed, and Reopen undoes it', async ({

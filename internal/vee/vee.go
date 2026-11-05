@@ -140,7 +140,20 @@ var (
 	whatFor   = regexp.MustCompile(`(?i)^.*?\bagent\b\s*(?:that|to|for|which|who|called|named)?\s*`)
 	builder   = regexp.MustCompile(`\b(builder|reusable agents|manage agents|my agents)\b`)
 	newProj   = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
+	// overall is a question about how the whole office is doing, with no agent or topic named:
+	// "how is everything going?", "how are things going?", "how's it going", "is everything ok?".
+	overall = regexp.MustCompile(`\bhow(?:'s|s| is| are| goes)\s+(?:everything|everyone|everybody|things|it|we|all|work|` +
+		`the (?:office|team|work|agents|day)|my (?:agents|team|office|work))\b|` +
+		`\b(?:is|are) (?:everything|everyone|everybody) (?:ok|okay|fine|good|well|alright|on track|going)\b`)
 )
+
+// Suggestions are the questions Mabari offers when it can't tell what a message wants. Each one
+// must be understood, because the page tells people to type exactly these: a test asks them all.
+var Suggestions = []string{"how are things going?", "who needs me?"}
+
+// apostrophes turns the curly apostrophes a phone or a pasted line brings into plain ones, so
+// "how’s it going" matches "how's".
+var apostrophes = strings.NewReplacer("’", "'", "‘", "'", "ʼ", "'")
 
 // shortWords is the most a message can have and still be small talk or a gesture.
 const shortWords = 3
@@ -210,7 +223,7 @@ func (o view) reply(text, gesture string, kind Kind) Reply {
 // IsQuestion reports whether a message is phrased as a question: it ends with "?" or starts the
 // way questions do.
 func IsQuestion(q string) bool {
-	q = strings.TrimSpace(strings.ToLower(q))
+	q = strings.TrimSpace(strings.ToLower(apostrophes.Replace(q)))
 	return strings.HasSuffix(q, "?") || question.MatchString(q)
 }
 
@@ -239,7 +252,7 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 // projects, a task for the dispatcher (Dispatch).
 func AnswerIn(text string, in Office, now time.Time) Reply {
 	office := look(in.Agents, now)
-	q := strings.TrimSpace(strings.ToLower(text))
+	q := strings.TrimSpace(strings.ToLower(apostrophes.Replace(text)))
 	reply, ok := office.passOn(text, q)
 	project, body, nameLength := namedProject(text, open(in.Projects))
 	// An agent's name wins, unless a longer project name starts with it: "tell Shop Admin to …"
@@ -295,14 +308,15 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 			"Claude account.", "point", KindBuilder)
 	case newProj.MatchString(q):
 		return office.reply("The project chat arrives in a later stage, so I can't open it yet.", "shrug", KindPlain)
-	case isQ && has(q, "office", "floor") || q == "office":
+	case isQ && has(q, "office", "floor") && !overall.MatchString(q) || q == "office":
 		return office.reply("Taking you to the office floor.", "point", KindOffice)
 	case named != nil && isQ && has(q, "doing", "working", "status", "how is", "how's", "what is", "what's",
 		"progress", "update", "done", "finished", "up to"):
 		return office.agentStatus(named)
 	case isQ && has(q, "happening", "status", "update", "going on", "summary", "what's up", "whats up",
 		"progress", "catch me up"),
-		isQ && has(q, "who is", "who's", "whos"):
+		isQ && has(q, "who is", "who's", "whos"),
+		isQ && overall.MatchString(q):
 		return asked.status()
 	case isQ && has(q, "claude", "codex", "chatgpt", "gpt", "ai said", "ai say", "asked", "replies", "replied",
 		"responses", "answers"):

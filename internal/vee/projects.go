@@ -192,6 +192,15 @@ func namedProject(text string, projects []*models.Project) (*models.Project, str
 	return nil, "", 0
 }
 
+// suggested lists Suggestions as the fallback offers them: "a" or "b".
+func suggested() string {
+	quoted := make([]string, len(Suggestions))
+	for index, phrase := range Suggestions {
+		quoted[index] = `"` + phrase + `"`
+	}
+	return strings.Join(quoted, " or ")
+}
+
 // looksLikeTask reports whether a message reads as work to hand over: a command, something that
 // starts with a verb, or a few words that aren't a question. "ok" and "are you there?" aren't.
 func looksLikeTask(text string) bool {
@@ -290,7 +299,7 @@ func (o view) forProject(text string, in Office) (*Route, *Reply) {
 	// them over could open a Claude Code window for "ok".
 	if !looksLikeTask(text) {
 		reply := o.reply("I'm not sure what to do with that. Tell me a task and which project it's for, "+
-			"or ask me how things are going.", "shrug", KindPlain)
+			"or ask me "+suggested(), "shrug", KindPlain)
 		return nil, &reply
 	}
 	if in.InView != "" {

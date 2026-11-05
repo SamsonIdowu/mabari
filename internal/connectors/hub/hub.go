@@ -86,7 +86,7 @@ func (c *Connector) Report(event Event) bool {
 		return true
 	}
 	if agent == nil {
-		desk := freeDesk(c.engine)
+		desk := models.FreeDesk(c.engine.Agents(), false, -1)
 		if desk < 0 {
 			return false
 		}
@@ -151,19 +151,6 @@ func (c *Connector) Instructions(id string) []string {
 		}
 		texts = append(texts, instruction.Text)
 	}
-}
-
-func freeDesk(engine *events.Engine) int {
-	used := map[int]bool{}
-	for _, agent := range engine.Agents() {
-		used[agent.Desk] = true
-	}
-	for desk := range models.DeskCount {
-		if !used[desk] {
-			return desk
-		}
-	}
-	return -1
 }
 
 func orDefault(value, fallback string) string {

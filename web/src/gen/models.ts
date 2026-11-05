@@ -2,6 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //////////
+// source: desks.go
+
+/**
+ * BaseGrid is how many desks a side the grid has before it grows, as in the prototype.
+ */
+export const BaseGrid = 4;
+/**
+ * MaxDesks caps the seats in each area, desks and benches, only to bound memory.
+ */
+export const MaxDesks = 96;
+/**
+ * BenchColumns is how many seats a row of benches has.
+ */
+export const BenchColumns = 4;
+/**
+ * BenchPitchX is the space between bench seats in a row, in world pixels.
+ */
+export const BenchPitchX = 160;
+/**
+ * BenchPitchY is the space between rows of benches, in world pixels.
+ */
+export const BenchPitchY = 112;
+
+//////////
 // source: estimate.go
 
 /**
@@ -21,15 +45,13 @@ export interface Estimate {
 // source: logic.go
 
 /**
- * Limits from the prototype.
- */
-export const DeskCount = 16;
-/**
- * Limits from the prototype.
+ * Limits from the prototype. MaxSubagents caps a planned team and the demo's simulated helpers;
+ * real subagents are never turned away. The desks are in desks.go.
  */
 export const MaxSubagents = 3;
 /**
- * Limits from the prototype.
+ * Limits from the prototype. MaxSubagents caps a planned team and the demo's simulated helpers;
+ * real subagents are never turned away. The desks are in desks.go.
  */
 export const FeedLimit = 40;
 /**
@@ -277,6 +299,17 @@ export interface Agent {
    * DefID is the agent definition it was started from, or empty.
    */
   defId: string;
+  /**
+   * Workflow marks a workflow sub-agent: one not started from an agent definition file, such
+   * as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
+   * or a subagent whose type matches no loaded definition.
+   */
+  workflow: boolean;
+  /**
+   * Bench seats the agent in the workflow sub-agents' area, where Desk counts bench seats. A
+   * workflow lead sits there, and its subagents sit with it.
+   */
+  bench: boolean;
 }
 /**
  * SessionState is what an agent is doing and how far along it is.
@@ -293,7 +326,12 @@ export interface SessionState {
    */
   rate: number /* float64 */;
   /**
-   * Estimate is null unless the agent is working. See EstimateFor.
+   * Working is true while the agent is at work, as opposed to waiting or finished. It counts
+   * agents that report no progress rate, such as Claude Code sessions.
+   */
+  working: boolean;
+  /**
+   * Estimate is null unless the agent is working and reports a rate. See EstimateFor.
    */
   estimate: Estimate | null;
   /**

@@ -28,19 +28,24 @@ function greeting(hour: number) {
 function Summary({ office }: { office: Snapshot }) {
   const { agents } = office;
   if (!agents.length) return <p id="homeSum">No agents yet</p>;
-  const working = agents.filter((agent) => agent.estimate);
+  // Working comes from the server, so sessions that report no progress rate, such as Claude
+  // Code's, count too. Only agents with an estimate say when they will be done.
+  const working = agents.filter((agent) => agent.working);
+  const workflow = working.filter((agent) => agent.workflow).length;
+  const estimated = agents.filter((agent) => agent.estimate);
   const need = agents.filter((a) => a.state === 'approval' || a.state === 'error').length;
-  const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
+  const finish = Math.max(0, ...estimated.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
     <p id="homeSum">
       {working.length} working
+      {workflow ? ` (${workflow} workflow sub-agent${workflow === 1 ? '' : 's'})` : ''}
       {need ? (
         <>
           {' · '}
           <b style={{ color: 'var(--red)' }}>{need} need you</b>
         </>
       ) : null}
-      {working.length ? ` · done around ${clockText(finish)}` : ''}
+      {estimated.length ? ` · done around ${clockText(finish)}` : ''}
     </p>
   );
 }
@@ -129,8 +134,9 @@ function Lines({ reply }: { reply: VeeReply }) {
             <button type="button" className="linkbtn" onClick={() => openAgentById(line.agentId)}>
               <Dot hue={line.hue} />
               <b>{line.name}</b>
-            </button>{' '}
-            {line.state}: {line.task}
+            </button>
+            {line.label ? <span className="muted"> · {line.label}</span> : null} {line.state}:{' '}
+            {line.task}
             {line.estimate ? (
               <span className="muted"> ({shortMinutes(line.estimate.secondsLeft)})</span>
             ) : null}

@@ -456,6 +456,11 @@ section[data-screen='home'] {
 .ovl.far .bub:not(.red):not(.reply) {
   display: none;
 }
+/* a big floor drawn very small: names only, so tags don't run into each other */
+.ovl.tiny .tag small,
+.ovl.tiny .tag em {
+  display: none;
+}
 /* office full screen: hide everything but the floor, the command bar, the agent panel and dialogs */
 body.ofs .app {
   grid-template-columns: minmax(0, 1fr) !important;

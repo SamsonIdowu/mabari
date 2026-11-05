@@ -127,7 +127,7 @@ export function openThread(key: string): void {
   window.location.hash = '#conversations';
 }
 
-const working = (agent: LiveAgent) => agent.estimate !== null;
+const working = (agent: LiveAgent) => agent.working;
 
 export function needsYou(agent: LiveAgent): boolean {
   return agent.state === 'approval' || agent.state === 'error' || (agent.queued?.length ?? 0) > 0;

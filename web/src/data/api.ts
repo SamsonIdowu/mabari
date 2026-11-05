@@ -122,6 +122,8 @@ export interface VeeLine {
   agentId: string;
   name: string;
   hue: string;
+  /** What kind of agent it is, shown after the name, such as "workflow sub-agent", or empty. */
+  label: string;
   state: string;
   task: string;
   estimate: Estimate | null;

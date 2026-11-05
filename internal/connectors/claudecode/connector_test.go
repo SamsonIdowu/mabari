@@ -472,6 +472,115 @@ func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
 	}
 }
 
+// A session not started from an agent definition is a workflow sub-agent, seated at the
+// workflow benches, and so is a subagent whose type matches no loaded definition. A subagent
+// whose type names a Claude definition, the project's before the account's, is linked to it.
+func TestWorkflowSubAgentsAreToldApartFromDefinedAgents(t *testing.T) {
+	c, engine := newConnector(t)
+	_ = engine.Do(func() {
+		engine.SaveProject(models.Project{ID: "p1", Name: "Shop", Repository: &models.Repository{Path: "/home/me/shop"}})
+		engine.SetDefs([]models.AgentDef{
+			{ID: "account:code-reviewer", Kind: models.DefClaude, Name: "code-reviewer", Scope: models.DefAccount},
+			{ID: "project:p1:code-reviewer", Kind: models.DefClaude, Name: "code-reviewer", Scope: models.DefProject, ProjectID: "p1"},
+			{ID: "codex:account:tester", Kind: models.DefCodex, Name: "tester", Scope: models.DefAccount},
+		})
+	})
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Fix the build"})
+	lead := agentOf(t, engine)
+	if !lead.Workflow || !lead.Bench || lead.DefID != "" || lead.Desk != 0 {
+		t.Fatalf("lead = %+v", lead.Agent)
+	}
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "code-reviewer"})
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a2", "agent_type": "general-purpose"})
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a3", "agent_type": "tester"})
+	var reviewer, general, tester *models.LiveAgent
+	_ = engine.Do(func() {
+		reviewer, general, tester = engine.Agent("cc-abc-123-a1"), engine.Agent("cc-abc-123-a2"), engine.Agent("cc-abc-123-a3")
+	})
+	if reviewer.Workflow || reviewer.DefID != "project:p1:code-reviewer" || !reviewer.Bench {
+		t.Errorf("reviewer = %+v", reviewer.Agent)
+	}
+	// A Codex file of the same name isn't what a Claude Code subagent runs.
+	for _, helper := range []*models.LiveAgent{general, tester} {
+		if !helper.Workflow || helper.DefID != "" || !helper.Bench {
+			t.Errorf("%s = %+v", helper.Name, helper.Agent)
+		}
+	}
+	// Subagents sit beside their lead at the benches.
+	if reviewer.Desk != 1 || general.Desk != 2 || tester.Desk != 3 {
+		t.Errorf("bench seats = %d, %d, %d", reviewer.Desk, general.Desk, tester.Desk)
+	}
+}
+
+// A session started with `claude --agent <name>` runs that definition, so it takes a desk, and
+// the account's file counts when the project has none.
+func TestASessionStartedWithAnAgentTakesADesk(t *testing.T) {
+	c, engine := newConnector(t)
+	_ = engine.Do(func() {
+		engine.SetDefs([]models.AgentDef{{ID: "account:planner", Name: "planner", Scope: models.DefAccount}})
+	})
+	hook(t, c, "SessionStart", map[string]any{"agent_type": "planner"})
+	agent := agentOf(t, engine)
+	if agent.Workflow || agent.Bench || agent.DefID != "account:planner" {
+		t.Errorf("agent = %+v", agent.Agent)
+	}
+	// Its general-purpose helper is a workflow sub-agent, at the desk just below it.
+	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "general-purpose"})
+	var helper *models.LiveAgent
+	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-a1") })
+	if !helper.Workflow || helper.Bench || helper.Desk != 4 {
+		t.Errorf("helper = %+v", helper.Agent)
+	}
+}
+
+// Every subagent is shown, however many a session starts, and sessions past the first sixteen
+// still appear.
+func TestEverySessionAndSubagentIsShown(t *testing.T) {
+	c, engine := newConnector(t)
+	for n := range 20 {
+		body, _ := json.Marshal(map[string]any{"session_id": "s" + strconv.Itoa(n), "cwd": "/home/me/shop", "hook_event_name": "SessionStart"})
+		c.Handle(context.Background(), body)
+	}
+	for n := range 6 {
+		body, _ := json.Marshal(map[string]any{"session_id": "s0", "cwd": "/home/me/shop", "hook_event_name": "SubagentStart",
+			"agent_id": "a" + strconv.Itoa(n), "agent_type": "Explore"})
+		c.Handle(context.Background(), body)
+	}
+	agents := engine.Snapshot().Agents
+	if len(agents) != 26 {
+		t.Fatalf("%d agents on the floor, want 26", len(agents))
+	}
+	seats := map[int]bool{}
+	for _, agent := range agents {
+		if !agent.Bench || seats[agent.Desk] {
+			t.Errorf("%s at bench %v seat %d", agent.Name, agent.Bench, agent.Desk)
+		}
+		seats[agent.Desk] = true
+	}
+}
+
+// A session saved by an earlier version moves to the workflow benches, with its subagents.
+func TestTidyNamesSeatsOldSessionsAtTheBenches(t *testing.T) {
+	c, engine := newConnector(t)
+	_ = engine.Do(func() {
+		lead := &models.LiveAgent{}
+		lead.ID, lead.Name, lead.Source, lead.Desk, lead.Folder = "cc-old", "Shop", Source, 4, "/home/me/shop"
+		engine.AddAgent(lead)
+		helper := &models.LiveAgent{}
+		helper.ID, helper.Name, helper.Source, helper.Desk, helper.Lead = "cc-old-a1", "Explore 2", Source, 5, &lead.ID
+		engine.AddAgent(helper)
+		c.TidyNames()
+	})
+	var lead, helper *models.LiveAgent
+	_ = engine.Do(func() { lead, helper = engine.Agent("cc-old"), engine.Agent("cc-old-a1") })
+	if !lead.Workflow || !lead.Bench || lead.Desk != 0 {
+		t.Errorf("lead = %+v", lead.Agent)
+	}
+	if !helper.Workflow || !helper.Bench || helper.Desk != 1 {
+		t.Errorf("helper = %+v", helper.Agent)
+	}
+}
+
 // The first assistant message after an instruction from Mabari is its reply, relayed as it
 // streams rather than at Stop. Messages from before the instruction, and from subagents, aren't.
 func TestTheFirstStreamedMessageAfterAnInstructionIsTheReply(t *testing.T) {

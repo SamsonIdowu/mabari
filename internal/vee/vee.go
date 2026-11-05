@@ -41,8 +41,11 @@ type Line struct {
 	AgentID string `json:"agentId"`
 	Name    string `json:"name"`
 	Hue     string `json:"hue"`
-	State   string `json:"state"`
-	Task    string `json:"task"`
+	// Label says what kind of agent it is, shown after the name: "workflow sub-agent" for one not
+	// started from an agent definition file, or empty.
+	Label string `json:"label"`
+	State string `json:"state"`
+	Task  string `json:"task"`
 	// Estimate is nil unless the agent is working.
 	Estimate *models.Estimate `json:"estimate"`
 	// Summary says what the agent needs from the user.
@@ -558,9 +561,16 @@ func (o view) status() Reply {
 	return reply
 }
 
+// WorkflowLabel is how Mabari's lines name a workflow sub-agent.
+const WorkflowLabel = "workflow sub-agent"
+
 func (o view) line(agent *models.LiveAgent) Line {
+	label := ""
+	if agent.Workflow {
+		label = WorkflowLabel
+	}
 	return Line{
-		AgentID: agent.ID, Name: agent.Name, Hue: agent.Hue,
+		AgentID: agent.ID, Name: agent.Name, Hue: agent.Hue, Label: label,
 		State:    strings.ToLower(models.StateLabels[agent.State]),
 		Task:     agent.Task,
 		Estimate: estimate(agent, o.now),

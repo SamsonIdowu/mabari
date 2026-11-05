@@ -385,9 +385,15 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 		return a.realRunner(plan.Account), ""
 	}
 	if !realClaude {
-		free := models.DeskCount - len(a.engine.Agents())
+		// The desk grid grows with the team, up to MaxDesks.
+		free := models.MaxDesks
+		for _, agent := range a.engine.Agents() {
+			if !agent.Bench {
+				free--
+			}
+		}
 		if free < 1 {
-			return "Every desk is taken. Stop an agent to make room.", ""
+			return "The office is full. Stop an agent to make room.", ""
 		}
 		if free < len(team)+1 {
 			team = team[:free-1]

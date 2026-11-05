@@ -21,6 +21,7 @@ const agent = (overrides: Partial<LiveAgent> = {}) =>
     state: 'editing',
     leadId: null,
     estimate: { secondsLeft: 60 } as Estimate,
+    working: true,
     queued: [],
     ...overrides,
   }) as LiveAgent;
@@ -69,9 +70,12 @@ describe('matches', () => {
     expect(matches(agent(), filters({ status: 'needs' }))).toBe(false);
   });
 
-  it('treats agents with an estimate as working', () => {
+  it('treats agents the server says are working as working, with or without an estimate', () => {
     expect(matches(agent(), filters({ status: 'active' }))).toBe(true);
-    expect(matches(agent({ estimate: null }), filters({ status: 'active' }))).toBe(false);
+    expect(matches(agent({ estimate: null }), filters({ status: 'active' }))).toBe(true);
+    expect(matches(agent({ working: false, estimate: null }), filters({ status: 'active' }))).toBe(
+      false,
+    );
   });
 });
 

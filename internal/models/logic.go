@@ -13,9 +13,9 @@ import (
 	"unicode/utf8"
 )
 
-// Limits from the prototype.
+// Limits from the prototype. MaxSubagents caps a planned team and the demo's simulated helpers;
+// real subagents are never turned away. The desks are in desks.go.
 const (
-	DeskCount    = 16
 	MaxSubagents = 3
 	FeedLimit    = 40
 )
@@ -102,9 +102,10 @@ func CostOf(tokensIn, tokensOut int64, model string) float64 {
 	return float64(tokensIn+tokensOut) / 1000 * prices[model]
 }
 
-// Refresh recomputes the session's derived fields: cost, estimate and speech bubble.
+// Refresh recomputes the session's derived fields: cost, working, estimate and speech bubble.
 func (a *LiveAgent) Refresh(now time.Time) {
 	a.Cost = CostOf(a.TokensIn, a.TokensOut, a.Model)
+	a.Working = a.State.Active()
 	a.Estimate = EstimateFor(a.State, a.Progress, a.Rate, now)
 	a.Bubble, a.BubbleKind = bubbleFor(a, now.UnixMilli())
 }

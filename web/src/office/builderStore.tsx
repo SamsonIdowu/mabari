@@ -43,6 +43,12 @@ function goToBuilder() {
   if (window.location.hash !== '#builder') window.location.hash = '#builder';
 }
 
+/** Opens the builder with one agent's tile open, as when it is clicked in the lounge. */
+export function openDef(id: string) {
+  useBuilder.getState().set({ open: id, filter: 'all', query: '' });
+  goToBuilder();
+}
+
 /** Mabari's agent-creator skill: opens the build dialog with a draft, or asks what to draft. */
 export function mabariCreate(text: string) {
   goToBuilder();

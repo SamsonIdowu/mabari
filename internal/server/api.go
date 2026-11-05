@@ -471,7 +471,7 @@ func (body *newAgentBody) check() string {
 		return "That working folder path doesn't look right."
 	case body.DailyCostCap < 0:
 		return "The daily cost cap must be zero or more."
-	case body.Desk != nil && (*body.Desk < 0 || *body.Desk >= models.DeskCount):
+	case body.Desk != nil && (*body.Desk < 0 || *body.Desk >= models.MaxDesks):
 		return "That desk doesn't exist."
 	}
 	return ""

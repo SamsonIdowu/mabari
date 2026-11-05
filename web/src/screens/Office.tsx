@@ -4,6 +4,7 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
+import { openDef } from '../office/builderStore.tsx';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
@@ -42,10 +43,13 @@ const WHEEL_STEP = 40;
 const WHEEL_GAP_MS = 120;
 
 function Summary({ scoped }: { scoped: LiveAgent[] }) {
-  const working = scoped.filter((agent) => agent.estimate);
+  // Working comes from the server, so agents that report no progress rate count too. Only those
+  // with an estimate say when they will be done.
+  const working = scoped.filter((agent) => agent.working);
+  const estimated = scoped.filter((agent) => agent.estimate);
   const need = scoped.filter(needsYou).length;
   const held = scoped.filter((a) => a.state === 'approval' || a.state === 'paused').length;
-  const seconds = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
+  const seconds = Math.max(0, ...estimated.map((agent) => agent.estimate?.secondsLeft ?? 0));
   return (
     <span className="help" id="officeClock">
       {scoped.length} agent{scoped.length === 1 ? '' : 's'} · {working.length} working
@@ -57,7 +61,7 @@ function Summary({ scoped }: { scoped: LiveAgent[] }) {
           </b>
         </>
       ) : null}
-      {working.length ? (
+      {estimated.length ? (
         <>
           {' · '}
           <span
@@ -745,12 +749,17 @@ function Stage({ office }: { office: Snapshot }) {
       });
     } else {
       set({ selected: null, follow: false });
+      // An agent file resting in the lounge opens in the builder.
+      const def = scene.current.restingAt(pointIn(event));
+      if (def) openDef(def.id);
     }
   };
 
   const hover = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!scene.current) return;
-    event.currentTarget.style.cursor = scene.current.hit(pointIn(event)) ? 'pointer' : '';
+    const point = pointIn(event);
+    const clickable = scene.current.hit(point) || scene.current.restingAt(point);
+    event.currentTarget.style.cursor = clickable ? 'pointer' : '';
   };
 
   return (

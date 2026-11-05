@@ -71,6 +71,29 @@ describe('relay', () => {
     expect(stillWaiting({ agents: [] } as unknown as Snapshot, relay)).toBe(false);
   });
 
+  it('stops waiting when the instruction is taken back before delivery', () => {
+    const queued = { agents: [agent({ queued: [instruction('i1', 'add tests')] })] } as Snapshot;
+    expect(stillWaiting(queued, relay)).toBe(true);
+    expect(stillWaiting({ agents: [agent({})] } as Snapshot, relay)).toBe(false);
+  });
+
+  it('follows a prompt Claude Code opened with to the session that took it', () => {
+    const opening = { ...relay, agentId: '', agent: 'Claude Code in Shop' };
+    const waiting = {
+      agents: [],
+      projects: [{ id: 'p1', opening: [instruction('i1', '/review')] }],
+    } as unknown as Snapshot;
+    expect(stillWaiting(waiting, opening)).toBe(true);
+    const taken = {
+      agents: [agent({ asked: [instruction('i1', '/review', { reply: 'Looks good.' })] })],
+      projects: [{ id: 'p1', opening: [] }],
+    } as unknown as Snapshot;
+    expect(stillWaiting(taken, opening)).toBe(true);
+    expect(replyFor(taken, opening)?.reply).toBe('Looks good.');
+    const dropped = { agents: [], projects: [{ id: 'p1', opening: [] }] } as unknown as Snapshot;
+    expect(stillWaiting(dropped, opening)).toBe(false);
+  });
+
   it('says who replied and with which AI, and clips a long reply at a word', () => {
     expect(relayLine(relay, 'Added 4 tests.').text).toBe('Ledger (Claude) replied: Added 4 tests.');
     const long = relayLine(relay, 'word '.repeat(200));
@@ -89,7 +112,9 @@ describe('promptCards', () => {
     const cards = promptCards(
       [
         agent({
-          queued: [instruction('q1', 'later', { time: NOW - 1000, status: 'waiting' })],
+          queued: [
+            instruction('q1', 'later', { time: NOW - 1000, status: 'waiting_for_checkpoint' }),
+          ],
           asked: [
             instruction('i1', 'first', { time: NOW - 4000 }),
             instruction('i2', 'second', { time: NOW - 3000, reply: 'Done.', repliedAt: NOW - 100 }),

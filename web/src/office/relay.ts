@@ -5,7 +5,10 @@ import type { Instruction, LiveAgent, Snapshot } from '../gen/models.ts';
 
 /** What Mabari watches after passing an instruction on. Mirrors internal/vee.Relay. */
 export interface Relay {
-  /** The agent that holds the instruction: the agent itself, or a Claude Code subagent's lead. */
+  /**
+   * The agent that holds the instruction: the agent itself, or a Claude Code subagent's lead.
+   * Empty while Claude Code is opening with it, until a session in the project takes it.
+   */
   agentId: string;
   instructionId: string;
   /** Who answers and with which AI, for "Ledger (Claude) replied: …". */
@@ -35,16 +38,33 @@ export function clipWords(text: string, limit: number): string {
   return `${(space > limit * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:]+$/, '')}…`;
 }
 
+/** Who holds a relayed instruction now: its agent, or any agent once an opened session took it. */
+function holderOf(office: Snapshot | null, relay: Relay): LiveAgent | undefined {
+  const agents = office?.agents ?? [];
+  if (relay.agentId) return agents.find((item) => item.id === relay.agentId);
+  return agents.find((item) => item.asked?.some((asked) => asked.id === relay.instructionId));
+}
+
 /** The reply to a relayed instruction, once the agent has given one. */
 export function replyFor(office: Snapshot | null, relay: Relay): Instruction | null {
-  const agent = office?.agents.find((item) => item.id === relay.agentId);
-  const asked = agent?.asked?.find((item) => item.id === relay.instructionId);
+  const asked = holderOf(office, relay)?.asked?.find((item) => item.id === relay.instructionId);
   return asked?.reply ? asked : null;
 }
 
-/** False once the agent holding the instruction has left, so nothing will ever answer it. */
+/**
+ * False once nothing will ever answer: the instruction was taken back before delivery, or the
+ * agent holding it has left.
+ */
 export function stillWaiting(office: Snapshot | null, relay: Relay): boolean {
-  return !!office?.agents.some((item) => item.id === relay.agentId);
+  const id = relay.instructionId;
+  const opening = office?.projects?.some((project) =>
+    project.opening?.some((item) => item.id === id),
+  );
+  if (!relay.agentId) return !!opening || !!holderOf(office, relay);
+  const agent = holderOf(office, relay);
+  return (
+    !!agent && [...(agent.queued ?? []), ...(agent.asked ?? [])].some((item) => item.id === id)
+  );
 }
 
 export function relayLine(relay: Relay, reply: string) {

@@ -57,9 +57,16 @@ interface VeeStore {
   onHome: boolean;
   /** Mabari's latest messages, newest last, for the updates button in full screen. */
   updates: MabariUpdate[];
+  /**
+   * The project messages go to: a project id, "any" for any agent in the office, or empty to let
+   * Mabari choose from its map of the projects and ask when it can't tell.
+   */
+  project: string;
+  setProject: (project: string) => void;
   play: (name: string) => void;
   say: (reply: VeeReply, queued?: boolean) => void;
-  hear: (text: string) => Promise<void>;
+  /** Sends a message, to the project given or else the one picked next to the box. */
+  hear: (text: string, project?: string) => Promise<void>;
   setOnHome: (on: boolean) => void;
   /** Mabari posts an update in the Home chat, read aloud with Voice on, counted when elsewhere. */
   post: (text: string, gesture?: string) => void;
@@ -139,6 +146,17 @@ function fail(error: Error): VeeReply {
 let ackAt = 0;
 const relaying = new Set<string>();
 
+/** Where the project picked next to the box is remembered, in this browser only. */
+const PROJECT_KEY = 'mabari.vee.project';
+
+function savedProject(): string {
+  try {
+    return globalThis.localStorage?.getItem(PROJECT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export const useVee = create<VeeStore>((set, get) => ({
   state: 'idle',
   said: VEE_HELLO,
@@ -148,6 +166,15 @@ export const useVee = create<VeeStore>((set, get) => ({
   relays: [],
   unread: 0,
   onHome: false,
+  project: savedProject(),
+  setProject: (project) => {
+    set({ project });
+    try {
+      globalThis.localStorage?.setItem(PROJECT_KEY, project);
+    } catch {
+      // Remembering the choice is a convenience; without storage it lasts until a reload.
+    }
+  },
   updates: [],
   play: (name) => {
     const gesture = VEE_GESTURES[name];
@@ -173,10 +200,10 @@ export const useVee = create<VeeStore>((set, get) => ({
   },
   // No pause and no model: the server answers from the office and the dispatcher's own scoring,
   // so the acknowledgement shows as soon as it comes back.
-  hear: async (text) => {
+  hear: async (text, project) => {
     set({ heard: text, state: 'think' });
     try {
-      const result = await api.vee(text);
+      const result = await api.vee(text, project ?? get().project);
       ackAt = Date.now();
       get().say(builderReply(result.reply));
       if (result.message) showResult(result.message, text);

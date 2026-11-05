@@ -171,8 +171,37 @@ function Replies({ reply }: { reply: VeeReply }) {
   );
 }
 
+/** Mabari couldn't tell which project a message is for, so it asks, with a button for each. */
+function PickProject({ reply }: { reply: VeeReply }) {
+  const hear = useVee((state) => state.hear);
+  const target = reply.target ?? '';
+  return (
+    <>
+      <p>{reply.text}</p>
+      <p className="pickproj">
+        {(reply.projects ?? []).map((project) => (
+          <button
+            type="button"
+            className="btn sm"
+            key={project.id}
+            onClick={() => void hear(target, project.id)}
+          >
+            <span className="pdot" style={{ background: project.color }} />
+            {project.name}
+          </button>
+        ))}
+        <button type="button" className="btn sm ghost" onClick={() => void hear(target, 'any')}>
+          Any free agent
+        </button>
+      </p>
+    </>
+  );
+}
+
 function Said({ reply }: { reply: VeeReply }) {
   switch (reply.kind) {
+    case 'pickProject':
+      return <PickProject reply={reply} />;
     case 'needs':
     case 'when':
     case 'status':
@@ -437,8 +466,68 @@ function useHomeMic(setText: (text: string) => void, send: (text: string) => voi
 /** The message box starts at one line and grows with what is typed, up to this many pixels. */
 const BOX_MAX_PX = 120;
 
+/** The projects a message can go to, picked next to the box. */
+function ProjectMenu({ close }: { close: () => void }) {
+  const projects = useOfficeStore((state) => state.office?.projects ?? []).filter(
+    (project) => !project.done,
+  );
+  const picked = useVee((state) => state.project);
+  const setProject = useVee((state) => state.setProject);
+  useEscape(close);
+  const choose = (project: string) => {
+    setProject(project);
+    close();
+  };
+  return (
+    <div className="menu up" id="projMenu">
+      <div className="gmhead">Send messages to</div>
+      <button
+        type="button"
+        className={picked === '' ? 'mi on' : 'mi'}
+        aria-pressed={picked === ''}
+        onClick={() => choose('')}
+      >
+        Let Mabari pick the project
+      </button>
+      {projects.map((project) => (
+        <button
+          type="button"
+          key={project.id}
+          className={picked === project.id ? 'mi on' : 'mi'}
+          aria-pressed={picked === project.id}
+          onClick={() => choose(project.id)}
+        >
+          <span className="pdot" style={{ background: project.color }} />
+          {project.name}
+        </button>
+      ))}
+      <button
+        type="button"
+        className={picked === 'any' ? 'mi on' : 'mi'}
+        aria-pressed={picked === 'any'}
+        onClick={() => choose('any')}
+      >
+        Any free agent
+      </button>
+    </div>
+  );
+}
+
+/** Which project messages go to, as the chip next to the box shows it. */
+function useProjectLabel(): { label: string; color: string } {
+  const picked = useVee((state) => state.project);
+  const project = useOfficeStore((state) =>
+    state.office?.projects.find((item) => item.id === picked && !item.done),
+  );
+  if (project) return { label: project.name, color: project.color };
+  if (picked === 'any') return { label: 'Any agent', color: '' };
+  return { label: 'Mabari picks', color: '' };
+}
+
 function ChatBox({ spoken }: { spoken: boolean }) {
   const hear = useVee((state) => state.hear);
+  const [projects, setProjects] = useState(false);
+  const to = useProjectLabel();
   const [text, setText] = useState('');
   const [gestures, setGestures] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -486,6 +575,24 @@ function ChatBox({ spoken }: { spoken: boolean }) {
           </Icon>
         </button>
         {gestures ? <GestureMenu close={() => setGestures(false)} /> : null}
+      </div>
+      <div className="ddwrap">
+        <button
+          type="button"
+          className="h2proj"
+          id="hcProject"
+          aria-label={`Send to: ${to.label}`}
+          title="Which project messages go to"
+          aria-expanded={projects}
+          onClick={() => setProjects(!projects)}
+        >
+          {to.color ? <span className="pdot" style={{ background: to.color }} /> : null}
+          <span className="h2projname">{to.label}</span>
+          <Icon>
+            <path d="M7 10l5 5 5-5" />
+          </Icon>
+        </button>
+        {projects ? <ProjectMenu close={() => setProjects(false)} /> : null}
       </div>
       <label className="sr" htmlFor="hcText">
         Message Mabari

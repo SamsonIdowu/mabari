@@ -146,7 +146,8 @@ test('dispatches anything else at once and relays the reply when it lands', asyn
   const started = Date.now();
   await box.press('Enter');
   const say = page.locator('#veeSay');
-  await expect(say).toContainText('On it, sent to Ledger (Claude).');
+  // Mabari works out the project from what its agents do, then the agent there.
+  await expect(say).toContainText('On it, sent to Ledger (Claude) in Checkout revamp.');
   await expect(say).toContainText("I'll read you the reply the moment it lands.");
   // Generous for a browser round trip; the server's own budget is checked in Go.
   expect(Date.now() - started).toBeLessThan(1500);
@@ -159,9 +160,14 @@ test('dispatches anything else at once and relays the reply when it lands', asyn
 
 test('commands that look like questions or gestures are dispatched', async ({ page, request }) => {
   await home(page, request);
-  for (const text of ['update the README', 'finish the login page', 'Point the API to staging']) {
+  // Each goes to the project it fits, or Mabari asks which project.
+  for (const [text, said] of [
+    ['update the README', 'On it, sent to Rune (ChatGPT) in Docs site.'],
+    ['finish the login page', 'Which project is this for?'],
+    ['Point the API to staging', 'On it, sent to '],
+  ] as const) {
     await ask(page, text);
-    await expect(page.locator('#veeSay')).toContainText('On it, sent to ');
+    await expect(page.locator('#veeSay')).toContainText(said);
   }
 });
 

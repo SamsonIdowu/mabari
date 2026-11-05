@@ -17,6 +17,7 @@ import type { LiveAgent, Project } from '../gen/models.ts';
 import { openAgent, useOfficeUi } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
+import { ProjectChat } from './ProjectChat.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
@@ -338,8 +339,17 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
             Mark as complete
           </button>
         ) : null}
+        {done ? null : (
+          <button
+            type="button"
+            className={canComplete ? 'btn sm' : 'btn sm primary'}
+            onClick={() => useOfficeUi.getState().set({ projectChat: project.id })}
+          >
+            Chat
+          </button>
+        )}
         <a
-          className={done || canComplete ? 'btn sm' : 'btn sm primary'}
+          className="btn sm"
           href="#office"
           onClick={() => useOfficeUi.getState().set({ project: project.id, team: null })}
         >
@@ -422,7 +432,9 @@ type Filter = 'all' | 'open' | 'done';
 export function Projects() {
   const office = useOfficeStore((state) => state.office);
   const [filter, setFilter] = useState<Filter>('all');
+  const chatting = useOfficeUi((state) => state.projectChat);
   if (!office) return null;
+  const chat = office.projects.find((project) => project.id === chatting);
 
   const projects = office.projects;
   const done = projects.filter((project) => !isOpen(project)).length;
@@ -510,6 +522,13 @@ export function Projects() {
           </div>
         )}
       </div>
+      {chat ? (
+        <ProjectChat
+          key={chat.id}
+          project={chat}
+          close={() => useOfficeUi.getState().set({ projectChat: null })}
+        />
+      ) : null}
     </section>
   );
 }

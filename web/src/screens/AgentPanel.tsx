@@ -483,8 +483,21 @@ function Banners({ agent }: { agent: LiveAgent }) {
           </b>
           <span>
             {agent.queued.map((item) => (
-              <span key={item.id} style={{ display: 'block' }}>
-                “{item.text}”
+              <span key={item.id} className="qitem">
+                <span>“{item.text}”</span>
+                <button
+                  type="button"
+                  className="linkbtn"
+                  aria-label={`Remove “${item.text.slice(0, 40)}” before it is delivered`}
+                  title="Take it back. It won't be delivered."
+                  onClick={() =>
+                    void api
+                      .removeInstruction(item.id)
+                      .catch((error: Error) => useOfficeStore.getState().toast(error.message))
+                  }
+                >
+                  Remove
+                </button>
               </span>
             ))}
           </span>

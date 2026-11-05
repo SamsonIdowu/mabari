@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from 'react';
+import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clipWords, promptCards, type PromptCard } from '../office/relay.ts';
 import { usePromptTray, type QueryCard } from '../office/trayStore.ts';
@@ -90,6 +91,20 @@ export function PromptTray() {
             </button>
           </div>
           <div className="ptq">{card.text}</div>
+          {card.status === 'queued' && !card.query ? (
+            <button
+              type="button"
+              className="linkbtn ptrm"
+              aria-label={`Remove “${card.text.slice(0, 40)}” before it is delivered`}
+              onClick={() =>
+                void api
+                  .removeInstruction(card.id)
+                  .catch((error: Error) => useOfficeStore.getState().toast(error.message))
+              }
+            >
+              Remove
+            </button>
+          ) : null}
           {card.reply ? <div className="ptr">{clipWords(card.reply, CARD_REPLY)}</div> : null}
         </div>
       ))}

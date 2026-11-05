@@ -147,7 +147,8 @@ export interface VeeReply {
     | 'replies'
     | 'relayed'
     | 'improve'
-    | 'builder';
+    | 'builder'
+    | 'pickProject';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
@@ -157,10 +158,30 @@ export interface VeeReply {
   target?: string;
   /** Set when Mabari passed an instruction on and will relay the reply. */
   relay: Relay | null;
+  /** The project a message went to. */
+  project?: ProjectChoice | null;
+  /** The choices when Mabari asks which project a message is for. */
+  projects?: ProjectChoice[] | null;
   /** What is read aloud, when it differs from the text. */
   spoken?: string;
   /** A relayed reply too long for the bubble names its agent, to read the rest there. */
   agentId?: string | undefined;
+}
+
+/** A project as Mabari's replies show it. Mirrors internal/vee.ProjectChoice. */
+export interface ProjectChoice {
+  id: string;
+  name: string;
+  color: string;
+  folder: string;
+}
+
+/** Where a project message went. Mirrors internal/server.projectSendResult. */
+export interface ProjectSendResult {
+  notice: string;
+  agentId: string;
+  instructionId: string;
+  opened: boolean;
 }
 
 export interface VeeResult {
@@ -310,6 +331,15 @@ export const api = {
   /** Opens Claude Code in the project's folder, in a terminal on this computer. */
   openProjectClaude: (id: string, prompt = '') =>
     send<{ notice: string }>('POST', `/api/projects/${id}/claude`, { prompt }),
+  /**
+   * Passes a message to a project: to the agent there that can take it, or to Claude Code opened
+   * in the project's folder with it. Slash commands always open Claude Code, which runs them.
+   */
+  sendToProject: (id: string, text: string) =>
+    send<ProjectSendResult>('POST', `/api/projects/${id}/send`, { text }),
+  /** Takes back an instruction before it is delivered. */
+  removeInstruction: (id: string) =>
+    send<unknown>('DELETE', `/api/instructions/${encodeURIComponent(id)}`),
   previewDispatch: (text: string, scope: Scope) =>
     send<{ decision: Decision | null }>('POST', '/api/dispatch/preview', { text, ...scope }),
   sendMessage: (text: string, mode: MessageMode, target: string, scope: Scope) =>
@@ -318,7 +348,8 @@ export const api = {
     send<{ applied: boolean }>('POST', `/api/approvals/${id}/decision`, { decision }),
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
-  vee: (text: string) => send<VeeResult>('POST', '/api/vee', { text }),
+  /** projectId is the project picked next to the box, "any", or empty for Mabari to choose. */
+  vee: (text: string, projectId = '') => send<VeeResult>('POST', '/api/vee', { text, projectId }),
   agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
   createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),

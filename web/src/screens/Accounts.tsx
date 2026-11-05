@@ -11,6 +11,8 @@ import { PageHead } from './parts.tsx';
 
 /** How to install the Codex CLI: the npm package Mabari is tested with (docs/INTEGRATIONS.md). */
 const CODEX_INSTALL = 'npm install -g @openai/codex';
+// The guide lives in the repository, which a person running only the program doesn't have.
+const HUB_API_GUIDE = 'https://github.com/SamsonIdowu/mabari/blob/main/docs/HUB_API.md';
 
 function StatusChip({ status, demo }: { status: AccountStatus; demo?: boolean }) {
   // The demo's accounts only look connected. Say so, so nothing reads as a real sign in.
@@ -633,8 +635,7 @@ function HubCard({ account }: { account: Account | undefined }) {
             </button>
           </div>
           <span className="help">
-            Send it as <code>Authorization: Bearer …</code> to <code>/hub/v1/events</code>. See
-            docs/HUB_API.md.
+            Send it as <code>Authorization: Bearer …</code> to <code>/hub/v1/events</code>.
           </span>
         </div>
       ) : null}
@@ -673,7 +674,18 @@ function HubCard({ account }: { account: Account | undefined }) {
             Revoke
           </button>
         ) : null}
-        <span className="help">You can revoke it at any time.</span>
+        <span className="help">
+          You can revoke it at any time. The{' '}
+          <a
+            href={HUB_API_GUIDE}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--fg)', textDecoration: 'underline' }}
+          >
+            hub API guide<span className="sr"> (opens on GitHub in a new tab)</span>
+          </a>{' '}
+          says what to send.
+        </span>
       </div>
     </div>
   );

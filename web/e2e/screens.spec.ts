@@ -134,6 +134,24 @@ test('a hub token is shown once and can be revoked', async ({ page }) => {
   await expect(page.getByTestId('hubToken')).toHaveCount(0);
 });
 
+test('the hub card links to the hub API guide on GitHub, in a new tab', async ({ page }) => {
+  await page.goto('/#accounts');
+  // It is there before a token is made, for anyone who only has the program and not the repository.
+  const guide = page.getByRole('link', { name: /hub API guide/ });
+  await expect(guide).toHaveAttribute(
+    'href',
+    'https://github.com/SamsonIdowu/mabari/blob/main/docs/HUB_API.md',
+  );
+  await expect(guide).toHaveAttribute('target', '_blank');
+  // The new page can't reach back to this one.
+  await expect(guide).toHaveAttribute('rel', /noopener/);
+  await expect(guide).toHaveAccessibleName(/opens on GitHub in a new tab/);
+  // The path to a file nobody has is gone.
+  await page.getByRole('button', { name: 'Generate a token' }).click();
+  await expect(page.getByTestId('hubToken')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('docs/HUB_API.md');
+});
+
 test('Attach Claude Code shows the real change first, and never runs from go run', async ({
   page,
 }) => {

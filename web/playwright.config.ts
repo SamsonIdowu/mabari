@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 // Tests never touch real data: not Mabari's, not Claude Code's settings, not the keychain.
-const dataDir = mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
+const dataDir = process.env.MABARI_E2E_DATA_DIR ?? mkdtempSync(join(tmpdir(), 'mabari-e2e-'));
+// Tests that run the mabari command itself, such as a Claude Code hook, need the same folder and
+// key.
+process.env.MABARI_E2E_DATA_DIR = dataDir;
+const masterKey = 'end-to-end-tests-only-master-key-0123456789';
+process.env.MABARI_E2E_MASTER_KEY = masterKey;
 // Workers load this file again, so they reuse the folder the runner made. Tests that write agent
 // files by hand find it in MABARI_E2E_CLAUDE_DIR.
 const claudeDir =
@@ -46,7 +51,7 @@ export default defineConfig({
         MABARI_TEST_FAKE_LAN: '1',
         // Never open real terminal windows running Claude Code.
         MABARI_NO_TERMINAL: '1',
-        MABARI_MASTER_KEY: 'end-to-end-tests-only-master-key-0123456789',
+        MABARI_MASTER_KEY: masterKey,
       },
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: true,

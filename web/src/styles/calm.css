@@ -453,7 +453,7 @@ section[data-screen='home'] {
   transform-origin: 50% 100%;
   max-width: 164px;
 }
-.ovl.far .bub:not(.red):not(.reply) {
+.ovl.far .bub:not(.red):not(.reply):not(.ask) {
   display: none;
 }
 /* a big floor drawn very small: names only, so tags don't run into each other */

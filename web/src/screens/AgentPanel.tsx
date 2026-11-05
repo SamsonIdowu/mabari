@@ -18,6 +18,7 @@ import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
+import { QuestionCard } from './QuestionCard.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
 type Dialog = 'settings' | 'subagent' | null;
@@ -706,10 +707,14 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
                 <b>{provider.label}</b>
               </span>
               <span className="mono">{agent.model}</span>
-              <span className={`chip ${chipClass ?? ''}`}>
-                {chipClass ? <i /> : null}
-                {stateLabel(agent.state)}
-              </span>
+              {agent.question ? (
+                <span className="chip">Asking you</span>
+              ) : (
+                <span className={`chip ${chipClass ?? ''}`}>
+                  {chipClass ? <i /> : null}
+                  {stateLabel(agent.state)}
+                </span>
+              )}
             </div>
           </div>
           <span style={{ display: 'flex', gap: 2 }}>
@@ -782,6 +787,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
       </div>
       <div className="pbody">
         <Banners agent={agent} />
+        <QuestionCard agent={agent} />
         <AnswerCard agent={agent} />
         {tab === 'live' ? (
           <>

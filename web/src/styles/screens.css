@@ -258,6 +258,10 @@
   /* What needs you is never under a name tag. */
   z-index: 3;
 }
+/* A question waits on you too, but calmly: it is not an approval, so it isn't red. */
+.bub.ask {
+  z-index: 3;
+}
 .board {
   position: absolute;
   right: 14px;
@@ -673,6 +677,65 @@
 }
 .answer .q {
   font-weight: 800;
+}
+/* A question an agent asks you, answered in its panel. Calm: a question is not an approval. */
+.qcard {
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.qcard h3 {
+  font-size: 15px;
+}
+.qset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.qset legend {
+  padding: 0;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.qset .qtext {
+  font-weight: 800;
+}
+.qset .radio {
+  padding: 10px 12px;
+}
+.qother {
+  align-items: center;
+  flex-wrap: wrap;
+  cursor: default;
+}
+.qother label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+.qother .in {
+  flex: 1;
+  min-width: 160px;
+  min-height: 34px;
+}
+.qfoot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 .evlink {
   border: 1px solid var(--line2);
@@ -3219,8 +3282,9 @@ section[data-screen='home'] {
 [data-theme='dark'] .lsep {
   background: rgba(255, 255, 255, 0.2);
 }
-/* Noise filters. Approval bubbles and the tags of selected or needs-me agents always show. */
-.hide-bub .bub:not(.red) {
+/* Noise filters. Approval and question bubbles and the tags of selected or needs-me agents
+   always show. */
+.hide-bub .bub:not(.red):not(.ask) {
   display: none !important;
 }
 .hide-meta .tag small,

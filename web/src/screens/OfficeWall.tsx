@@ -111,7 +111,25 @@ function ProjectPanels({ office }: { office: Snapshot }) {
           </button>
         );
       })}
+      {/* The bar has room for four projects. Any more are on Projects, and this says so. */}
+      {office.projects.length > PANELS ? (
+        <MoreProjects count={office.projects.length - PANELS} />
+      ) : null}
     </div>
+  );
+}
+
+function MoreProjects({ count }: { count: number }) {
+  const many = `${count} more project${count === 1 ? '' : 's'}`;
+  return (
+    <a
+      className="pwmore"
+      href="#projects"
+      title={`${many}. Open Projects to see ${count === 1 ? 'it' : 'them'}.`}
+    >
+      +{count}
+      <span className="sr"> more project{count === 1 ? '' : 's'}</span>
+    </a>
   );
 }
 

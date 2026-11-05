@@ -977,3 +977,29 @@ section[data-screen]:not([data-screen='office']) .acc {
   line-clamp: 4;
   max-width: 210px;
 }
+/* A fifth project and more have no card on the wall bar. A quiet "+2" opens Projects, where they are. */
+.pwmore {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 2px dashed #8a8a8a;
+  border-radius: 2px;
+  color: #4a4a4a;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.pwmore:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme='dark'] .pwmore {
+  border-color: #7a7a84;
+  color: #b5b5b5;
+}
+[data-theme='dark'] .pwmore:hover {
+  background: rgba(255, 255, 255, 0.06);
+}

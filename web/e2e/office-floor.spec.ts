@@ -275,6 +275,51 @@ for (const [width, height] of WINDOWS) {
   });
 }
 
+// The wall bar has room for four projects. A fifth had no card and nothing to say it existed
+// (NEW-11). The prototype only ever draws four, so this is quiet: a "+1" that opens Projects.
+test('a fifth project is a quiet +1 on the wall bar, and it opens Projects', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  const bar = page.locator('#projWins');
+  await expect(bar.locator('.pwin')).toHaveCount(4);
+  // Four projects fill the bar, and nothing is left out, so nothing is said.
+  await expect(bar.locator('.pwmore')).toHaveCount(0);
+
+  await request.post('/api/projects', { data: { name: 'Side shop', color: '#48DBFB' } });
+  const more = bar.getByRole('link', { name: /^\+1 ?more project$/ });
+  await expect(more).toBeVisible();
+  await expect(more).toHaveText('+1 more project');
+  await expect(more).toHaveAttribute('title', '1 more project. Open Projects to see it.');
+  // It is a real target, and it is not under anything.
+  const hit = await more.evaluate((link) => {
+    const box = link.getBoundingClientRect();
+    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return { covered: !link.contains(top), width: box.width, height: box.height };
+  });
+  expect(hit.covered).toBe(false);
+  expect(hit.width).toBeGreaterThanOrEqual(24);
+  expect(hit.height).toBeGreaterThanOrEqual(24);
+  // The four cards are unchanged: the fifth project has no card of its own.
+  await expect(bar.locator('.pwin')).toHaveCount(4);
+  await expect(bar.locator('.pwin', { hasText: 'Side shop' })).toHaveCount(0);
+
+  await request.post('/api/projects', { data: { name: 'Back office', color: '#FF9F43' } });
+  await expect(bar.getByRole('link', { name: /^\+2 ?more projects$/ })).toBeVisible();
+  await expect(bar.getByRole('link', { name: /more projects/ })).toHaveAttribute(
+    'title',
+    '2 more projects. Open Projects to see them.',
+  );
+
+  await bar.getByRole('link', { name: /more projects/ }).click();
+  await expect(page).toHaveURL(/#projects$/);
+  await expect(page.locator('main h1')).toHaveText('Projects');
+  await expect(page.locator('main')).toContainText('Side shop');
+  await expect(page.locator('main')).toContainText('Back office');
+});
+
 test('starting a project leaves the office filters alone and still says it started', async ({
   page,
   request,

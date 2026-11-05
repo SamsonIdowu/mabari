@@ -204,10 +204,12 @@ func TestSendingToAProjectReachesAnAgentThere(t *testing.T) {
 	if got := agentNamed(t, office, "Ledger"); len(got.Queued) != len(ledger.Queued) {
 		t.Errorf("Ledger, in another project, got it: %+v", got.Queued)
 	}
-	for name, body := range map[string]string{"empty": `{"text":"  "}`, "dash": `{"text":"--yolo"}`} {
-		if response := office.do(t, http.MethodPost, "/api/projects/docs/send", body); response.Code != http.StatusBadRequest {
-			t.Errorf("%s = %d", name, response.Code)
-		}
+	if response := office.do(t, http.MethodPost, "/api/projects/docs/send", `{"text":"  "}`); response.Code != http.StatusBadRequest {
+		t.Errorf("empty = %d", response.Code)
+	}
+	// A list sent to a working agent never reaches a command line, so a leading dash is fine.
+	if response := office.do(t, http.MethodPost, "/api/projects/docs/send", `{"text":"- add tests\n- fix lint"}`); response.Code != http.StatusOK {
+		t.Errorf("a list = %d %s", response.Code, response.Body)
 	}
 	if response := office.do(t, http.MethodPost, "/api/projects/nope/send", `{"text":"hi"}`); response.Code != http.StatusNotFound {
 		t.Errorf("unknown project = %d", response.Code)
@@ -239,6 +241,15 @@ func TestProjectCommandsOpenClaudeCode(t *testing.T) {
 	if opening := projectNamed(t, office, "Shop").Opening; len(opening) != 2 {
 		t.Errorf("opening = %+v", opening)
 	}
+	// What would go on the command line is checked there.
+	for _, text := range []string{"--yolo", "hi\u0003 there"} {
+		quoted, _ := json.Marshal(text)
+		if response := office.do(t, http.MethodPost, "/api/projects/"+created.ID+"/send", `{"text":`+string(quoted)+`}`); response.Code != http.StatusBadRequest {
+			t.Errorf("%q = %d", text, response.Code)
+		}
+	}
+	// A path is not a command; with only an idle session here, it opens Claude Code as any message does.
+	_ = office.do(t, http.MethodPost, "/api/projects/"+created.ID+"/send", `{"text":"/Users/me/shop/api.go has a bug"}`)
 	if idle := agentNamed(t, office, "Shop"); len(idle.Queued) != 0 {
 		t.Errorf("the idle session was given it: %+v", idle.Queued)
 	}
@@ -248,7 +259,7 @@ func TestProjectCommandsOpenClaudeCode(t *testing.T) {
 	if result.Opened || !strings.HasPrefix(result.Notice, "Run claude in ") {
 		t.Errorf("no terminal = %+v", result)
 	}
-	if opening := projectNamed(t, office, "Shop").Opening; len(opening) != 2 {
+	if opening := projectNamed(t, office, "Shop").Opening; len(opening) != 3 {
 		t.Errorf("opening kept a prompt nothing opened for: %+v", opening)
 	}
 	// A project with no folder and nobody working on it can't take anything.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/events"
+	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/redact"
 	"github.com/SamsonIdowu/mabari/internal/risk"
@@ -198,13 +199,7 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	c.engine.AddAgent(agent)
 	c.engine.Log(agent.Name, models.LogSession, "Claude Code session started in "+in.Cwd,
 		"Took desk "+strconv.Itoa(desk+1), "ok")
-	// A session Mabari opened for a prompt was started with it, so it counts as sent to this
-	// session, and its reply is passed on like any other.
-	if c.engine.TakeOpening(agent) {
-		c.mu.Lock()
-		c.delivered[agent.ID] = time.Now()
-		c.mu.Unlock()
-	}
+
 	c.connected()
 	return agent
 }
@@ -268,14 +263,20 @@ func (c *Connector) nameFor(folder string) string {
 
 // projectFor picks the project whose repository folder holds the session, or none.
 func (c *Connector) projectFor(folder string) string {
-	projects := c.engine.Projects()
-	for _, project := range projects {
-		if repo := project.Repository; repo != nil && repo.Path != "" && within(folder, expandHome(repo.Path)) {
-			return project.ID
+	// The open project with the most specific folder wins, so a project in ~/code/shop beats one
+	// in ~/code, and a completed project doesn't take new sessions.
+	best, length := "", -1
+	for _, project := range c.engine.Projects() {
+		repo := project.Repository
+		if project.Done != nil || repo == nil || repo.Path == "" {
+			continue
+		}
+		if root := expandHome(repo.Path); within(folder, root) && len(root) > length {
+			best, length = project.ID, len(root)
 		}
 	}
 	// A session outside every project's folder belongs to none.
-	return ""
+	return best
 }
 
 // expandHome turns a leading ~ into the home folder, as projects keep paths the way people type
@@ -400,6 +401,13 @@ func (c *Connector) observe(in input) []byte {
 	case "SessionStart":
 		return nil
 	case "UserPromptSubmit":
+		// A session Mabari opened for a prompt reports it as its first prompt. It counts as sent
+		// to this session, and its reply is passed on like any other.
+		if c.engine.TakeOpening(agent, in.Prompt) {
+			c.mu.Lock()
+			c.delivered[agent.ID] = time.Now()
+			c.mu.Unlock()
+		}
 		agent.Task = clip(redact.Text(in.Prompt), 120)
 		agent.Progress, agent.Error = 0, ""
 		agent.State = models.StateThinking
@@ -551,19 +559,16 @@ func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 	return "The user sent this from Mabari while you were working: " + strings.Join(lines, " Also: ")
 }
 
-// slashCommand is a Claude Code command or skill at the start of a message, such as /ux-audit.
-var slashCommand = regexp.MustCompile(`^/([A-Za-z0-9][A-Za-z0-9:_.-]*)(?:\s+(.*))?$`)
-
 // asCommand rewords a slash command for a running session. A hook's text reaches Claude as
 // context, not as typed input, so Claude Code won't run "/ux-audit x" itself; Claude can, though,
 // run a skill or custom command with its Skill tool when asked to in words.
 func asCommand(text string) string {
-	match := slashCommand.FindStringSubmatch(strings.TrimSpace(text))
-	if match == nil {
+	name, args, ok := launch.SlashCommand(text)
+	if !ok {
 		return text
 	}
-	said := "run the /" + match[1] + " command"
-	if args := strings.TrimSpace(match[2]); args != "" {
+	said := "run the /" + name + " command"
+	if args != "" {
 		said += " with: " + args
 	}
 	return said + " (a slash command; use the Skill tool for it)."

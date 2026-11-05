@@ -79,7 +79,7 @@ func (a *api) routeForVee(to vee.Route) *projectRoute {
 	if project == nil || project.Done != nil {
 		return nil
 	}
-	if problem := promptProblem(to.Text); problem != "" {
+	if problem := messageProblem(to.Text); problem != "" {
 		return &projectRoute{sent: vee.ProjectSent{Project: project, Problem: problem}, result: messageResult{Agents: []string{}}}
 	}
 	copied := *project

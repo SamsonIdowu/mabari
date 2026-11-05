@@ -227,13 +227,20 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 	office := look(in.Agents, now)
 	q := strings.TrimSpace(strings.ToLower(text))
 	reply, ok := office.passOn(text, q)
-	if ok && (reply.Send != nil || in.Projects == nil) {
+	project, body, nameLength := namedProject(text, open(in.Projects))
+	// An agent's name wins, unless a longer project name starts with it: "tell Shop Admin to …"
+	// is for the project Shop Admin, not the agent Shop.
+	agentNamed := ok && reply.Send != nil
+	if agentNamed && (project == nil || nameLength <= len(office.agentName(reply.Send.AgentID))) || ok && in.Projects == nil {
 		return reply
 	}
-	if project, body := namedProject(text, open(in.Projects)); project != nil && body != "" {
+	if project != nil && body != "" {
 		routed := office.reply("", "nod", KindPlain)
 		routed.Route = &Route{ProjectID: project.ID, Text: body}
 		return routed
+	}
+	if agentNamed {
+		return reply
 	}
 	if ok {
 		return office.unknown(q, in.Projects)
@@ -308,6 +315,15 @@ func (o view) unknown(q string, projects []*models.Project) Reply {
 	}
 	return o.reply("I couldn't find an agent or project called "+name+". Try one of: "+strings.Join(names, ", ")+".",
 		"shrug", KindPlain)
+}
+
+func (o view) agentName(id string) string {
+	for _, agent := range o.agents {
+		if agent.ID == id {
+			return agent.Name
+		}
+	}
+	return ""
 }
 
 // named finds an agent the message mentions by name, longest name first.

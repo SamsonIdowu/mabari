@@ -88,58 +88,63 @@ func TestARemovedInstructionDoesNotComeBack(t *testing.T) {
 	}
 }
 
-// A prompt Mabari opened Claude Code with goes to the first session that starts in the project,
-// and can be taken back until then.
-func TestOpeningPromptsGoToTheFirstSession(t *testing.T) {
+// A prompt Mabari opened Claude Code with goes to the session that reports it as its first
+// prompt, and only to that one.
+func TestOpeningPromptsGoToTheSessionStartedWithThem(t *testing.T) {
 	engine := newEngine(t)
-	var kept, dropped models.Instruction
+	var audit, review models.Instruction
 	_ = engine.Do(func() {
-		project := engine.SaveProject(models.Project{ID: "p1", Name: "Shop"})
-		kept = engine.Opening(engine.Project(project.ID), "/ux-audit https://example.com")
-		dropped = engine.Opening(engine.Project(project.ID), "Never mind")
-		if holder, ok := engine.Unqueue(dropped.ID); !ok || holder != "Shop" {
-			t.Errorf("unqueue = %q %v", holder, ok)
-		}
-		elsewhere := &models.LiveAgent{Agent: models.Agent{ID: "a0", Name: "Other"}}
-		engine.AddAgent(elsewhere)
-		if engine.TakeOpening(elsewhere) {
-			t.Error("a session outside the project took the prompt")
+		engine.SaveProject(models.Project{ID: "p1", Name: "Shop"})
+		audit = engine.Opening(engine.Project("p1"), "/ux-audit https://example.com")
+		review = engine.Opening(engine.Project("p1"), "/review")
+		// An opened prompt can't be taken back: Claude Code already has it.
+		if _, ok := engine.Unqueue(audit.ID); ok {
+			t.Error("took back a prompt Claude Code was opened with")
 		}
 		id := "p1"
-		agent := &models.LiveAgent{Agent: models.Agent{ID: "a1", Name: "Shop", Project: &id}}
-		engine.AddAgent(agent)
-		if !engine.TakeOpening(agent) {
-			t.Fatal("nothing taken")
+		elsewhere := &models.LiveAgent{Agent: models.Agent{ID: "a0", Name: "Other"}}
+		engine.AddAgent(elsewhere)
+		if engine.TakeOpening(elsewhere, "/review") {
+			t.Error("a session outside the project took a prompt")
 		}
-		if len(agent.Asked) != 1 || agent.Asked[0].ID != kept.ID || agent.Asked[0].Status != models.InstructionDelivered {
-			t.Errorf("asked = %+v", agent.Asked)
+		byHand := &models.LiveAgent{Agent: models.Agent{ID: "a1", Name: "Shop", Project: &id}}
+		engine.AddAgent(byHand)
+		if engine.TakeOpening(byHand, "what does this repo do?") {
+			t.Error("a session started by hand took a prompt")
 		}
-		if again := &(models.LiveAgent{Agent: models.Agent{ID: "a2", Project: &id}}); engine.TakeOpening(again) {
-			t.Error("a second session took it too")
+		second := &models.LiveAgent{Agent: models.Agent{ID: "a2", Name: "Shop 2", Project: &id}}
+		engine.AddAgent(second)
+		if !engine.TakeOpening(second, "  /review ") {
+			t.Fatal("the session opened with /review didn't get it")
 		}
-		if left := engine.Project("p1").Opening; len(left) != 0 {
+		if len(second.Asked) != 1 || second.Asked[0].ID != review.ID || second.Asked[0].Status != models.InstructionDelivered {
+			t.Errorf("asked = %+v", second.Asked)
+		}
+		if left := engine.Project("p1").Opening; len(left) != 1 || left[0].ID != audit.ID {
 			t.Errorf("still opening: %+v", left)
 		}
 	})
-	if row := logRow(t, engine, "ux-audit"); row.Outcome != "Delivered when the session started" {
+	if row := logRow(t, engine, "/review"); row.Outcome != "Delivered when the session started" {
 		t.Errorf("log = %+v", row)
 	}
 }
 
-// A prompt left waiting too long for its session is dropped, not given to a later one.
+// A prompt left waiting too long for its session is dropped by the sweep.
 func TestOldOpeningPromptsAreDropped(t *testing.T) {
 	engine := newEngine(t)
 	_ = engine.Do(func() {
 		engine.SaveProject(models.Project{ID: "p1", Name: "Shop"})
 		engine.Opening(engine.Project("p1"), "Stale")
 		engine.Project("p1").Opening[0].Time -= models.OpeningKept + 1
-		id := "p1"
-		agent := &models.LiveAgent{Agent: models.Agent{ID: "a1", Name: "Shop", Project: &id}}
-		engine.AddAgent(agent)
-		if engine.TakeOpening(agent) || len(agent.Asked) != 0 {
-			t.Errorf("took a stale prompt: %+v", agent.Asked)
+		engine.Opening(engine.Project("p1"), "Fresh")
+		engine.Sweep()
+		if left := engine.Project("p1").Opening; len(left) != 1 || left[0].Text != "Fresh" {
+			t.Errorf("opening = %+v", left)
 		}
 	})
+	if row := logRow(t, engine, "Stale"); row.Outcome != "Claude Code never reported back" {
+		t.Errorf("log = %+v", row)
+	}
 }
 
 // An agent that leaves settles what it was still waiting for.

@@ -429,7 +429,7 @@ func (e *Engine) RemoveAgent(id string) {
 			e.CancelApproval(agent)
 			// Nothing will deliver what it was still waiting for.
 			for _, instruction := range agent.Queued {
-				e.settle(instruction)
+				e.settle(instruction, "Not delivered: the agent left")
 			}
 			e.agents = append(e.agents[:index:index], e.agents[index+1:]...)
 			break
@@ -581,41 +581,31 @@ func (e *Engine) Delivered(agent *models.LiveAgent, text string) models.Instruct
 	return instruction
 }
 
-// Unqueue takes back an instruction that hasn't been delivered: one waiting for its agent's next
-// checkpoint, or a prompt waiting for the Claude Code session opened for it. It returns who held
-// it, an agent's name or a project's, and false when nothing holds it any more, because it was
-// delivered or never existed. Call inside Do, where delivery happens too, so the two can't race.
+// Unqueue takes back an instruction still waiting for its agent's next checkpoint, so it is never
+// delivered. It returns the agent that held it, and false when no agent holds it any more,
+// because it was delivered or never existed. A prompt Claude Code was opened with can't be taken
+// back: the session already has it. Call inside Do, where delivery happens too, so the two can't
+// race.
 func (e *Engine) Unqueue(id string) (string, bool) {
 	for _, agent := range e.agents {
 		for index, instruction := range agent.Queued {
 			if instruction.ID == id {
 				agent.Queued = append(agent.Queued[:index:index], agent.Queued[index+1:]...)
 				e.Touch(agent)
-				e.settle(instruction)
+				e.settle(instruction, "Removed before delivery")
 				return agent.Name, true
-			}
-		}
-	}
-	for _, project := range e.projects {
-		for index, instruction := range project.Opening {
-			if instruction.ID == id {
-				saved := *project
-				saved.Opening = append(project.Opening[:index:index], project.Opening[index+1:]...)
-				e.SaveProject(saved)
-				e.settle(instruction)
-				return project.Name, true
 			}
 		}
 	}
 	return "", false
 }
 
-// settle marks an instruction as taken back, so it never comes back after a restart, and takes
-// the amber off its activity row.
-func (e *Engine) settle(instruction models.Instruction) {
+// settle closes an instruction that will never be delivered, so it never comes back after a
+// restart, and takes the amber off its activity row.
+func (e *Engine) settle(instruction models.Instruction, outcome string) {
 	instruction.Status = models.InstructionRemoved
 	e.record(e.store.SaveInstruction(context.Background(), instruction))
-	e.UpdateLog(instruction.LogID, "Removed before delivery", "")
+	e.UpdateLog(instruction.LogID, outcome, "")
 }
 
 // Opening holds a prompt for the Claude Code session Mabari is opening in the project's folder.
@@ -632,42 +622,66 @@ func (e *Engine) Opening(project *models.Project, text string) models.Instructio
 	return instruction
 }
 
-// TakeOpening gives a session that just started in a project's folder the oldest prompt Mabari
-// opened it with, as if it had been sent to it, so its reply is kept with it. Prompts older than
-// OpeningKept are dropped. It reports false when nothing was waiting. Call inside Do.
-func (e *Engine) TakeOpening(agent *models.LiveAgent) bool {
-	if agent.Project == nil {
+// DropOpening forgets a prompt whose Claude Code window never opened, with the reason for its
+// activity row. Call inside Do.
+func (e *Engine) DropOpening(id, outcome string) {
+	for _, project := range e.projects {
+		for index, instruction := range project.Opening {
+			if instruction.ID == id {
+				saved := *project
+				saved.Opening = append(project.Opening[:index:index], project.Opening[index+1:]...)
+				e.SaveProject(saved)
+				e.settle(instruction, outcome)
+				return
+			}
+		}
+	}
+}
+
+// TakeOpening gives a session in a project the prompt Mabari opened it with. Claude Code reports
+// that first prompt as the session's first UserPromptSubmit, so the prompt is matched by its
+// text: a session the person started by hand, or another window, never takes it. It reports
+// false when nothing matched. Call inside Do.
+func (e *Engine) TakeOpening(agent *models.LiveAgent, prompt string) bool {
+	prompt = strings.TrimSpace(prompt)
+	if agent.Project == nil || prompt == "" {
 		return false
 	}
 	project := e.Project(*agent.Project)
-	if project == nil || len(project.Opening) == 0 {
+	if project == nil {
 		return false
 	}
-	now := e.now().UnixMilli()
-	saved := *project
-	saved.Opening = nil
-	var taken *models.Instruction
-	for _, instruction := range project.Opening {
-		switch {
-		case now-instruction.Time > models.OpeningKept:
-			e.settle(instruction)
-		case taken == nil:
-			copied := instruction
-			taken = &copied
-		default:
-			saved.Opening = append(saved.Opening, instruction)
+	for index, instruction := range project.Opening {
+		if strings.TrimSpace(instruction.Text) != prompt {
+			continue
+		}
+		saved := *project
+		saved.Opening = append(project.Opening[:index:index], project.Opening[index+1:]...)
+		e.SaveProject(saved)
+		id := agent.ID
+		instruction.Agent, instruction.Status = &id, models.InstructionDelivered
+		e.record(e.store.SaveInstruction(context.Background(), instruction))
+		e.UpdateLog(instruction.LogID, "Delivered when the session started", "ok")
+		e.remember(agent, instruction)
+		return true
+	}
+	return false
+}
+
+// pruneOpenings drops prompts left waiting longer than OpeningKept for their session: its window
+// was closed, or it never reported. Call inside Do.
+func (e *Engine) pruneOpenings(now int64) {
+	for _, project := range e.projects {
+		var stale []models.Instruction
+		for _, instruction := range project.Opening {
+			if now-instruction.Time > models.OpeningKept {
+				stale = append(stale, instruction)
+			}
+		}
+		for _, instruction := range stale {
+			e.DropOpening(instruction.ID, "Claude Code never reported back")
 		}
 	}
-	e.SaveProject(saved)
-	if taken == nil {
-		return false
-	}
-	id := agent.ID
-	taken.Agent, taken.Status = &id, models.InstructionDelivered
-	e.record(e.store.SaveInstruction(context.Background(), *taken))
-	e.UpdateLog(taken.LogID, "Delivered when the session started", "ok")
-	e.remember(agent, *taken)
-	return true
 }
 
 // remember keeps a delivered instruction on the agent, for its panel, dropping the oldest.
@@ -1040,9 +1054,11 @@ func (e *Engine) Wipe() {
 	e.Reset()
 }
 
-// Sweep clears speech bubbles that have run out, on agents nothing else is changing. Call inside Do.
+// Sweep clears speech bubbles that have run out, on agents nothing else is changing, and prompts
+// that waited too long for a Claude Code session. Call inside Do.
 func (e *Engine) Sweep() {
 	now := e.now().UnixMilli()
+	e.pruneOpenings(now)
 	for _, agent := range e.agents {
 		if agent.Reply != "" && agent.ReplyUntil <= now {
 			agent.Reply = ""

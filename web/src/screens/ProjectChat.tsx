@@ -88,7 +88,10 @@ export function ProjectChat({ project, close }: { project: Project; close: () =>
   const items = projectChat(project, agents);
   const folder = project.repository?.path ?? '';
   const live = agents.filter((agent) => agent.projectId === project.id && !agent.leadId);
-  useEscape(close);
+  // A dialog opened on top closes first, with its own Escape.
+  useEscape(() => {
+    if (!document.querySelector('.scrim')) close();
+  });
   useLayoutEffect(() => {
     const field = box.current;
     if (!field) return;

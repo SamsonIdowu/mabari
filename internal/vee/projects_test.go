@@ -35,7 +35,9 @@ func TestNamingAProject(t *testing.T) {
 		"@Experience and Quality check the build":                {ProjectID: "eq", Text: "check the build"},
 		"tell Experience and Quality to run /ux-audit #130":      {ProjectID: "eq", Text: "run /ux-audit #130"},
 		"please ask the Lad project what's left":                 {ProjectID: "lad", Text: "what's left"},
-		"fix the flaky test in Lad":                              {ProjectID: "lad", Text: "fix the flaky test"},
+		// The start of a name only counts where a project is plainly named; here the name word
+		// still makes Lad the clear fit, and the whole message goes.
+		"fix the flaky test in Lad": {ProjectID: "lad", Text: "fix the flaky test in Lad", Why: "it mentions Lad Project All"},
 	} {
 		reply := AnswerIn(text, inProjects(""), now)
 		if reply.Route == nil || *reply.Route != want {
@@ -103,5 +105,61 @@ func TestMabariChoosesOrAsks(t *testing.T) {
 	// With no projects, nothing changes.
 	if reply := Answer("make it faster", office(), now); !reply.Dispatch {
 		t.Errorf("no projects = %+v", reply)
+	}
+}
+
+// Cases that used to be read as naming a project.
+func TestOrdinaryWordsDontNameAProject(t *testing.T) {
+	projects := []*models.Project{
+		{ID: "tools", Name: "Tools"}, {ID: "infra", Name: "Infra"}, {ID: "mw", Name: "mabari-web"},
+		{ID: "web", Name: "Web"}, {ID: "staging", Name: "Staging Tools"}, {ID: "admin", Name: "Shop Admin"},
+		{ID: "shop", Name: "Shop"},
+	}
+	in := Office{Projects: projects}
+	for _, text := range []string{
+		"Tools need updating before release",
+		"Infra costs went up, what happened?",
+		"mabari-web is slow on startup, why?",
+		"Web-sockets drop on reconnect, fix it",
+		"deploy the API to staging",
+	} {
+		if project, body, _ := namedProject(text, open(projects)); project != nil {
+			t.Errorf("%q named %s with %q", text, project.Name, body)
+		}
+	}
+	// A whole name is a name, whichever project was made first.
+	for _, text := range []string{"in Shop: fix the login", "fix the login in Shop"} {
+		if reply := AnswerIn(text, in, now); reply.Route == nil || reply.Route.ProjectID != "shop" {
+			t.Errorf("%q: %+v", text, reply.Route)
+		}
+	}
+	// A longer project name beats an agent whose name starts it.
+	shop := agent("Shop", models.StateIdle)
+	if reply := AnswerIn("tell Shop Admin to fix login", Office{Agents: []*models.LiveAgent{shop}, Projects: projects}, now); reply.Route == nil ||
+		reply.Route.ProjectID != "admin" || reply.Route.Text != "fix login" {
+		t.Errorf("tell Shop Admin: %+v %+v", reply.Route, reply.Send)
+	}
+	// Small talk never becomes work, even with only one project.
+	one := Office{Projects: projects[:1]}
+	for _, text := range []string{"ok", "nice", "good morning", "what?", "are you there?", "did the tests pass?"} {
+		if reply := AnswerIn(text, one, now); reply.Route != nil || reply.Dispatch {
+			t.Errorf("%q was handed over: %+v", text, reply.Route)
+		}
+	}
+}
+
+// One shared everyday word isn't enough to pick a project.
+func TestOneWordIsNotAFit(t *testing.T) {
+	alpha, beta := "alpha", "beta"
+	readme := agent("Rune", models.StateIdle)
+	readme.Task, readme.Project = "Update the README", &alpha
+	other := agent("Bolt", models.StateIdle)
+	other.Task, other.Project = "Sort the queue", &beta
+	in := Office{Agents: []*models.LiveAgent{readme, other}, Projects: []*models.Project{{ID: alpha, Name: "Alpha"}, {ID: beta, Name: "Beta"}}}
+	if reply := AnswerIn("update the billing code", in, now); reply.Kind != KindPickProject {
+		t.Errorf("one word picked %+v", reply.Route)
+	}
+	if reply := AnswerIn("update the README install steps", in, now); reply.Route == nil || reply.Route.ProjectID != alpha {
+		t.Errorf("two words: %+v", reply)
 	}
 }

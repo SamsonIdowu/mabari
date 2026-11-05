@@ -263,7 +263,7 @@ const (
 // OpeningKept is how long a prompt waits for the Claude Code session Mabari opened for it, in
 // milliseconds. A session that never reports, say because its window was closed, doesn't keep
 // the prompt for ever.
-const OpeningKept = 30 * 60 * 1000
+const OpeningKept = 15 * 60 * 1000
 
 // Instruction is a message from the user.
 type Instruction struct {

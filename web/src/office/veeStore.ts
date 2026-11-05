@@ -4,7 +4,7 @@ import { api, type VeeReply } from '../data/api.ts';
 import { setToastFilter, useOfficeStore } from '../data/officeStore.ts';
 import { mabariCreate, mabariImprove } from './builderStore.tsx';
 import { slug } from './defs.ts';
-import { relayLine, replyFor, stillWaiting, type Relay } from './relay.ts';
+import { holderOf, relayLine, replyFor, stillWaiting, type Relay } from './relay.ts';
 import { showResult } from './send.ts';
 import { VEE_GESTURES, type PlayingGesture, type VeeState } from './vee.ts';
 
@@ -246,6 +246,9 @@ export const useVee = create<VeeStore>((set, get) => ({
 
 /** Posts an agent's reply in the Home chat, speaks it, and counts it if Home isn't showing. */
 function relay(item: Relay, reply: string) {
+  // A prompt Claude Code opened with has no agent until a session takes it; name that session.
+  const holder = holderOf(useOfficeStore.getState().office, item);
+  if (holder && !item.agentId) item = { ...item, agentId: holder.id, agent: holder.name };
   const line = relayLine(item, reply);
   const store = useVee.getState();
   store.say(
@@ -295,7 +298,12 @@ function watch() {
 // On Home, Mabari reads the reply out itself, so the server's "Ledger replied" toast would repeat it.
 setToastFilter((text) => {
   const { onHome, relays } = useVee.getState();
-  return onHome && relays.some((item) => text.startsWith(`${item.agent} replied.`));
+  if (!onHome) return false;
+  const office = useOfficeStore.getState().office;
+  return relays.some((item) => {
+    const name = holderOf(office, item)?.name ?? item.agent;
+    return text.startsWith(`${name} replied.`) || text.startsWith(`${item.agent} replied.`);
+  });
 });
 
 useOfficeStore.subscribe((state, previous) => {

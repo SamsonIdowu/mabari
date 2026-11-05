@@ -13,7 +13,9 @@ package launch
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 )
@@ -28,6 +30,19 @@ type Request struct {
 	Prompt string
 	// Plan starts the session in plan mode, so it proposes before it changes anything.
 	Plan bool
+}
+
+// slashCommand is a Claude Code command or skill at the start of a message, such as /ux-audit or
+// /plugin:command. A path such as /Users/me/shop is not one: a command name has no slash in it.
+var slashCommand = regexp.MustCompile(`^/([A-Za-z0-9][A-Za-z0-9:_.-]*)(?:\s+([\s\S]*))?$`)
+
+// SlashCommand splits a message that is a slash command into the command's name and what follows.
+func SlashCommand(text string) (name, args string, ok bool) {
+	match := slashCommand.FindStringSubmatch(strings.TrimSpace(text))
+	if match == nil {
+		return "", "", false
+	}
+	return match[1], strings.TrimSpace(match[2]), true
 }
 
 // ErrNoTerminal means this computer has no terminal Mabari knows how to open, as in Docker.
@@ -78,27 +93,49 @@ func appleScriptString(text string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `"`, `\"`) + `"`
 }
 
-// Command is how this computer opens the session, or nil when it can't. The program is always a
+// script is a shell script that runs the session and then deletes itself. On macOS Terminal types
+// the command it is given into the new shell, where line editing would act on control keys in it,
+// so Terminal is only ever given "sh <this file>", which has no text from the request in it.
+func script(request Request) (string, error) {
+	file, err := os.CreateTemp("", "mabari-claude-*.sh")
+	if err != nil {
+		return "", err
+	}
+	body := "rm -f -- " + ShellQuote(file.Name()) + "\n" + ShellLine(request) + "\n"
+	if _, err := file.WriteString(body); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+// Command is how this computer opens the session, or nil when it can't. On macOS, path is the
+// script that runs it. The program is always a
 // fixed name (osascript, or a terminal found on PATH by its fixed name), never taken from a
 // request. A request's folder, name and prompt only travel as separate arguments, or shell quoted
 // where a terminal needs one line, and the prompt follows "--", so none of them can run a command
 // or add a flag.
-func Command(ctx context.Context, goos string, lookPath func(string) (string, error), request Request) *exec.Cmd {
+func Command(ctx context.Context, goos string, lookPath func(string) (string, error), request Request, path string) *exec.Cmd {
 	switch goos {
 	case "darwin":
-		script := "tell application \"Terminal\"\nactivate\ndo script " + appleScriptString(ShellLine(request)) + "\nend tell"
-		return exec.CommandContext(ctx, "osascript", "-e", script) // #nosec G204 -- fixed program; the line is quoted for the shell and AppleScript
+		line := "sh " + ShellQuote(path)
+		apple := "tell application \"Terminal\"\nactivate\ndo script " + appleScriptString(line) + "\nend tell"
+		return exec.CommandContext(ctx, "osascript", "-e", apple) // #nosec G204 -- fixed program; the line names only the script
 	case "linux":
-		if path, err := lookPath("gnome-terminal"); err == nil {
+		if program, err := lookPath("gnome-terminal"); err == nil {
 			args := append([]string{"--working-directory=" + request.Folder, "--"}, Args(request)...)
-			return exec.CommandContext(ctx, path, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
+			return exec.CommandContext(ctx, program, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
 		}
-		if path, err := lookPath("konsole"); err == nil {
+		if program, err := lookPath("konsole"); err == nil {
 			args := append([]string{"--workdir", request.Folder, "-e"}, Args(request)...)
-			return exec.CommandContext(ctx, path, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
+			return exec.CommandContext(ctx, program, args...) // #nosec G204 nosemgrep -- fixed program, exec form, no shell
 		}
-		if path, err := lookPath("x-terminal-emulator"); err == nil {
-			return exec.CommandContext(ctx, path, "-e", "sh", "-c", ShellLine(request)) // #nosec G204 nosemgrep -- fixed program; every part is shell quoted
+		if program, err := lookPath("x-terminal-emulator"); err == nil {
+			return exec.CommandContext(ctx, program, "-e", "sh", "-c", ShellLine(request)) // #nosec G204 nosemgrep -- fixed program; every part is shell quoted
 		}
 	}
 	return nil
@@ -106,9 +143,22 @@ func Command(ctx context.Context, goos string, lookPath func(string) (string, er
 
 // Claude opens a terminal window running Claude Code in the request's folder.
 func (Terminal) Claude(ctx context.Context, request Request) error {
-	cmd := Command(ctx, runtime.GOOS, exec.LookPath, request)
+	path := ""
+	if runtime.GOOS == "darwin" {
+		var err error
+		if path, err = script(request); err != nil {
+			return err
+		}
+	}
+	cmd := Command(ctx, runtime.GOOS, exec.LookPath, request, path)
 	if cmd == nil {
 		return ErrNoTerminal
 	}
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		if path != "" {
+			_ = os.Remove(path)
+		}
+		return err
+	}
+	return nil
 }

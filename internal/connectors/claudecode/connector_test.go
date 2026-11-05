@@ -567,6 +567,7 @@ func TestAnOpenedSessionTakesItsPrompt(t *testing.T) {
 		opening = engine.Opening(engine.Project("p1"), "/ux-audit #130")
 	})
 	hook(t, c, "SessionStart", map[string]any{"source": "startup"})
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "/ux-audit #130"})
 	hook(t, c, "Stop", map[string]any{"last_assistant_message": "Audit done: 3 findings."})
 	agent := agentOf(t, engine)
 	if len(agent.Asked) != 1 || agent.Asked[0].ID != opening.ID || agent.Asked[0].Reply != "Audit done: 3 findings." {

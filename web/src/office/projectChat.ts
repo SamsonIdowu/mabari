@@ -29,9 +29,12 @@ export const CHAT_STATUS: Record<ChatStatus, string> = {
   replied: 'Replied',
 };
 
-/** Instructions that can still be taken back. */
+/**
+ * Instructions that can still be taken back: only those waiting for a checkpoint. Claude Code
+ * was already opened with a prompt that is "opening", so that one can't be.
+ */
 export function removable(item: ChatItem): boolean {
-  return item.status === 'opening' || item.status === 'queued';
+  return item.status === 'queued';
 }
 
 export function projectChat(project: Project, agents: LiveAgent[]): ChatItem[] {

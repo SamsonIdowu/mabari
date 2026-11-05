@@ -24,8 +24,9 @@ export function Welcome() {
             </span>
             <h1>See your AI agents at work, in a little office.</h1>
             <p style={{ fontSize: 17, color: 'var(--fg2)', maxWidth: '52ch' }}>
-              Mabari shows every agent session as a character at a desk. Watch what each one is doing,
-              ask questions without interrupting, and send instructions by typing or by voice.
+              Mabari shows every agent session as a character at a desk. Watch what each one is
+              doing, ask questions without interrupting, and send instructions by typing or by
+              voice.
             </p>
             <div className="steps">
               <div>

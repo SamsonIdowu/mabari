@@ -39,7 +39,7 @@ export function clipWords(text: string, limit: number): string {
 }
 
 /** Who holds a relayed instruction now: its agent, or any agent once an opened session took it. */
-function holderOf(office: Snapshot | null, relay: Relay): LiveAgent | undefined {
+export function holderOf(office: Snapshot | null, relay: Relay): LiveAgent | undefined {
   const agents = office?.agents ?? [];
   if (relay.agentId) return agents.find((item) => item.id === relay.agentId);
   return agents.find((item) => item.asked?.some((asked) => asked.id === relay.instructionId));

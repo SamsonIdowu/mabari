@@ -95,24 +95,25 @@ func open(projects []*models.Project) []*models.Project {
 	return out
 }
 
-// aliases are the ways a message can name a project: its whole name, and the start of its name
-// when no other project starts the same way ("Lad" for "Lad Project All"). Longest first.
-func aliases(projects []*models.Project) []struct {
+// alias is one way a message can name a project.
+type alias struct {
 	text    string
 	project *models.Project
-} {
-	type alias = struct {
-		text    string
-		project *models.Project
-	}
+	// full is true for the project's whole name. The start of a name ("Lad" for "Lad Project
+	// All") only counts where the message plainly names a project, as in "Lad: fix it".
+	full bool
+}
+
+// aliases are the ways a message can name a project: its whole name, and the start of its name
+// when no other project starts the same way. Longest first.
+func aliases(projects []*models.Project) []alias {
 	owners := map[string][]*models.Project{}
 	for _, project := range projects {
 		name := strings.Fields(strings.ToLower(project.Name))
 		seen := map[string]bool{}
 		for size := len(name); size >= 1; size-- {
 			text := strings.Join(name[:size], " ")
-			last := name[size-1]
-			if size < len(name) && (len(text) < 3 || stopWords[last]) {
+			if size < len(name) && (len(text) < 3 || stopWords[name[size-1]]) {
 				continue
 			}
 			if !seen[text] {
@@ -122,10 +123,15 @@ func aliases(projects []*models.Project) []struct {
 		}
 	}
 	var out []alias
-	for text, projects := range owners {
-		// A start of a name that two projects share names neither.
-		if len(projects) == 1 || strings.EqualFold(projects[0].Name, text) {
-			out = append(out, alias{text, projects[0]})
+	for text, owners := range owners {
+		// A whole name always names its project, even when it starts another project's name.
+		if index := slices.IndexFunc(owners, func(p *models.Project) bool { return strings.EqualFold(p.Name, text) }); index >= 0 {
+			out = append(out, alias{text, owners[index], true})
+			continue
+		}
+		// The start of a name that two projects share names neither.
+		if len(owners) == 1 {
+			out = append(out, alias{text, owners[0], false})
 		}
 	}
 	slices.SortFunc(out, func(a, b alias) int {
@@ -137,45 +143,62 @@ func aliases(projects []*models.Project) []struct {
 // The ways a message names its project. %s is the name, already quoted for the pattern.
 const (
 	// "in Shop: fix the login", "for the Shop project - fix it", "@Shop fix it", "Shop: fix it".
-	leadingName = `(?is)^(?:please\s+)?(?:(?:in|for|to|on)\s+(?:the\s+)?(?:project\s+)?|@)?%s(?:\s+project)?\s*(?:[:,–-]\s*|\s+(?:please\s+)?(?:can you\s+)?)(.+)$`
+	// Groups: 1 a leading "in", "for", "to" or "on"; 2 an @; 3 a colon or comma after the name;
+	// 4 a dash with spaces round it; 5 the message.
+	leadingName = `(?is)^(?:please\s+)?(?:((?:in|for|to|on)\s+(?:the\s+)?(?:project\s+)?)|(@))?%s(?:\s+project)?(?:\s*([:,])\s*|\s+([–-])\s+|\s+(?:please\s+)?(?:can you\s+)?)(.+)$`
 	// "send /ux-audit https://… to Shop", "run the tests in the Shop project", "/deploy for Shop".
 	trailingName = `(?is)^(?:please\s+)?(?:(?:send|run|pass|give|post)\s+(?:this\s+)?)?(.+?)\s+(?:to|in|for|on|into)\s+(?:the\s+)?(?:project\s+)?%s(?:\s+project)?\s*[.!]?$`
 	// "tell Shop to fix it", "ask the Shop project what's left".
 	tellName = `(?is)^(?:please\s+)?(?:tell|ask|have|get)\s+(?:the\s+)?(?:project\s+)?%s(?:\s+project)?\s+(?:to\s+)?(.+)$`
 )
 
-// namedStart is how a message that names its project first begins. A bare "Shop fix it" is too
-// easy to read by mistake, so without a colon or a dash after the name, the leading form only
-// counts when the message starts with "in", "for", "to", "on" or "@".
-var namedStart = regexp.MustCompile(`(?i)^(?:please\s+)?(?:in|for|to|on|@)`)
-
 // instruction is how a task starts. "fix the bug in Shop" is a task for Shop, while "a bug in Shop"
 // is a description, so the form that names the project last counts only for commands and for
 // messages that start with a verb.
 var instruction = regexp.MustCompile(`(?i)^(?:please\s+)?(?:/|send|run|pass|give|post|fix|add|build|make|write|update|check|review|test|deploy|create|remove|delete|refactor|implement|investigate|look|start|open|do|audit)\b`)
 
-// namedProject finds a project the message names and what to send it. Names are matched longest
-// first, case-insensitively, in the original text, so a URL or a command keeps its case.
-func namedProject(text string, projects []*models.Project) (*models.Project, string) {
+// namePattern is an alias as a pattern: spaces match any space, and a name that ends in a letter
+// or digit must end there, so "Web" doesn't name "Web-sockets".
+func namePattern(text string) string {
+	name := strings.ReplaceAll(regexp.QuoteMeta(text), " ", `\s+`)
+	if last := text[len(text)-1]; last >= 'a' && last <= 'z' || last >= '0' && last <= '9' {
+		name += `\b`
+	}
+	return name
+}
+
+// namedProject finds a project the message names, what to send it, and how long the name was.
+// Names are matched longest first, case-insensitively, in the original text, so a URL or a
+// command keeps its case.
+func namedProject(text string, projects []*models.Project) (*models.Project, string, int) {
 	text = strings.TrimSpace(text)
 	for _, alias := range aliases(projects) {
-		name := regexp.QuoteMeta(alias.text)
-		name = strings.ReplaceAll(name, " ", `\s+`)
+		name := namePattern(alias.text)
 		if match := regexp.MustCompile(strings.Replace(tellName, "%s", name, 1)).FindStringSubmatch(text); match != nil {
-			return alias.project, strings.TrimSpace(match[1])
+			return alias.project, strings.TrimSpace(match[1]), len(alias.text)
 		}
-		if match := regexp.MustCompile(strings.Replace(leadingName, "%s", name, 1)).FindStringSubmatch(text); match != nil {
-			separated := strings.ContainsAny(text[:len(text)-len(match[1])], ":,–-")
-			if separated || namedStart.MatchString(text) {
-				return alias.project, strings.TrimSpace(match[1])
-			}
+		if match := regexp.MustCompile(strings.Replace(leadingName, "%s", name, 1)).FindStringSubmatch(text); match != nil &&
+			match[1]+match[2]+match[3]+match[4] != "" {
+			return alias.project, strings.TrimSpace(match[5]), len(alias.text)
+		}
+		if !alias.full {
+			continue
 		}
 		if match := regexp.MustCompile(strings.Replace(trailingName, "%s", name, 1)).FindStringSubmatch(text); match != nil &&
 			instruction.MatchString(text) {
-			return alias.project, strings.TrimSpace(match[1])
+			return alias.project, strings.TrimSpace(match[1]), len(alias.text)
 		}
 	}
-	return nil, ""
+	return nil, "", 0
+}
+
+// looksLikeTask reports whether a message reads as work to hand over: a command, something that
+// starts with a verb, or a few words that aren't a question. "ok" and "are you there?" aren't.
+func looksLikeTask(text string) bool {
+	if instruction.MatchString(strings.TrimSpace(text)) {
+		return true
+	}
+	return len(strings.Fields(text)) >= 3 && !IsQuestion(text)
 }
 
 // fit is how well a message fits a project, from Mabari's map of it.
@@ -204,7 +227,7 @@ func fits(text string, projects []*models.Project, agents []*models.LiveAgent) [
 		if project.Repository != nil && project.Repository.Path != "" {
 			for _, word := range words(filepath.Base(project.Repository.Path)) {
 				if said[word] {
-					score += 6
+					score += 8
 					if why == "" {
 						why = "it mentions the " + filepath.Base(project.Repository.Path) + " folder"
 					}
@@ -245,9 +268,10 @@ func fits(text string, projects []*models.Project, agents []*models.LiveAgent) [
 	return out
 }
 
-// clearFit is the lowest score that picks a project, and how far ahead of the next it must be.
+// clearFit is the lowest score that picks a project: a word of its name or folder, or two words of
+// what it is about. clearLead is how far ahead of the next project it must be.
 const (
-	clearFit  = 4
+	clearFit  = 8
 	clearLead = 4
 )
 
@@ -259,15 +283,22 @@ func (o view) forProject(text string, in Office) (*Route, *Reply) {
 		return nil, nil
 	}
 	projects := open(in.Projects)
+	if len(projects) == 0 {
+		return nil, nil
+	}
+	// Small talk and questions Mabari has no answer for aren't work for anyone, and handing
+	// them over could open a Claude Code window for "ok".
+	if !looksLikeTask(text) {
+		reply := o.reply("I'm not sure what to do with that. Tell me a task and which project it's for, "+
+			"or ask me how things are going.", "shrug", KindPlain)
+		return nil, &reply
+	}
 	if in.InView != "" {
 		for _, project := range projects {
 			if project.ID == in.InView {
 				return &Route{ProjectID: project.ID, Text: text}, nil
 			}
 		}
-	}
-	if len(projects) == 0 {
-		return nil, nil
 	}
 	// A message that names an agent goes to that agent, as it always has.
 	if o.named(strings.ToLower(text)) != nil {

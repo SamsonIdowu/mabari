@@ -5,6 +5,7 @@ package launch
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -46,8 +47,10 @@ func TestAPromptIsNeverAFlag(t *testing.T) {
 func TestCommandPerSystem(t *testing.T) {
 	request := Request{Folder: "/w", Prompt: `say "hi" \ bye`}
 	none := func(string) (string, error) { return "", errors.New("missing") }
-	mac := Command(context.Background(), "darwin", none, request)
-	if mac == nil || mac.Args[0] != "osascript" || !strings.Contains(mac.Args[2], `do script "cd '/w' && 'claude' '--' 'say \"hi\" \\ bye'"`) {
+	// On macOS Terminal is given only "sh <script>": nothing from the request is typed into it.
+	mac := Command(context.Background(), "darwin", none, request, "/tmp/mabari-claude-1.sh")
+	if mac == nil || mac.Args[0] != "osascript" || !strings.Contains(mac.Args[2], `do script "sh '/tmp/mabari-claude-1.sh'"`) ||
+		strings.Contains(mac.Args[2], "hi") {
 		t.Errorf("darwin = %q", mac.Args)
 	}
 	gnome := Command(context.Background(), "linux", func(name string) (string, error) {
@@ -55,11 +58,47 @@ func TestCommandPerSystem(t *testing.T) {
 			return "/usr/bin/gnome-terminal", nil
 		}
 		return "", errors.New("missing")
-	}, request)
+	}, request, "")
 	if gnome == nil || strings.Join(gnome.Args[1:], "|") != "--working-directory=/w|--|claude|--|"+request.Prompt {
 		t.Errorf("gnome = %q", gnome.Args)
 	}
-	if Command(context.Background(), "linux", none, request) != nil || Command(context.Background(), "windows", none, request) != nil {
+	if Command(context.Background(), "linux", none, request, "") != nil || Command(context.Background(), "windows", none, request, "") != nil {
 		t.Error("a command with no terminal")
+	}
+}
+
+// The script runs the quoted line, then is gone.
+func TestTheScriptRunsTheSessionAndDeletesItself(t *testing.T) {
+	path, err := script(Request{Folder: "/tmp", Prompt: "hi\u0003 there"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- the script just written
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), "rm -f -- '"+path+"'\n") || !strings.Contains(string(data), "'claude' '--' 'hi\u0003 there'") {
+		t.Errorf("script = %q", data)
+	}
+	_ = os.Remove(path)
+}
+
+func TestSlashCommands(t *testing.T) {
+	for text, want := range map[string]string{
+		"/ux-audit https://x.io/a": "ux-audit|https://x.io/a",
+		"/review":                  "review|",
+		"/plugin:cmd a\nb":         "plugin:cmd|a\nb",
+		"/Users/me/shop is broken": "",
+		"/ nothing":                "",
+		"fix /etc/hosts":           "",
+	} {
+		name, args, ok := SlashCommand(text)
+		got := ""
+		if ok {
+			got = name + "|" + args
+		}
+		if got != want {
+			t.Errorf("%q = %q", text, got)
+		}
 	}
 }

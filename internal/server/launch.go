@@ -90,11 +90,27 @@ func (a *api) openClaude(name, folder, prompt string, plan bool) (string, bool) 
 	return "Opened Claude Code in " + folder + ". It joins " + name + " as soon as it starts.", true
 }
 
-// promptProblem says what is wrong with a prompt for Claude Code, or "" when it is fine.
+// messageProblem says what is wrong with any message for an agent, or "" when it is fine.
+func messageProblem(text string) string {
+	switch {
+	case text == "":
+		return "A message needs some text."
+	case len(text) > maxPrompt:
+		return "That's too long to send. Keep it under 20,000 characters."
+	}
+	return ""
+}
+
+// promptProblem says what is wrong with a prompt that goes on Claude Code's command line, or ""
+// when it is fine.
 func promptProblem(prompt string) string {
 	switch {
 	case prompt == "":
 		return "A message needs some text."
+	case strings.IndexFunc(prompt, func(r rune) bool {
+		return r != '\n' && r != '\t' && (r < 0x20 || r == 0x7f)
+	}) >= 0:
+		return "A prompt can't contain control characters."
 	// The prompt follows "--"; refusing a leading dash as well means it can't be a flag even if
 	// Claude Code ever read options after "--".
 	case strings.HasPrefix(prompt, "-"):

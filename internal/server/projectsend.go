@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
+	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/vee"
 )
@@ -17,14 +18,20 @@ import (
 // when they are typed or given as a session's first prompt, Mabari opens Claude Code in the
 // project's folder with the message as its first prompt.
 
-// isCommand reports whether a message is a Claude Code slash command, such as /ux-audit.
-func isCommand(text string) bool { return strings.HasPrefix(text, "/") }
+// isCommand reports whether a message is a Claude Code slash command, such as /ux-audit. A path
+// such as /Users/me/shop is not.
+func isCommand(text string) bool {
+	_, _, ok := launch.SlashCommand(text)
+	return ok
+}
 
 // projectRoute is where a message for a project went, worked out inside Do. When Opening is set,
 // Claude Code still has to be opened, outside Do.
 type projectRoute struct {
 	sent   vee.ProjectSent
 	result messageResult
+	// badPrompt is set when the text can't go on Claude Code's command line.
+	badPrompt bool
 }
 
 // takers are the leads in a project that can take a message now, and the sessions waiting for
@@ -64,12 +71,19 @@ func (a *api) toProject(project *models.Project, text, why string) projectRoute 
 		route.result, _ = a.deliver(messageBody{
 			scope: scope{Project: project.ID}, Text: text, Mode: string(models.ModeInstruct), Target: agent.ID, quiet: true,
 		})
-		route.sent.Agent, route.sent.Where = agent, a.whereIs(agent, known)
+		// A copy, read after Do without the lock.
+		copied := *agent
+		route.sent.Agent, route.sent.Where = &copied, a.whereIs(agent, known)
 		return route
 	}
 	if !hasFolder {
 		route.sent.Problem = "Nobody works on " + project.Name + " yet, and it has no folder for Claude Code to open in. " +
 			"Attach one on the Projects page."
+		return route
+	}
+	// Only here does the text become part of a command line.
+	if problem := promptProblem(text); problem != "" {
+		route.sent.Problem, route.badPrompt = problem, true
 		return route
 	}
 	opening := a.engine.Opening(project, text)
@@ -88,7 +102,7 @@ func (a *api) open(route *projectRoute) string {
 	notice, opened := a.openClaude(project.Name, project.Repository.Path, route.sent.Opening.Text, false)
 	route.sent.Opened = opened
 	if !opened {
-		_ = a.engine.Do(func() { a.engine.Unqueue(route.sent.Opening.ID) })
+		_ = a.engine.Do(func() { a.engine.DropOpening(route.sent.Opening.ID, "Claude Code didn't open") })
 	}
 	return notice
 }
@@ -126,7 +140,7 @@ func (a *api) sendToProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	text := strings.TrimSpace(body.Text)
-	if problem := promptProblem(text); problem != "" {
+	if problem := messageProblem(text); problem != "" {
 		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
@@ -147,6 +161,9 @@ func (a *api) sendToProject(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case !found:
 		writeError(w, http.StatusNotFound, "no such project")
+		return
+	case route.badPrompt:
+		writeError(w, http.StatusBadRequest, route.sent.Problem)
 		return
 	case route.sent.Problem != "":
 		writeError(w, http.StatusConflict, route.sent.Problem)

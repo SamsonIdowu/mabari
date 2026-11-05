@@ -53,7 +53,7 @@ describe('projectChat', () => {
     ]);
     expect(items[0]?.reply).toBe('Done: 3 issues.');
     expect(items[0]?.ai).toBe('Claude');
-    expect(items.filter(removable).map((item) => item.id)).toEqual(['o1', 'q1']);
+    expect(items.filter(removable).map((item) => item.id)).toEqual(['q1']);
   });
 
   it('copes with a project saved before prompts could wait for Claude Code', () => {

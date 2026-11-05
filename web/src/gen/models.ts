@@ -439,7 +439,7 @@ export const InstructionRemoved: InstructionStatus = "removed";
  * milliseconds. A session that never reports, say because its window was closed, doesn't keep
  * the prompt for ever.
  */
-export const OpeningKept = 30 * 60 * 1000;
+export const OpeningKept = 15 * 60 * 1000;
 /**
  * Instruction is a message from the user.
  */

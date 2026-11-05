@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Fragment, useEffect, useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
+import { needsTone, whoNeedsYou } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import type { Route } from '../routes.ts';
 import { Icon } from './Icon.tsx';
@@ -8,13 +9,12 @@ import { navGroups, type NavItem } from './navItems.tsx';
 
 const LIVE_MS = 6000;
 
+/** Everyone who needs you, by the one definition every count uses. Red only when an approval or an
+ * error waits; a question alone is calm. */
 function NeedsBadge() {
-  const count = useOfficeStore(
-    (state) =>
-      state.office?.agents.filter((agent) => agent.state === 'approval' || agent.state === 'error')
-        .length ?? 0,
-  );
-  return count ? <span className="badge">{count}</span> : null;
+  const count = useOfficeStore((state) => whoNeedsYou(state.office?.agents ?? []).length);
+  const tone = useOfficeStore((state) => needsTone(whoNeedsYou(state.office?.agents ?? [])));
+  return count ? <span className={tone === 'red' ? 'badge' : `badge ${tone}`}>{count}</span> : null;
 }
 
 /** Replies Mabari relayed while you were on another page. */

@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { isQuiet, LAYERS, useLayers } from '../office/layers.ts';
-import { inScope, useOfficeUi } from '../office/uiStore.ts';
+import { counted, inScope, needsTone, needsYou, useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import { Icon } from '../shell/Icon.tsx';
@@ -78,9 +78,11 @@ function ProjectPanels({ office }: { office: Snapshot }) {
             </button>
           );
         }
-        const agents = office.agents.filter((agent) => agent.projectId === project.id);
+        const agents = counted(office.agents).filter((agent) => agent.projectId === project.id);
         const working = agents.filter((agent) => agent.working).length;
-        const need = agents.filter((agent) => agent.state === 'approval').length;
+        // The same "needs you" as the badge and the header: an approval, an error or a question.
+        const needing = agents.filter(needsYou);
+        const need = needing.length;
         const percent = Math.round(project.progress * 100);
         const done = project.status === 'done';
         const on = current === project.id;
@@ -100,7 +102,9 @@ function ProjectPanels({ office }: { office: Snapshot }) {
                 <i style={{ width: `${done ? 100 : percent}%` }} />
               </span>
               {done ? '✓' : `${percent}%`}
-              {need ? <b>{need}</b> : null}
+              {need ? (
+                <b className={needsTone(needing) === 'red' ? undefined : 'calm'}>{need}</b>
+              ) : null}
             </span>
           </button>
         );

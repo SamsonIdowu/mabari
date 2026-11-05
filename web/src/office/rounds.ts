@@ -6,6 +6,7 @@
 import { minsText } from '../format.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
 import { STATE_LOCATIONS } from './layout.ts';
+import { needsYou } from './uiStore.ts';
 
 type Visitable = Pick<LiveAgent, 'id' | 'projectId' | 'desk' | 'state' | 'leaving' | 'working'>;
 
@@ -55,12 +56,13 @@ export function roundDone<T extends Visitable>(round: T[], last: string | null, 
 /** What Mabari says about a project after checking in there, from the server's numbers. */
 export function projectUpdate(
   project: Pick<Project, 'name' | 'progress' | 'estimate'> | null,
-  agents: Pick<LiveAgent, 'projectId' | 'working' | 'state'>[],
+  agents: Pick<LiveAgent, 'projectId' | 'working' | 'state' | 'question'>[],
   projectId: string | null,
 ): string {
   const here = agents.filter((agent) => (agent.projectId ?? null) === projectId);
   const working = here.filter((agent) => agent.working).length;
-  const need = here.filter((agent) => agent.state === 'approval' || agent.state === 'error').length;
+  // The same "needs you" as every other count: an approval, an error or a question.
+  const need = here.filter(needsYou).length;
   const parts = [`${working} working`];
   if (need) parts.push(`${need} need${need === 1 ? 's' : ''} you`);
   if (project) {

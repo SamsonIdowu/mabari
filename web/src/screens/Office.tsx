@@ -7,19 +7,11 @@ import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
-import { useFloorList } from '../office/floorList.ts';
+import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
 import { onFloor, restKey } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
-import {
-  inScope,
-  needsTone,
-  needsYou,
-  selectAgent,
-  selectResting,
-  useOfficeUi,
-  type StatusFilter,
-} from '../office/uiStore.ts';
+import { selectAgent, selectResting, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
@@ -72,21 +64,26 @@ const WHEEL_GAP_MS = 120;
 function Summary({ scoped }: { scoped: LiveAgent[] }) {
   // Working comes from the server, so agents that report no progress rate count too. Only those
   // with an estimate say when they will be done.
-  const working = scoped.filter((agent) => agent.working);
+  const { agents, working, need, queued, tone } = floorCounts(scoped);
   const estimated = scoped.filter((agent) => agent.estimate);
-  const needing = scoped.filter(needsYou);
-  const need = needing.length;
-  const tone = needsTone(needing);
   const held = scoped.filter((a) => a.state === 'approval' || a.state === 'paused').length;
   const seconds = Math.max(0, ...estimated.map((agent) => agent.estimate?.secondsLeft ?? 0));
   return (
     <span className="help" id="officeClock">
-      {scoped.length} agent{scoped.length === 1 ? '' : 's'} · {working.length} working
+      {agents} agent{agents === 1 ? '' : 's'} · {working} working
       {need ? (
         <>
           {' · '}
           <b style={tone === 'calm' ? undefined : { color: `var(--${tone})` }}>
             {need} need{need === 1 ? 's' : ''} you
+          </b>
+        </>
+      ) : null}
+      {queued ? (
+        <>
+          {' · '}
+          <b className="queuedn" style={{ color: 'var(--amber)' }}>
+            {queued} queued
           </b>
         </>
       ) : null}
@@ -264,9 +261,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const inProject = onFloor(office.agents).filter(
     (agent) => filters.project === 'all' || agent.projectId === filters.project,
   );
-  const needing = scoped.filter(needsYou);
-  const need = needing.length;
-  const tone = needsTone(needing);
+  const { need, tone } = floorCounts(scoped);
   const filtered =
     filters.provider !== 'all' ||
     filters.model !== 'all' ||
@@ -1015,8 +1010,7 @@ export function Office() {
   const selected = office.agents.find((agent) => agent.id === selectedId);
   const resting = selected ? undefined : office.defs?.find((def) => restKey(def) === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
-  const floor = onFloor(office.agents);
-  const scoped = floor.filter((agent) => inScope(agent, filters, floor));
+  const scoped = agentsHere(office.agents, filters);
 
   return (
     <section data-screen="office" style={{ height: '100%' }}>

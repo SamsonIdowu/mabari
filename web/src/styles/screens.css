@@ -98,6 +98,11 @@
 .flrow.red .fldet {
   color: var(--red);
 }
+/* A queued instruction is a wait, not a request: its own amber group, apart from Needs you. */
+.flrow.amber .fldet,
+.fl-queued .mhead span:first-child {
+  color: var(--amber);
+}
 .flrow {
   display: flex;
   align-items: center;
@@ -3488,6 +3493,15 @@ section[data-screen='home'] {
   border-radius: 6px;
   padding: 0 0.35em;
   font-size: 0.9em;
+}
+/* Only questions wait: a count that is not red, as only approvals and errors are. */
+.pws b.calm {
+  background: #e6e6e6;
+  color: #0c0c0c;
+}
+[data-theme='dark'] .pws b.calm {
+  background: #3a3a40;
+  color: #f4f4f4;
 }
 .pwin.done .pws {
   color: #1b8a4b;

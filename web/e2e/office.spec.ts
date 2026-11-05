@@ -98,7 +98,8 @@ test('the notice board lists approvals', async ({ page }) => {
 test('filters and projects narrow the floor', async ({ page }) => {
   await loadDemo(page);
   await page.getByRole('button', { name: 'Needs me' }).click();
-  await expect(page.locator('.tag .nt:visible')).toHaveCount(3);
+  // Atlas (approval) and Mori (error). Sage's queued instruction is a wait, not a request.
+  await expect(page.locator('.tag .nt:visible')).toHaveCount(2);
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('.tag .nt:visible')).toHaveCount(10);
 

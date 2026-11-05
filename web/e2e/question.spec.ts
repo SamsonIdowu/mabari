@@ -148,9 +148,10 @@ test('Claude asks a question and the answer from the panel goes back to it', asy
 test('Mabari on Home says a question is waiting, and Answer opens it', async ({ page }) => {
   await page.goto('/#home');
   await expect(page.locator('#homeSum')).toHaveText('No agents yet');
-  const { printed } = await askOnceLive(page, page.locator('#homeSum', { hasText: 'asking you' }));
-  // Calm: the summary says it in plain text, not in red.
-  await expect(page.locator('#homeSum')).toContainText('1 asking you a question');
+  const { printed } = await askOnceLive(page, page.locator('#homeSum', { hasText: 'need you' }));
+  // A question is one of the things that need you, counted as everywhere else does. It is calm:
+  // the summary says it in plain text, not in red.
+  await expect(page.locator('#homeSum')).toContainText('1 need you');
   await expect(page.locator('#homeSum b')).toHaveCount(0);
 
   if (!(await page.locator('#hcForm').isVisible())) await page.locator('#hcType').click();

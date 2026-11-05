@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import { nextZoom } from './camera.ts';
+import { onFloor } from './layout.ts';
 
 export type StatusFilter = 'all' | 'needs' | 'active';
 
@@ -172,22 +173,36 @@ export function urgent(agent: Pick<LiveAgent, 'state'>): boolean {
 }
 
 /**
- * The colour a count of agents who need you takes: red for approvals and errors, amber for
- * queued instructions, and none for questions, which wait calmly.
+ * The one meaning of "needs you" (decision 1 of the first UX round): an agent waiting for
+ * something only you can give, which is an approval, an error or an open question. A queued
+ * instruction is a wait, not a request, so it does not count. The rail badge, Home, the floor
+ * header, the Needs me tab and the Needs you group all come from this, so they always agree.
  */
-export function needsTone(agents: LiveAgent[]): 'red' | 'amber' | 'calm' {
-  if (agents.some(urgent)) return 'red';
-  if (agents.some((agent) => (agent.queued?.length ?? 0) > 0)) return 'amber';
-  return 'calm';
+export function needsYou(agent: Pick<LiveAgent, 'state' | 'question'>): boolean {
+  return urgent(agent) || Boolean(agent.question);
 }
 
-export function needsYou(agent: LiveAgent): boolean {
-  return (
-    agent.state === 'approval' ||
-    agent.state === 'error' ||
-    Boolean(agent.question) ||
-    (agent.queued?.length ?? 0) > 0
-  );
+/** Instructions are waiting for the agent's next checkpoint: amber, and counted apart from needs you. */
+export function hasQueued(agent: Pick<LiveAgent, 'queued'>): boolean {
+  return (agent.queued?.length ?? 0) > 0;
+}
+
+/**
+ * The colour a count of agents who need you takes: red when an approval or an error waits, and
+ * calm when only questions do, which wait quietly. Only approvals and errors are red.
+ */
+export function needsTone(agents: Pick<LiveAgent, 'state'>[]): 'red' | 'calm' {
+  return agents.some(urgent) ? 'red' : 'calm';
+}
+
+/** The agents the office counts: those on the floor, and not on their way out. */
+export function counted(agents: LiveAgent[]): LiveAgent[] {
+  return onFloor(agents).filter((agent) => !agent.leaving);
+}
+
+/** Everyone in the office who needs you, wherever the filters point. The rail badge and Home use it. */
+export function whoNeedsYou(agents: LiveAgent[]): LiveAgent[] {
+  return counted(agents).filter(needsYou);
 }
 
 /** Project and team decide who is on the floor. Hidden agents keep working. */

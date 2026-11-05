@@ -42,6 +42,16 @@ func (s AgentState) Active() bool {
 	}
 }
 
+// OnDuty reports whether a workflow sub-agent belongs in the office: while it works, and while it
+// waits on you with an approval or an error. Idle, finished and paused ones leave the floor.
+func (s AgentState) OnDuty() bool {
+	return s.Active() || s == StateApproval || s == StateError
+}
+
+// OffFloor is the Desk of a workflow sub-agent that isn't on duty: it has no seat, and the office
+// doesn't show it.
+const OffFloor = -1
+
 // AccountKind is a way of connecting agents.
 type AccountKind string
 
@@ -152,7 +162,8 @@ type Agent struct {
 	DefID string `json:"defId"`
 	// Workflow marks a workflow sub-agent: one not started from an agent definition file, such
 	// as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
-	// or a subagent whose type matches no loaded definition.
+	// or a subagent whose type matches no loaded definition. It is in the office only while it
+	// is on duty (AgentState.OnDuty); otherwise its Desk is OffFloor.
 	Workflow bool `json:"workflow"`
 	// Bench seats the agent in the workflow sub-agents' area, where Desk counts bench seats. A
 	// workflow lead sits there, and its subagents sit with it.

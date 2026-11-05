@@ -5,7 +5,8 @@
 // source: desks.go
 
 /**
- * BaseGrid is how many desks a side the grid has before it grows, as in the prototype.
+ * BaseGrid is how many desks a side the grid has before it grows, as in the prototype. The
+ * grid keeps this many rows as it grows, so the office only ever gets wider.
  */
 export const BaseGrid = 4;
 /**
@@ -13,17 +14,18 @@ export const BaseGrid = 4;
  */
 export const MaxDesks = 96;
 /**
- * BenchColumns is how many seats a row of benches has.
+ * BenchRows is how many rows of benches the workflow sub-agents' area has. It grows a
+ * column of seats at a time, to the right.
  */
-export const BenchColumns = 4;
+export const BenchRows = 4;
 /**
  * BenchPitchX is the space between bench seats in a row, in world pixels.
  */
 export const BenchPitchX = 160;
 /**
- * BenchPitchY is the space between rows of benches, in world pixels.
+ * BenchPitchY is the space between rows of benches, in world pixels: the desk grid's.
  */
-export const BenchPitchY = 112;
+export const BenchPitchY = 128;
 
 //////////
 // source: estimate.go
@@ -130,6 +132,11 @@ export const StateError: AgentState = "error";
  * Agent states.
  */
 export const StatePaused: AgentState = "paused";
+/**
+ * OffFloor is the Desk of a workflow sub-agent that isn't on duty: it has no seat, and the office
+ * doesn't show it.
+ */
+export const OffFloor = -1;
 /**
  * AccountKind is a way of connecting agents.
  */
@@ -302,7 +309,8 @@ export interface Agent {
   /**
    * Workflow marks a workflow sub-agent: one not started from an agent definition file, such
    * as a Claude Code session opened in a terminal, an editor, on the web or in the Claude app,
-   * or a subagent whose type matches no loaded definition.
+   * or a subagent whose type matches no loaded definition. It is in the office only while it
+   * is on duty (AgentState.OnDuty); otherwise its Desk is OffFloor.
    */
   workflow: boolean;
   /**

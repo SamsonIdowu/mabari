@@ -257,6 +257,7 @@ func (e *Engine) flush() {
 	}
 	now := e.now()
 	var changed []*models.LiveAgent
+	e.seatWorkflow()
 	// A lead's whole team estimate moves with its subagents.
 	for _, agent := range e.agents {
 		if _, ok := e.dirty[agent.ID]; ok && agent.Lead != nil {
@@ -284,6 +285,39 @@ func (e *Engine) flush() {
 		e.broadcast(models.ServerMessage{Type: models.MsgAgent, Agent: &copied})
 	}
 	e.refreshProjects(now, true)
+}
+
+// seatWorkflow keeps only workflow sub-agents on duty in the office, so the benches always show
+// how many are at work. One that stops gives up its seat, and one that starts again takes the
+// nearest free seat to its lead, or the lowest free one. Seats are given up first, so a seat
+// freed in this flush can be taken in it. Call inside Do, before agents are saved.
+func (e *Engine) seatWorkflow() {
+	var arriving []*models.LiveAgent
+	for _, agent := range e.agents {
+		if _, ok := e.dirty[agent.ID]; !ok || !agent.Workflow {
+			continue
+		}
+		if agent.Leaving {
+			continue
+		}
+		onDuty := agent.State.OnDuty()
+		switch {
+		case !onDuty && agent.Desk != models.OffFloor:
+			agent.Desk = models.OffFloor
+		case onDuty && agent.Desk == models.OffFloor:
+			arriving = append(arriving, agent)
+		}
+	}
+	for _, agent := range arriving {
+		near := -1
+		if agent.Lead != nil {
+			if lead := e.Agent(*agent.Lead); lead != nil && lead.Bench == agent.Bench {
+				near = lead.Desk
+			}
+		}
+		// With every seat taken it stays off the floor, and tries again when it next changes.
+		agent.Desk = models.FreeDesk(e.agents, agent.Bench, near)
+	}
 }
 
 // refreshTeam works out when a lead and its subagents should all be done. Agents with no

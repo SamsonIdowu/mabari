@@ -59,6 +59,8 @@ func agentOf(t *testing.T, engine *events.Engine) *models.LiveAgent {
 	return agent
 }
 
+// A session from no agent file is a workflow sub-agent: it waits off the floor, takes a bench
+// seat while it works, and gives the seat up when it stops, so the benches show who is working.
 func TestASessionTakesADesk(t *testing.T) {
 	c, engine := newConnector(t)
 	if reply := hook(t, c, "SessionStart", map[string]any{"source": "startup", "model": "claude-sonnet-4-5[1m]"}); reply != nil {
@@ -69,14 +71,22 @@ func TestASessionTakesADesk(t *testing.T) {
 		t.Fatal("no agent")
 	}
 	if agent.Provider != models.ProviderClaude || agent.Model != "claude-sonnet-4-5" ||
-		agent.Folder != "/home/me/shop" || agent.Desk != 0 || agent.Name != "Shop" ||
-		agent.Project != nil {
+		agent.Folder != "/home/me/shop" || agent.Desk != models.OffFloor || agent.Name != "Shop" ||
+		agent.Project != nil || !agent.Workflow {
 		t.Errorf("agent = %+v", agent.Agent)
 	}
 	for _, account := range engine.Accounts() {
 		if account.Kind == models.AccountClaudeCode && account.Status != models.AccountConnected {
 			t.Errorf("account = %s", account.Status)
 		}
+	}
+	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
+	if agent := agentOf(t, engine); agent.Desk != 0 || !agent.Bench {
+		t.Errorf("working: desk %d, bench %v", agent.Desk, agent.Bench)
+	}
+	hook(t, c, "Stop", map[string]any{})
+	if agent := agentOf(t, engine); agent.Desk != models.OffFloor {
+		t.Errorf("stopped: desk %d", agent.Desk)
 	}
 }
 
@@ -538,8 +548,11 @@ func TestASessionStartedWithAnAgentTakesADesk(t *testing.T) {
 func TestEverySessionAndSubagentIsShown(t *testing.T) {
 	c, engine := newConnector(t)
 	for n := range 20 {
-		body, _ := json.Marshal(map[string]any{"session_id": "s" + strconv.Itoa(n), "cwd": "/home/me/shop", "hook_event_name": "SessionStart"})
-		c.Handle(context.Background(), body)
+		for _, event := range []string{"SessionStart", "UserPromptSubmit"} {
+			body, _ := json.Marshal(map[string]any{"session_id": "s" + strconv.Itoa(n), "cwd": "/home/me/shop",
+				"hook_event_name": event, "prompt": "Work"})
+			c.Handle(context.Background(), body)
+		}
 	}
 	for n := range 6 {
 		body, _ := json.Marshal(map[string]any{"session_id": "s0", "cwd": "/home/me/shop", "hook_event_name": "SubagentStart",
@@ -565,9 +578,11 @@ func TestTidyNamesSeatsOldSessionsAtTheBenches(t *testing.T) {
 	_ = engine.Do(func() {
 		lead := &models.LiveAgent{}
 		lead.ID, lead.Name, lead.Source, lead.Desk, lead.Folder = "cc-old", "Shop", Source, 4, "/home/me/shop"
+		lead.State = models.StateEditing
 		engine.AddAgent(lead)
 		helper := &models.LiveAgent{}
 		helper.ID, helper.Name, helper.Source, helper.Desk, helper.Lead = "cc-old-a1", "Explore 2", Source, 5, &lead.ID
+		helper.State = models.StateReading
 		engine.AddAgent(helper)
 		c.TidyNames()
 	})

@@ -179,10 +179,15 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	if in.AgentID == "" {
 		def, defined = c.defFor(in.AgentType, project)
 	}
-	desk := models.FreeDesk(c.engine.Agents(), !defined, -1)
-	if desk < 0 {
-		c.engine.Toast("The office is full, so a new Claude Code session isn't shown.")
-		return nil
+	// A workflow sub-agent takes a bench seat only while it's on duty (see Engine.seatWorkflow),
+	// and a new session starts idle, so it starts off the floor.
+	desk := models.OffFloor
+	if defined {
+		desk = models.FreeDesk(c.engine.Agents(), false, -1)
+		if desk < 0 {
+			c.engine.Toast("The office is full, so a new Claude Code session isn't shown.")
+			return nil
+		}
 	}
 	agents := c.engine.Agents()
 	agent := &models.LiveAgent{}
@@ -231,8 +236,8 @@ func (c *Connector) connected() {
 
 // seatText is where the log says an agent sat down.
 func seatText(agent *models.LiveAgent) string {
-	if agent.Bench {
-		return "Took a seat at the workflow benches"
+	if agent.Workflow {
+		return "Sits at the workflow benches while it works"
 	}
 	return "Took desk " + strconv.Itoa(agent.Desk+1)
 }

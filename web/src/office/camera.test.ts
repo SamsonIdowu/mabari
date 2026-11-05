@@ -5,9 +5,11 @@ import {
   fitScale,
   fromScreen,
   nextZoom,
+  homeView,
   teamView,
   toScreen,
   viewMatrix,
+  visibleWorld,
   type Size,
   type View,
   WALL_BAR,
@@ -77,20 +79,21 @@ describe('teamView', () => {
   });
 });
 
-describe('a bigger office', () => {
+describe('a wider office', () => {
   const floor = floorFor(40, 8, 30);
   const world = { width: floor.width, height: floor.height };
 
-  it('still fits whole at 100%, zooming out further', () => {
-    const size = { width: 1200, height: 760 };
-    const fit = fitScale(size, world);
-    expect(fit).toBeLessThan(fitScale(size));
-    expect(floor.width * fit).toBeLessThanOrEqual(size.width * 1.1);
-    expect(floor.height * fit).toBeLessThanOrEqual(size.height * 1.1);
-    const matrix = viewMatrix({ cx: floor.width / 2, cy: floor.height / 2, s: 1 }, size, world);
-    const corner = toScreen({ x: floor.width, y: floor.height }, matrix);
-    expect(corner.x).toBeLessThanOrEqual(size.width + 1);
-    expect(corner.y).toBeLessThanOrEqual(size.height * 1.1);
+  it("keeps the prototype office's scale, so agents stay as big, and pans along", () => {
+    for (const size of [
+      { width: 1200, height: 760 },
+      { width: 1800, height: 700 },
+      { width: 400, height: 800 },
+    ]) {
+      const fit = fitScale(size, world);
+      expect(fit).toBeGreaterThan(fitScale(size) * 0.9);
+      expect(floor.width * fit).toBeGreaterThan(size.width);
+      expect(visibleWorld(size, world).width).toBeLessThan(floor.width);
+    }
   });
 
   it('keeps the floor below the wall bar, so the first row of desks shows', () => {
@@ -98,7 +101,8 @@ describe('a bigger office', () => {
       { width: 1200, height: 760 },
       { width: 1800, height: 700 },
     ]) {
-      const matrix = viewMatrix({ cx: floor.width / 2, cy: floor.height / 2, s: 1 }, size, world);
+      const home = homeView(size, world);
+      const matrix = viewMatrix({ cx: home.x, cy: home.y, s: 1 }, size, world);
       expect(toScreen({ x: 0, y: 44 }, matrix).y).toBeGreaterThanOrEqual(WALL_BAR - 0.001);
       expect(toScreen({ x: 0, y: floor.height }, matrix).y).toBeLessThanOrEqual(
         size.height + 0.001,
@@ -106,18 +110,29 @@ describe('a bigger office', () => {
     }
   });
 
-  it('pans over the whole floor when zoomed in', () => {
-    expect(clampView({ cx: 99999, cy: 99999, s: 2 }, world)).toEqual({
-      cx: (floor.width * 3) / 4,
-      cy: (floor.height * 3) / 4,
-      s: 2,
+  it('starts at its left end, where the desks are', () => {
+    const size = { width: 1200, height: 760 };
+    const home = homeView(size, world);
+    const matrix = viewMatrix({ cx: home.x, cy: home.y, s: 1 }, size, world);
+    expect(toScreen({ x: 0, y: 0 }, matrix).x).toBeCloseTo(0);
+  });
+
+  it('pans to either end at 100%, and no further', () => {
+    const size = { width: 1200, height: 760 };
+    const visible = visibleWorld(size, world);
+    expect(clampView({ cx: 99999, cy: 99999, s: 1 }, world, visible)).toEqual({
+      cx: floor.width - visible.width / 2,
+      cy: floor.height / 2,
+      s: 1,
     });
+    expect(clampView({ cx: -5, cy: 0, s: 1 }, world, visible).cx).toBe(visible.width / 2);
   });
 
   it('frames a team at the workflow benches', () => {
     const corners = [0, 1].map((desk) => deskCorner({ desk, bench: true }, floor));
-    const view = teamView(corners, world);
-    expect(view.cy).toBeGreaterThan(floor.lower!);
+    const view = teamView(corners, visibleWorld({ width: 1200, height: 760 }, world));
+    expect(view.cx).toBeGreaterThan(floor.bench!.left);
+    expect(view.s).toBeGreaterThan(1);
   });
 });
 

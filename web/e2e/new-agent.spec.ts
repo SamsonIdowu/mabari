@@ -20,18 +20,20 @@ async function onScreen(page: Page, point: { x: number; y: number }) {
   const [width, height] = (world ?? '').split('x').map(Number);
   const WORLD = { width: width || 1216, height: height || 704 };
   // The office covers the view when the shapes are within 10%, and fits inside otherwise. A
-  // grown office fits its floor under the 58 px wall bar, with the 44 px back wall beneath it.
-  const across = box.width / WORLD.width;
-  const down = box.height / WORLD.height;
-  const grown = WORLD.width > 1216 || WORLD.height > 704;
-  const scale = grown
-    ? Math.min(across, down, (box.height - 58) / (WORLD.height - 44))
-    : Math.max(across, down) / Math.min(across, down) <= 1.1
+  // wider office keeps that scale, fits its floor under the 58 px wall bar with the 44 px back
+  // wall beneath it, and starts at its left end.
+  const across = box.width / 1216;
+  const down = box.height / 704;
+  const base =
+    Math.max(across, down) / Math.min(across, down) <= 1.1
       ? Math.max(across, down)
       : Math.min(across, down);
+  const grown = WORLD.width > 1216 || WORLD.height > 704;
+  const scale = grown ? Math.min(base, (box.height - 58) / (WORLD.height - 44)) : base;
   const top = (box.height - WORLD.height * scale) / 2;
+  const left = (box.width - WORLD.width * scale) / 2;
   return {
-    x: box.x + (box.width - WORLD.width * scale) / 2 + point.x * scale,
+    x: box.x + (grown ? Math.max(0, left) : left) + point.x * scale,
     y: box.y + (grown ? Math.max(top, 58 - 44 * scale) : top) + point.y * scale,
   };
 }

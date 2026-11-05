@@ -50,26 +50,48 @@ async function world(page: Page) {
   return { width: width!, height: height! };
 }
 
-test('the desks grow past sixteen and every agent shows', async ({ page, request }) => {
+test("the office grows only sideways, keeps its agents' size, and scrolls along", async ({
+  page,
+  request,
+}) => {
   await loadDemo(page);
   await expect(page.locator('.tag .nt')).toHaveCount(10);
-  expect(await world(page)).toEqual({ width: 1216, height: expect.any(Number) });
-  // The demo has ten agents. Twelve more need twenty-two desks: a five by five grid.
+  const before = await world(page);
+  expect(before.height).toBe(704);
+  const ledger = page.locator('.tag .nt', { hasText: 'Ledger' });
+  const tagHeight = (await ledger.boundingBox())!.height;
+  // The demo has ten agents. Twelve more need twenty-two desks: six columns of four.
   await hubAgents(
     request,
     Array.from({ length: 12 }, (_, index) => ({ name: `Grower ${index}`, state: 'editing' })),
   );
   await expect(page.locator('.tag .nt')).toHaveCount(22);
-  await expect.poll(async () => (await world(page)).width).toBe(1216 + 160);
-  // The whole floor still fits, so every name tag is inside the office's area.
+  await expect.poll(async () => (await world(page)).width).toBeGreaterThan(before.width);
+  expect((await world(page)).height).toBe(704);
+  await expect(page.locator('#officeClock')).toContainText('22 agents');
+  // Nobody got smaller to make room.
+  expect((await ledger.boundingBox())!.height).toBeCloseTo(tagHeight, 0);
   const stage = (await page.locator('.stage').boundingBox())!;
   for (const tag of await page.locator('.tag .nt').all()) {
     const box = (await tag.boundingBox())!;
     expect(box.y).toBeGreaterThan(stage.y);
     expect(box.y + box.height).toBeLessThan(stage.y + stage.height + 2);
-    expect(box.x + box.width / 2).toBeLessThan(stage.x + stage.width);
   }
-  await expect(page.locator('#officeClock')).toContainText('22 agents');
+  // The rest of the office is a sideways scroll away, and the bar under the floor says so.
+  await expect(page.locator('.oscroll')).toBeVisible();
+  const rooms = await page.evaluate(() => {
+    const thumb = document.querySelector<HTMLElement>('.oscroll span')!;
+    return thumb.style.left;
+  });
+  expect(parseFloat(rooms)).toBe(0);
+  const last = page.locator('.tag .nt', { hasText: 'Grower 11' });
+  const from = (await last.boundingBox())!.x;
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await page.mouse.wheel(600, 0);
+  await expect.poll(async () => (await last.boundingBox())!.x).toBeLessThan(from - 100);
+  // Back to 100% returns to the start of the office.
+  await page.keyboard.press('0');
+  await expect.poll(async () => Math.abs((await last.boundingBox())!.x - from)).toBeLessThan(30);
 });
 
 test('idle agents and agent files with nothing running rest in the lounge', async ({
@@ -99,7 +121,7 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
   // An agent file isn't an agent: it isn't counted or tagged like one.
   await expect(page.locator('#officeClock')).toContainText('11 agents');
 
-  // The idle agent walks to the lounge, below every desk, in the same rows as the agent file.
+  // The idle agent walks to the lounge, to the right of the desks, beside the agent file.
   const napper = page.locator('.tag .nt', { hasText: 'Napper' });
   const desks = page.locator('.tag .nt', { hasText: 'Ledger' });
   await expect
@@ -109,9 +131,10 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
         resting.boundingBox(),
         desks.boundingBox(),
       ]);
-      return !!mine && !!file && !!desk && mine.y > desk.y + 100 && Math.abs(mine.y - file.y) < 120;
+      return !!mine && !!file && !!desk && mine.x > desk.x + 300 && Math.abs(mine.x - file.x) < 120;
     })
     .toBe(true);
+  expect((await world(page)).height).toBe(704);
 
   // Clicking a resting agent file opens it in the builder.
   const tag = (await resting.boundingBox())!;

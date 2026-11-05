@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Converted mechanically from design/mabari-prototype.html, so the pixels match exactly.
-import { BenchColumns, BenchPitchX, BenchPitchY } from '../gen/models.ts';
-import { BASE_FLOOR, BENCH_WIDTH, deskTile, LOUNGE_PITCH, type Floor } from './layout.ts';
+import { BaseGrid, BenchPitchX, BenchPitchY, BenchRows } from '../gen/models.ts';
+import {
+  BASE_FLOOR,
+  benchWidth,
+  deskTile,
+  doorOf,
+  LABEL_Y,
+  LOUNGE_PITCH,
+  type Floor,
+} from './layout.ts';
 
 export const PAL = {
   dark: {
@@ -184,18 +192,19 @@ function desk(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Palette,
   blk(c, x + 22, y + 42, 20, 8, 6, P.chairTop, P.chair, P);
 }
 
-/** The workflow sub-agents' hot desks: long benches, four seats a row, each with a monitor. */
+/** The workflow sub-agents' hot desks: long benches in four rows, a seat per column. */
 function drawBenches(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
   const bench = floor.bench!;
-  const lower = floor.lower!;
-  const bottom = bench.y + (bench.rows - 1) * BenchPitchY + 74;
-  R(c, bench.x - 24, lower + 32, BENCH_WIDTH + 48, bottom - lower - 32, P.carpet);
-  R(c, bench.x - 18, lower + 38, BENCH_WIDTH + 36, bottom - lower - 44, P.carpetB);
-  floorLabel(c, 'Workflow sub-agents', bench.x - 16, lower + 24, P);
-  for (let row = 0; row < bench.rows; row++) {
+  const width = benchWidth(bench.columns);
+  const bottom = bench.y + (BenchRows - 1) * BenchPitchY + 74;
+  const top = LABEL_Y + 12;
+  R(c, bench.x - 24, top, width + 48, bottom - top, P.carpet);
+  R(c, bench.x - 18, top + 6, width + 36, bottom - top - 12, P.carpetB);
+  floorLabel(c, 'Workflow sub-agents', bench.left, LABEL_Y, P);
+  for (let row = 0; row < BenchRows; row++) {
     const y = bench.y + row * BenchPitchY;
-    blk(c, bench.x + 4, y + 2, BENCH_WIDTH - 8, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
-    for (let seat = 0; seat < BenchColumns; seat++) {
+    blk(c, bench.x + 4, y + 2, width - 8, 20, 12, P.desk, P.deskFront, P, P.deskEdge);
+    for (let seat = 0; seat < bench.columns; seat++) {
       desk(c, bench.x + seat * BenchPitchX, y, theme, P, false);
     }
   }
@@ -213,9 +222,8 @@ function armchair(c: Ctx, x: number, y: number, theme: 'dark' | 'light', P: Pale
 /** The lounge: soft rugs with a row of armchairs each, side tables and plants. */
 function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
   const lounge = floor.lounge!;
-  const lower = floor.lower!;
   const width = lounge.columns * LOUNGE_PITCH.x;
-  floorLabel(c, 'Lounge', lounge.x, lower + 24, P);
+  floorLabel(c, 'Lounge', lounge.x, LABEL_Y, P);
   for (let row = 0; row < lounge.rows; row++) {
     const y = lounge.first.y + row * LOUNGE_PITCH.y;
     R(c, lounge.x - 4, y - 50, width + 8, 64, P.rug);
@@ -229,7 +237,7 @@ function drawLounge(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette) {
       }
     }
   }
-  plant(c, lounge.x + width - 4, lower + 6, P);
+  plant(c, lounge.x + width - 4, LABEL_Y - 24, P);
 }
 
 export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTMLCanvasElement {
@@ -237,9 +245,7 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
   const H = floor.height;
   const shift = floor.shift;
   const cs = shift / 32;
-  const lowerTile = floor.lower === null ? Infinity : floor.lower / 32;
-  /* the rooms end where the lower floor starts, behind a wall like the ones between them */
-  const roomsEnd = floor.lower === null ? H : floor.lower - 16;
+  const roomsEnd = H;
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;
@@ -252,7 +258,7 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
       const n = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
       const v = (n % 4) / 250;
       const rx = tx - cs;
-      const rooms = rx >= 30 && ty < lowerTile;
+      const rooms = rx >= 30;
       let col: string = P.floorA;
       if (rooms && ty >= 1 && ty <= 6) col = P.server;
       else if (rooms && ty >= 8 && ty <= 11) col = P.carpet;
@@ -260,7 +266,7 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
       R(c, tx * 32, ty * 32, 32, 32, col);
       c.fillStyle = 'rgba(0,0,0,' + v + ')';
       c.fillRect(tx * 32, ty * 32, 32, 32);
-      if (rx < 29 || ty >= lowerTile) {
+      if (rx < 29) {
         if (ty % 2 === 0) R(c, tx * 32, ty * 32, 32, 1, P.plank);
         if (tx % 2 === 0) R(c, tx * 32, ty * 32, 1, 32, P.plank);
       }
@@ -298,7 +304,6 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
   [7, 12].forEach(function (ry) {
     divider(ry * 32 + 6, ry === 7 ? P.carpet : P.pantA);
   });
-  if (floor.lower !== null) divider(roomsEnd, P.floorA);
   /* server racks: six, in two groups of three, inside the walls */
   for (const x2 of RACKS) {
     blk(
@@ -364,7 +369,7 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
   blk(c, 4 * 32 + 8, 18 * 32 + 6, 36, 14, 16, sofa.top, sofa.front, P);
   plant(c, 24, 19 * 32 + 6, P);
   /* desks: white tops, black chairs, dark monitors, as many as the grid has */
-  for (let index = 0; index < floor.side * floor.side; index++) {
+  for (let index = 0; index < floor.columns * BaseGrid; index++) {
     const dk = deskTile(index);
     desk(c, dk.x * 32, dk.y * 32, theme, P);
   }
@@ -374,12 +379,12 @@ export function buildBg(theme: 'dark' | 'light', floor: Floor = BASE_FLOOR): HTM
     [5, 9],
     [5, 12],
   ].forEach(function (p) {
-    if (floor.lower === null || p[1]! * 32 + 30 < floor.lower)
-      plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
+    plant(c, p[0]! * 32 + 6, p[1]! * 32 + 4, P);
   });
   if (floor.bench) drawBenches(c, floor, theme, P);
   if (floor.lounge) drawLounge(c, floor, theme, P);
-  R(c, W / 2 - 32, H - 8, 64, 8, P.base);
-  R(c, W / 2 - 28, H - 20, 56, 12, P.wallLow);
+  const door = doorOf(floor).x;
+  R(c, door - 32, H - 8, 64, 8, P.base);
+  R(c, door - 28, H - 20, 56, 12, P.wallLow);
   return cv;
 }

@@ -24,11 +24,15 @@ export const BASE_WORLD: Size = { width: BASE_W, height: BASE_H };
 export const ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2, 2.5, 3];
 const FIT_INDEX = 3;
 
-export function clampView(view: View, world: Size = BASE_WORLD): View {
+/**
+ * Keeps a view on the office. `visible` is how much of the world shows at 100%: the whole office,
+ * unless it is wider than the view (see visibleWorld), and then the view can pan along it.
+ */
+export function clampView(view: View, world: Size = BASE_WORLD, visible: Size = world): View {
   const W = world.width;
   const H = world.height;
-  const halfW = W / 2 / view.s;
-  const halfH = H / 2 / view.s;
+  const halfW = visible.width / 2 / view.s;
+  const halfH = visible.height / 2 / view.s;
   return {
     s: view.s,
     cx: halfW >= W / 2 ? W / 2 : Math.min(W - halfW, Math.max(halfW, view.cx)),
@@ -46,16 +50,35 @@ const COVER_WITHIN = 1.1;
  * fits the same way, so 100% always shows the whole floor.
  */
 export function fitScale(size: Size, world: Size = BASE_WORLD): number {
-  const across = size.width / world.width;
-  const down = size.height / world.height;
+  const across = size.width / BASE_W;
+  const down = size.height / BASE_H;
   const low = Math.min(across, down);
-  if (grown(world)) {
-    // Drawn small, the back wall gets thinner than the wall bar over it, so the floor below the
-    // wall is fitted into the space under the bar instead, and never covers the view.
-    return Math.min(low, (size.height - WALL_BAR) / (world.height - BACK_WALL));
-  }
   const high = Math.max(across, down);
-  return high / low <= COVER_WITHIN ? high : low;
+  const base = high / low <= COVER_WITHIN ? high : low;
+  if (!grown(world)) return base;
+  // A wider office is drawn at the prototype office's scale, so its agents stay as easy to see,
+  // and the view pans along it. Its floor fits under the wall bar, as the back wall would get
+  // thinner than the bar over it otherwise.
+  return Math.min(base, (size.height - WALL_BAR) / (world.height - BACK_WALL));
+}
+
+/** How much of the world shows at 100%, in world pixels. */
+export function visibleWorld(size: Size, world: Size = BASE_WORLD): Size {
+  if (!grown(world)) return world;
+  const fit = fitScale(size, world);
+  return { width: size.width / fit, height: size.height / fit };
+}
+
+/**
+ * Where the view rests at 100% with no panning: the middle of the office when it all shows, or
+ * its left end, where the desks start, when it is wider than the view.
+ */
+export function homeView(size: Size, world: Size = BASE_WORLD): Point {
+  const visible = visibleWorld(size, world);
+  return {
+    x: Math.min(world.width / 2, visible.width / 2),
+    y: Math.min(world.height / 2, visible.height / 2),
+  };
 }
 
 /** The wall bar over the top of the floor, in screen pixels (.wallbar in screens.css). */

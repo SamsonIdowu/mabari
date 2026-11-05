@@ -9,6 +9,7 @@ import { toggleFullscreen } from '../office/fullscreen.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { renderOverlays } from '../office/overlays.ts';
+import { onFloor } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
 import { inScope, needsYou, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
@@ -37,6 +38,21 @@ const useFilters = () => {
 function pointIn(event: React.MouseEvent<HTMLElement>) {
   const box = event.currentTarget.getBoundingClientRect();
   return { x: event.clientX - box.left, y: event.clientY - box.top };
+}
+
+/** Shows which part of a wide office is in view, under the floor. Hidden when it all shows. */
+function placeScrollBar(bar: HTMLDivElement | null, scene: OfficeScene) {
+  if (!bar) return;
+  const span = scene.span();
+  bar.hidden = !span;
+  if (!span) return;
+  const thumb = bar.firstElementChild as HTMLElement;
+  const place = `${(span.from * 100).toFixed(2)}:${((span.to - span.from) * 100).toFixed(2)}`;
+  if (thumb.dataset.place === place) return;
+  const [left, width] = place.split(':');
+  thumb.dataset.place = place;
+  thumb.style.left = `${left}%`;
+  thumb.style.width = `${width}%`;
 }
 
 const WHEEL_STEP = 40;
@@ -84,8 +100,8 @@ function ProjectMenu({ office, close }: { office: Snapshot; close: () => void })
       {items.map((project) => {
         const count =
           project.id === 'all'
-            ? office.agents.length
-            : office.agents.filter((agent) => agent.projectId === project.id).length;
+            ? onFloor(office.agents).length
+            : onFloor(office.agents).filter((agent) => agent.projectId === project.id).length;
         return (
           <button
             type="button"
@@ -232,7 +248,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   const provider = providers[filters.provider as ProviderName];
   const modelLabel =
     filters.model !== 'all' ? filters.model : provider ? `All ${provider.label}` : 'All models';
-  const inProject = office.agents.filter(
+  const inProject = onFloor(office.agents).filter(
     (agent) => filters.project === 'all' || agent.projectId === filters.project,
   );
   const need = scoped.filter(needsYou).length;
@@ -626,6 +642,7 @@ function Stage({ office }: { office: Snapshot }) {
   const readout = useRef<HTMLDivElement>(null);
   const spotlight = useRef<HTMLDivElement>(null);
   const hint = useRef<HTMLSpanElement>(null);
+  const scrollBar = useRef<HTMLDivElement>(null);
   const queueNote = useRef<HTMLDivElement>(null);
   const scene = useRef<OfficeScene | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -647,8 +664,9 @@ function Stage({ office }: { office: Snapshot }) {
           queueNote: queueNote.current,
         },
         current,
-        useOfficeStore.getState().office?.agents ?? [],
+        onFloor(useOfficeStore.getState().office?.agents ?? []),
       );
+      placeScrollBar(scrollBar.current, current);
     });
     scene.current = running;
     running.start();
@@ -657,6 +675,14 @@ function Stage({ office }: { office: Snapshot }) {
     let lastStep = 0;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      // Scrolling sideways, or with Shift held, moves along a wide office. Up and down zooms.
+      const sideways = event.shiftKey ? event.deltaY || event.deltaX : event.deltaX;
+      if (Math.abs(sideways) > Math.abs(event.shiftKey ? 0 : event.deltaY)) {
+        if (!running.canPan()) return;
+        const { pan, set: update } = useOfficeUi.getState();
+        update({ follow: false, pan: { x: pan.x + sideways / running.matrix().a, y: pan.y } });
+        return;
+      }
       scrolled += event.deltaY;
       const time = performance.now();
       if (Math.abs(scrolled) > WHEEL_STEP && time - lastStep > WHEEL_GAP_MS) {
@@ -697,12 +723,12 @@ function Stage({ office }: { office: Snapshot }) {
     };
     const onMove = (event: MouseEvent) => {
       const current = drag.current;
-      const { zoom, follow, pan, set: update } = useOfficeUi.getState();
+      const { follow, pan, set: update } = useOfficeUi.getState();
       if (!current) return;
       const dx = event.clientX - current.x;
       const dy = event.clientY - current.y;
       if (!current.moved && Math.hypot(dx, dy) < 5) return;
-      if (zoom <= 1 && !follow) return;
+      if (!running.canPan() && !follow) return;
       current.moved = true;
       const scale = running.matrix().a;
       update({
@@ -819,8 +845,33 @@ function Stage({ office }: { office: Snapshot }) {
         <PromptTray />
         <span className="stagehint" ref={hint}>
           Click an agent to see its live steps and to instruct or query it. Drag to move around when
-          zoomed in.
+          zoomed in, or along a wide office.
         </span>
+        <div
+          className="oscroll"
+          ref={scrollBar}
+          hidden
+          title="The office goes on to the side. Drag here, drag the floor or scroll sideways."
+          onMouseDown={(event) => {
+            const bar = event.currentTarget;
+            const move = (x: number) => {
+              const box = bar.getBoundingClientRect();
+              scene.current?.centreAt(Math.min(1, Math.max(0, (x - box.left) / box.width)));
+            };
+            move(event.clientX);
+            const onMove = (next: MouseEvent) => move(next.clientX);
+            const onUp = () => {
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <span />
+        </div>
         <FloorMessage office={office} />
         <MabariUpdates />
       </div>
@@ -912,7 +963,8 @@ export function Office() {
 
   const selected = office.agents.find((agent) => agent.id === selectedId);
   const lead = filters.team ? office.agents.find((agent) => agent.id === filters.team) : undefined;
-  const scoped = office.agents.filter((agent) => inScope(agent, filters, office.agents));
+  const floor = onFloor(office.agents);
+  const scoped = floor.filter((agent) => inScope(agent, filters, floor));
 
   return (
     <section data-screen="office" style={{ height: '100%' }}>

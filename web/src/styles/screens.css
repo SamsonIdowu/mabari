@@ -3587,3 +3587,30 @@ section[data-screen='components'] .page h1 {
   font-size: 12px;
   margin-top: 2px;
 }
+
+/* Under a wide office: which stretch of it is in view. Drag it to move along. */
+.oscroll {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  z-index: 6;
+  width: min(320px, 40%);
+  height: 6px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  cursor: pointer;
+}
+.oscroll[hidden] {
+  display: none;
+}
+.oscroll span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.oscroll:hover span {
+  background: color-mix(in srgb, var(--fg) 58%, transparent);
+}

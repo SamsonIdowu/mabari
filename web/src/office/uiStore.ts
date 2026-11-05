@@ -97,7 +97,8 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
   zoomBy: (direction) =>
     set((state) => {
       const zoom = nextZoom(state.zoom, direction);
-      return { zoom, team: null, follow: false, ...(zoom <= 1 ? { pan: { x: 0, y: 0 } } : {}) };
+      // The scene keeps the pan inside the office, so a wide office stays where it was.
+      return { zoom, team: null, follow: false };
     }),
   fit: () => set({ zoom: 1, pan: { x: 0, y: 0 }, follow: false, team: null }),
   set: (patch) => set(patch),

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useOfficeStore } from '../data/officeStore.ts';
-import type { AgentDef, LiveAgent } from '../gen/models.ts';
+import { BaseGrid, type AgentDef, type LiveAgent } from '../gen/models.ts';
 import { identityHues, providers, type ProviderName } from '../shared/tokens.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { blk, buildBg, ell, PAL, R, RACKS, rrect, sofaColours } from './background.ts';
 import {
   clampView,
+  homeView,
   teamView,
   toScreen,
   viewMatrix,
+  visibleWorld,
   fromScreen,
   type Size,
   type View,
@@ -27,6 +29,7 @@ import {
   doorOf,
   loungeSeat,
   pathTo,
+  onFloor,
   receptionOf,
   restKey,
   seatingFor,
@@ -174,6 +177,43 @@ export class OfficeScene {
     return viewMatrix(this.view, this.size, sizeOf(this.floor));
   }
 
+  /** How much of the office shows at 100%, in world pixels. */
+  visible(): Size {
+    return visibleWorld(this.size, sizeOf(this.floor));
+  }
+
+  /** Whether the office reaches past the view, so dragging moves along it. */
+  canPan(): boolean {
+    const visible = this.visible();
+    const zoom = useOfficeUi.getState().zoom;
+    return (
+      zoom > 1 || visible.width < this.floor.width - 1 || visible.height < this.floor.height - 1
+    );
+  }
+
+  /**
+   * Which stretch of the office's width is in view, as shares of it from 0 to 1, for the scroll
+   * bar under a wide office. Null when it all shows.
+   */
+  span(): { from: number; to: number } | null {
+    const width = this.floor.width;
+    const shown = this.visible().width / this.view.s;
+    if (shown >= width - 1) return null;
+    const from = Math.max(0, this.view.cx - shown / 2) / width;
+    return { from, to: Math.min(1, from + shown / width) };
+  }
+
+  /** Moves the view along a wide office, so this share of its width is in the middle. */
+  centreAt(share: number): void {
+    const ui = useOfficeUi.getState();
+    const home = homeView(this.size, sizeOf(this.floor));
+    ui.set({
+      follow: false,
+      team: null,
+      pan: { x: share * this.floor.width - home.x, y: ui.pan.y },
+    });
+  }
+
   screenOf(point: Point): Point {
     return toScreen(point, this.matrix());
   }
@@ -187,7 +227,7 @@ export class OfficeScene {
     const office = useOfficeStore.getState().office;
     if (!office || office.firstRun || useOfficeUi.getState().team || this.hit(point)) return null;
     const world = this.worldOf(point);
-    const count = this.floor.side * this.floor.side;
+    const count = this.floor.columns * BaseGrid;
     for (let desk = 0; desk < count; desk++) {
       const position = deskTile(desk);
       const over =
@@ -227,7 +267,7 @@ export class OfficeScene {
   hit(point: Point): Walker | null {
     const world = this.worldOf(point);
     const ui = useOfficeUi.getState();
-    const agents = useOfficeStore.getState().office?.agents ?? [];
+    const agents = onFloor(useOfficeStore.getState().office?.agents ?? []);
     // A bigger office is drawn smaller, so the target never gets smaller than a fingertip.
     const { reachX, reachY } = this.reach();
     let best: Walker | null = null;
@@ -271,7 +311,7 @@ export class OfficeScene {
   /** Brings the walkers in line with the server's agents, and seats everyone. */
   private sync(): void {
     const office = useOfficeStore.getState().office;
-    const agents = office?.agents ?? [];
+    const agents = onFloor(office?.agents ?? []);
     const defs = office?.defs ?? [];
     // The store replaces these lists when they change, so the seating is worked out only then.
     if (agents !== this.seatedFrom.agents || defs !== this.seatedFrom.defs) {
@@ -396,7 +436,7 @@ export class OfficeScene {
         const subs = [...this.walkers.values()].filter((item) => item.leadId === lead.id);
         return teamView(
           [lead, ...subs].map((item) => deskCorner(item, floor)),
-          sizeOf(floor),
+          this.visible(),
         );
       }
     }
@@ -404,7 +444,8 @@ export class OfficeScene {
       const walker = this.walkers.get(ui.selected);
       if (walker) return { cx: walker.x + 70, cy: walker.y, s: Math.max(ui.zoom, 1.6) };
     }
-    return { cx: floor.width / 2 + ui.pan.x, cy: floor.height / 2 + ui.pan.y, s: ui.zoom };
+    const home = homeView(this.size, sizeOf(floor));
+    return { cx: home.x + ui.pan.x, cy: home.y + ui.pan.y, s: ui.zoom };
   }
 
   private fitCanvas(): void {
@@ -614,7 +655,7 @@ export class OfficeScene {
 
   private draw(t: number, dt: number): void {
     const ui = useOfficeUi.getState();
-    const agents = useOfficeStore.getState().office?.agents ?? [];
+    const agents = onFloor(useOfficeStore.getState().office?.agents ?? []);
     const theme = useThemeStore.getState().theme;
     const c = this.context;
     const floor = this.floor;
@@ -622,14 +663,17 @@ export class OfficeScene {
     // When the floor grows or shrinks, the view moves with it at once rather than easing over,
     // so nothing slides across the screen and what you were looking at stays put.
     if (world.width !== this.world.width || world.height !== this.world.height) {
-      this.view.cx += (world.width - this.world.width) / 2;
-      this.view.cy += (world.height - this.world.height) / 2;
+      const before = homeView(this.size, this.world);
+      const after = homeView(this.size, world);
+      this.view.cx += after.x - before.x;
+      this.view.cy += after.y - before.y;
       this.world = world;
     }
 
-    const target = clampView(this.viewTarget(), world);
+    const target = clampView(this.viewTarget(), world, this.visible());
     if (!ui.team && !ui.follow) {
-      const pan = { x: target.cx - floor.width / 2, y: target.cy - floor.height / 2 };
+      const home = homeView(this.size, world);
+      const pan = { x: target.cx - home.x, y: target.cy - home.y };
       if (pan.x !== ui.pan.x || pan.y !== ui.pan.y) ui.set({ pan });
     }
     const ease = Math.min(1, dt / 140);

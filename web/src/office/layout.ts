@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   BaseGrid,
-  BenchColumns,
+  BenchRows,
   BenchPitchX,
   BenchPitchY,
   type AgentDef,
@@ -10,6 +10,24 @@ import {
 } from '../gen/models.ts';
 
 export const TILE = 32;
+
+const floorLists = new WeakMap<LiveAgent[], LiveAgent[]>();
+
+/**
+ * The agents the office shows. A workflow sub-agent that isn't on duty has no seat (desk -1, the
+ * server's OffFloor), so it isn't on the floor. The same list comes back for the same agents, so
+ * callers can tell when it changed.
+ */
+export function onFloor(agents: LiveAgent[]): LiveAgent[] {
+  let shown = floorLists.get(agents);
+  if (!shown) {
+    shown = agents.some((agent) => agent.desk < 0)
+      ? agents.filter((agent) => agent.desk >= 0)
+      : agents;
+    floorLists.set(agents, shown);
+  }
+  return shown;
+}
 /** The prototype's office. The floor keeps this size until the desks or the lounge outgrow it. */
 export const BASE_W = 1216;
 export const BASE_H = 704;
@@ -21,103 +39,104 @@ export interface Point {
 
 /**
  * Where a desk stands, in tiles. Mirrors DeskTile in internal/models/desks.go: the prototype's
- * four by four, row by row, then a ring at a time, a column on the right and then a row below.
- * Tests on both sides pin the same positions.
+ * four by four, row by row, then a column of four at a time on the right, top to bottom. The grid
+ * never grows down. Tests on both sides pin the same positions.
  */
 export function deskTile(index: number): Point {
   let column = index % BaseGrid;
   let row = Math.floor(index / BaseGrid);
   if (index >= BaseGrid * BaseGrid) {
-    let side = BaseGrid;
-    while ((side + 1) * (side + 1) <= index) side++;
-    const step = index - side * side;
-    if (step <= side) {
-      column = side;
-      row = step;
-    } else {
-      column = step - side - 1;
-      row = side;
-    }
+    column = Math.floor(index / BaseGrid);
+    row = index % BaseGrid;
   }
   return { x: 8 + column * 5, y: 4 + row * 4 };
 }
 
-/** How many desks a side the grid needs to hold this many. Mirrors GridSide. */
-export function gridSide(desks: number): number {
-  let side = BaseGrid;
-  while (side * side < desks) side++;
-  return side;
+/** How many columns of desks the grid needs to hold this many. Mirrors GridColumns. */
+export function gridColumns(desks: number): number {
+  return Math.max(BaseGrid, Math.ceil(desks / BaseGrid));
 }
 
 /** Where a bench seat's desk is, in pixels from the first seat's. Mirrors BenchSeat. */
 export function benchSeat(index: number): Point {
   return {
-    x: (index % BenchColumns) * BenchPitchX,
-    y: Math.floor(index / BenchColumns) * BenchPitchY,
+    x: Math.floor(index / BenchRows) * BenchPitchX,
+    y: (index % BenchRows) * BenchPitchY,
   };
 }
 
 /** How far apart lounge seats are. */
-export const LOUNGE_PITCH = { x: 144, y: 92 };
-/** The height of the strip that holds an area's floor label, above its seats. */
-const LABEL_BAND = 40;
-/** The space below the lower floor for Mabari's reception desk and the door. */
-const FOOTER = 120;
-/** A bench row's desks, from the first seat's corner to the end of the last desk. */
-export const BENCH_WIDTH = (BenchColumns - 1) * BenchPitchX + 68;
+export const LOUNGE_PITCH = { x: 144, y: 108 };
+/** The lounge's rows of armchairs. It grows a column at a time, to the right. */
+export const LOUNGE_ROWS = 5;
+/** Where an area's floor label sits, and where its first row starts. */
+export const LABEL_Y = 84;
+const FIRST_ROW = 128;
+/** The glass wall in front of the rooms, in the prototype's office. */
+const WALL_X = 928;
+/** The narrowest an area gets, so its floor label fits. */
+const AREA_MIN = 200;
+/** The space between areas on the floor. */
+const GAP = 48;
+
+/** The width of `columns` columns of bench seats, from the first desk's corner to the last's end. */
+export const benchWidth = (columns: number) => (columns - 1) * BenchPitchX + 68;
 
 /**
- * The office floor's shape. The desk grid widens to the right, pushing the rooms along, and grows
- * down. When there are workflow sub-agents or anyone resting, a lower floor opens below the grid:
- * the workflow benches on the left and the lounge on the right, each growing down on its own.
+ * The office floor's shape. The office keeps the prototype's height, so its agents never shrink,
+ * and grows only to the right. Left to right: the desk grid, which gains a column of four desks
+ * at a time; the workflow sub-agents' benches, when any are at work; the lounge, when anyone
+ * rests; then the glass wall and the rooms, which move along to make space.
  */
 export interface Floor {
   width: number;
   height: number;
-  /** Desks a side in the grid. */
-  side: number;
-  /** How far right the glass wall and the rooms moved for the grid's extra columns. */
+  /** Columns of desks in the grid. */
+  columns: number;
+  /** How far right the glass wall and the rooms moved. */
   shift: number;
-  /** Where the lower floor starts, or null when there is none. */
-  lower: number | null;
-  /** The workflow benches: the first seat's desk corner, and how many rows. */
-  bench: { x: number; y: number; rows: number } | null;
-  /** The lounge: its corner, where the first seat is, and its columns and rows. */
-  lounge: { x: number; y: number; first: Point; columns: number; rows: number } | null;
+  /** The door and Mabari's reception desk, below the middle of the desk grid. */
+  door: number;
+  /** The workflow benches: the first seat's desk corner, the area's left edge, and its columns. */
+  bench: { x: number; y: number; left: number; columns: number } | null;
+  /** The lounge: its left edge, where the first seat is, and its columns and rows. */
+  lounge: { x: number; first: Point; columns: number; rows: number } | null;
   /** Changes whenever the background must be drawn again. */
   key: string;
 }
 
 /** The floor for this many desks and bench seats (highest index + 1) and lounge residents. */
 export function floorFor(desks: number, benches: number, residents: number): Floor {
-  const side = gridSide(desks);
-  const shift = (side - BaseGrid) * 5 * TILE;
-  const width = BASE_W + shift;
-  const gridBottom = (4 + (side - 1) * 4) * TILE + 66;
-  if (benches <= 0 && residents <= 0) {
-    const height = Math.max(BASE_H, gridBottom + 126);
-    return { width, height, side, shift, lower: null, bench: null, lounge: null, key: `${side}` };
-  }
-  const lower = Math.ceil(Math.max(672, gridBottom + 30) / TILE) * TILE;
-  let bottom = lower;
+  const columns = gridColumns(desks);
+  const gridShift = (columns - BaseGrid) * 5 * TILE;
+  // From the end of the grid's last desk, each area takes its own stretch of floor.
+  let cursor = (8 + (columns - 1) * 5) * TILE + 68 + 56;
   let bench: Floor['bench'] = null;
   if (benches > 0) {
-    const rows = Math.ceil(benches / BenchColumns);
-    bench = { x: 64, y: lower + LABEL_BAND + 16, rows };
-    bottom = Math.max(bottom, bench.y + (rows - 1) * BenchPitchY + 70);
+    const benchColumns = Math.ceil(benches / BenchRows);
+    bench = { x: cursor + 24, y: FIRST_ROW, left: cursor, columns: benchColumns };
+    cursor += Math.max(AREA_MIN, benchWidth(benchColumns) + 48) + GAP;
   }
   let lounge: Floor['lounge'] = null;
   if (residents > 0) {
-    const x = bench ? bench.x + BENCH_WIDTH + 72 : 64;
-    const columns = Math.max(1, Math.floor((width - 48 - x) / LOUNGE_PITCH.x));
-    const rows = Math.ceil(residents / columns);
-    const y = lower + LABEL_BAND;
-    lounge = { x, y, first: { x: x + 44, y: y + 52 }, columns, rows };
-    bottom = Math.max(bottom, y + rows * LOUNGE_PITCH.y + 16);
+    const loungeColumns = Math.ceil(residents / LOUNGE_ROWS);
+    const rows = Math.min(residents, LOUNGE_ROWS);
+    lounge = { x: cursor, first: { x: cursor + 44, y: 148 }, columns: loungeColumns, rows };
+    cursor += Math.max(AREA_MIN, loungeColumns * LOUNGE_PITCH.x) + GAP;
   }
-  const height = bottom + FOOTER;
-  const key = `${side}:${bench?.rows ?? 0}:${lounge ? `${lounge.x}:${lounge.rows}` : 0}`;
-  return { width, height, side, shift, lower, bench, lounge, key };
+  // The rooms move along whole tiles, as the floor's tiles are drawn on that grid.
+  const shift = Math.ceil(Math.max(gridShift, cursor + 24 - WALL_X) / TILE) * TILE;
+  const key = `${columns}:${bench?.columns ?? 0}:${lounge ? `${lounge.columns}:${lounge.rows}` : 0}`;
+  return {
+    width: BASE_W + shift,
+    height: BASE_H,
+    columns,
+    shift,
+    door: BASE_W / 2 + gridShift / 2,
+    bench,
+    lounge,
+    key,
+  };
 }
 
 /** The floor with nothing on it: the prototype's office. */
@@ -126,10 +145,10 @@ export const BASE_FLOOR = floorFor(0, 0, 0);
 /** Where lounge seat `index` is: the point a resting character stands on. */
 export function loungeSeat(floor: Floor, index: number): Point {
   const lounge = floor.lounge;
-  if (!lounge) return { x: floor.width / 2, y: floor.height - 100 };
+  if (!lounge) return receptionOf(floor);
   return {
-    x: lounge.first.x + (index % lounge.columns) * LOUNGE_PITCH.x,
-    y: lounge.first.y + Math.floor(index / lounge.columns) * LOUNGE_PITCH.y,
+    x: lounge.first.x + Math.floor(index / LOUNGE_ROWS) * LOUNGE_PITCH.x,
+    y: lounge.first.y + (index % LOUNGE_ROWS) * LOUNGE_PITCH.y,
   };
 }
 
@@ -137,7 +156,7 @@ export function loungeSeat(floor: Floor, index: number): Point {
 export function deskCorner(agent: Pick<LiveAgent, 'desk' | 'bench'>, floor: Floor): Point {
   if (agent.bench) {
     const offset = benchSeat(agent.desk);
-    const origin = floor.bench ?? { x: 64, y: floor.height };
+    const origin = floor.bench ?? { x: floor.width - 160, y: FIRST_ROW };
     return { x: origin.x + offset.x, y: origin.y + offset.y };
   }
   const tile = deskTile(agent.desk);
@@ -189,14 +208,14 @@ export function roomSpots(room: keyof typeof ROOM_SPOTS, floor: Floor): Point[] 
   return ROOM_SPOTS[room].map((point) => ({ x: point.x + shift, y: point.y }));
 }
 
-/** The door, at the middle of the bottom wall. */
+/** The door, in the bottom wall below the desk grid. */
 export function doorOf(floor: Floor): Point {
-  return { x: floor.width / 2, y: floor.height - 6 };
+  return { x: floor.door, y: floor.height - 6 };
 }
 
 /** Mabari's reception desk, just inside the door. */
 export function receptionOf(floor: Floor): Point {
-  return { x: floor.width / 2, y: floor.height - 52 };
+  return { x: floor.door, y: floor.height - 52 };
 }
 
 /**
@@ -245,6 +264,7 @@ export function seatingFor(agents: LiveAgent[], defs: AgentDef[]): Seating {
   let desks = 0;
   let benches = 0;
   for (const agent of agents) {
+    if (agent.desk < 0) continue;
     if (agent.bench) benches = Math.max(benches, agent.desk + 1);
     else desks = Math.max(desks, agent.desk + 1);
   }
@@ -269,13 +289,11 @@ export function spotFor(agent: Seated, number: number, seating: Seating): Point 
   return spots[number % spots.length]!;
 }
 
-/** The route to a spot: along a corridor, and through the gap in the wall for the right rooms. */
+/** The route to a spot: along a corridor, and through the gap in the wall for the rooms. */
 export function pathTo(from: Point, to: Point, floor: Floor = BASE_FLOOR): Point[] {
   if (Math.abs(from.x - to.x) < 1 && Math.abs(from.y - to.y) < 1) return [];
-  const wall = 928 + floor.shift;
-  // Below the glass wall the lower floor is open, so only the rooms above need the gap.
-  const below = (point: Point) => floor.lower !== null && point.y >= floor.lower;
-  const roomSide = (point: Point) => point.x > wall && !below(point);
+  const wall = WALL_X + floor.shift;
+  const roomSide = (point: Point) => point.x > wall;
   if (Math.abs(to.y - from.y) > 40) {
     if (roomSide(from) && roomSide(to)) {
       return [
@@ -283,10 +301,7 @@ export function pathTo(from: Point, to: Point, floor: Floor = BASE_FLOOR): Point
         { x: to.x, y: to.y },
       ];
     }
-    let middle = from.x;
-    if (roomSide(to) || roomSide(from)) middle = wall - 16;
-    // Coming up from the lower floor, cross it first, then walk up to the desk.
-    else if (below(from) && !below(to)) middle = to.x;
+    const middle = roomSide(to) || roomSide(from) ? wall - 16 : from.x;
     return [
       { x: middle, y: from.y },
       { x: middle, y: to.y },

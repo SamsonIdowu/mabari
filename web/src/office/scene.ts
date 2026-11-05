@@ -55,7 +55,7 @@ import {
   VISIT_MS,
   worthSaying,
 } from './rounds.ts';
-import { inScope, matches, useOfficeUi } from './uiStore.ts';
+import { filesShown, inScope, matches, useOfficeUi } from './uiStore.ts';
 import { useVee } from './veeStore.ts';
 
 /** An agent as the floor sees it: the server's agent plus where it is walking. */
@@ -360,8 +360,7 @@ export class OfficeScene {
 
   /** Resting definitions belong to no project or team, so a filter on either hides them. */
   restingShown(): boolean {
-    const ui = useOfficeUi.getState();
-    return !ui.team && ui.project === 'all';
+    return filesShown(useOfficeUi.getState());
   }
 
   /** Brings the walkers in line with the server's agents, and seats everyone. */

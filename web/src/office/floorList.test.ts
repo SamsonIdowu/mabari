@@ -171,11 +171,43 @@ describe('floorGroups', () => {
     expect([counts.need, counts.queued]).toEqual([size('needs'), size('queued')]);
     expect(counts.need).toBe(3);
     expect(counts.tone).toBe('red');
-    // Sage works with an instruction queued: it is in Queued, and in the header's working count.
-    expect(counts.working).toBe(3);
-    expect(size('working') + here.filter((a) => groupOf(a) === 'queued' && a.working).length).toBe(
-      counts.working,
-    );
+    // RT-1: Sage works with an instruction queued, and is counted once, as queued. The header's
+    // working is the Working group, so what it says can be added up from the list.
+    expect(counts.working).toBe(size('working'));
+    expect(counts.working).toBe(2);
+    expect(counts.queued).toBe(1);
+  });
+
+  it('counts an agent with a question and a queued instruction once in the groups, and shows its queued cue', () => {
+    // RT-1: Sage asks a question while an instruction waits. It is under Needs you, and the header
+    // still says one is queued, because the amber card and tag say so on the floor.
+    const queued = [{ id: 'i1', text: 'Add a test', time: 0 }] as LiveAgent['queued'];
+    const question = { id: 'q1', agentId: 's', time: 0, items: [] };
+    const agents = [
+      agent({ id: 's', name: 'Sage', state: 'thinking', queued, question }),
+      agent({ id: 'q', name: 'Quill', state: 'editing', queued }),
+      agent({ id: 'w', name: 'Wren', state: 'editing' }),
+      agent({ id: 'd', name: 'Dot', state: 'done', working: false }),
+    ];
+    const here = agentsHere(agents, filters());
+    const counts = floorCounts(here);
+    const groups = floorGroups({ agents, defs: [], projects }, filters());
+    const size = (id: string) => groups.find((group) => group.id === id)?.entries.length ?? 0;
+    expect(counts).toMatchObject({ agents: 4, working: 1, need: 1, queued: 2 });
+    expect(groups.flatMap((group) => group.entries)).toHaveLength(counts.agents);
+    expect([size('needs'), size('queued'), size('working'), size('done')]).toEqual([1, 1, 1, 1]);
+    // Every agent with a queued instruction shows it, wherever it is listed: the header's queued
+    // is the Queued group plus the rows elsewhere that carry the cue.
+    const rows = groups
+      .flatMap((group) => group.entries)
+      .flatMap((e) => (e.kind === 'agent' ? [e] : []));
+    expect(rows.filter((row) => row.queuedNote).map((row) => [row.name, row.queuedNote])).toEqual([
+      ['Sage', '1 queued'],
+    ]);
+    expect(
+      size('queued') +
+        rows.filter((row) => row.queuedNote && groupOf(row.agent) !== 'queued').length,
+    ).toBe(counts.queued);
   });
 
   it('keeps the header count calm when only questions wait', () => {

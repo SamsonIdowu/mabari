@@ -35,6 +35,11 @@ export type FloorEntry =
       red: boolean;
       /** An instruction is queued for it: the amber lines, in their own group. */
       amber: boolean;
+      /**
+       * "1 queued", for an agent that has an instruction queued but is listed in another group
+       * because it needs you. The Queued group's own lines already say so.
+       */
+      queuedNote: string | null;
     }
   | { kind: 'file'; id: string; def: AgentDef; name: string; color: string; detail: string };
 
@@ -93,8 +98,8 @@ const byName = (a: { name: string; id: string }, b: { name: string; id: string }
  * The one group an agent is listed in, so every agent is listed once and the groups add up to the
  * floor. What needs you comes first (decision 1: an approval, an error or a question), then
  * agents with an instruction queued, then the rest by the server's working flag: working, paused
- * by you, resting in the lounge, and finished. A queued agent can be working too, and then counts
- * in both the header's "working" and this group.
+ * by you, resting in the lounge, and finished. A queued agent can be working too, and is counted
+ * once, as queued: the header's "working" is the Working group (RT-1).
  */
 export function groupOf(agent: LiveAgent): FloorGroupId {
   if (needsYou(agent)) return 'needs';
@@ -112,7 +117,12 @@ export function agentsHere(agents: LiveAgent[], filters: OfficeFilters): LiveAge
   return floor.filter((agent) => !agent.leaving && inScope(agent, filters, floor));
 }
 
-/** The numbers in the floor's header, from the same agents and the same groups as the list. */
+/**
+ * The numbers in the floor's header, from the same agents and the same groups as the list. Every
+ * agent is counted in one group, so `working`, `need` and the Queued group are the sizes of those
+ * groups and add up with the rest. `queued` also counts an agent that needs you and has an
+ * instruction waiting, whose line in Needs you carries the same "queued" cue.
+ */
 export interface FloorCounts {
   agents: number;
   working: number;
@@ -123,20 +133,23 @@ export interface FloorCounts {
 }
 
 export function floorCounts(here: LiveAgent[]): FloorCounts {
-  const needing = here.filter((agent) => groupOf(agent) === 'needs');
+  const inGroup = (id: FloorGroupId) => here.filter((agent) => groupOf(agent) === id);
+  const needing = inGroup('needs');
   return {
     agents: here.length,
-    working: here.filter((agent) => agent.working).length,
+    working: inGroup('working').length,
     need: needing.length,
-    queued: here.filter((agent) => groupOf(agent) === 'queued').length,
+    queued: here.filter(hasQueued).length,
     tone: needsTone(needing),
   };
 }
 
+const queuedCount = (agent: LiveAgent) => agent.queued?.length ?? 0;
+
 function detailOf(agent: LiveAgent): string {
   const asked = agent.question?.items[0]?.question;
   if (asked && !urgent(agent)) return `Asking you · ${asked}`;
-  const queued = agent.queued?.length ?? 0;
+  const queued = queuedCount(agent);
   if (queued && !urgent(agent)) return `${queued} instruction${queued === 1 ? '' : 's'} queued`;
   if (inLounge(agent)) return 'Resting';
   const label = stateLabel(agent.state);
@@ -160,6 +173,8 @@ function agentEntry(
     dim: !matches(agent, filters),
     red: urgent(agent),
     amber: groupOf(agent) === 'queued',
+    queuedNote:
+      hasQueued(agent) && groupOf(agent) !== 'queued' ? `${queuedCount(agent)} queued` : null,
   };
 }
 

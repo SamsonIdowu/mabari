@@ -101,6 +101,16 @@
 .flrow.red .fldet {
   color: var(--red);
 }
+/* An agent that needs you and has an instruction waiting says so on its own line, in amber. */
+.flq {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--amber);
+}
+.flq + .flwhere {
+  margin-left: 0;
+}
 /* A queued instruction is a wait, not a request: its own amber group, apart from Needs you. */
 .flrow.amber .fldet,
 .fl-queued .mhead span:first-child {

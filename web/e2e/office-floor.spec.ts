@@ -177,6 +177,8 @@ test('finished agents are listed under Done, and the header and the groups add u
           sizes,
           header: document.querySelector('#officeClock')!.textContent!,
           onTheFloor: Number(document.querySelector('#floorList .flhead .num')!.textContent),
+          // Lines outside the Queued group that carry the amber "queued" cue.
+          cued: document.querySelectorAll('#floorList .flgroup:not(.fl-queued) .flq').length,
         };
       });
       const count = (pattern: RegExp) => Number(pattern.exec(read.header)?.[1] ?? 0);
@@ -185,11 +187,71 @@ test('finished agents are listed under Done, and the header and the groups add u
         total === count(/(\d+) agents?/),
         read.onTheFloor === total,
         read.sizes['Needs you'] === count(/(\d+) needs? you/),
-        // Sage works with an instruction queued, so it is in Queued and counts as working too.
-        (read.sizes['Working'] ?? 0) + (read.sizes['Queued'] ?? 0) === count(/(\d+) working/),
+        // RT-1: Sage works with an instruction queued and is counted once, as queued, so the
+        // header's working is the Working group, and its queued is the Queued group plus any
+        // line elsewhere that carries the cue (an agent that also needs you).
+        (read.sizes['Working'] ?? 0) === count(/(\d+) working/),
+        (read.sizes['Queued'] ?? 0) + read.cued === count(/(\d+) queued/),
       ];
     })
-    .toEqual([true, true, true, true]);
+    .toEqual([true, true, true, true, true]);
+});
+
+// RT-1: an agent that needs you and also has an instruction waiting is listed once, under Needs
+// you, with the amber cue on its line, and the header counts that instruction as queued. Atlas
+// waits on an approval from the start, so an instruction sent to it waits too (FIRST-2).
+test('an agent that needs you and has an instruction queued is listed once, with its queued cue', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  const agents = (await (await request.get('/api/agents')).json()) as {
+    id: string;
+    name: string;
+  }[];
+  const atlas = agents.find((agent) => agent.name === 'Atlas')!;
+  const sent = await request.post('/api/messages', {
+    data: { text: 'After the migration, seed the test data', mode: 'instruct', target: atlas.id },
+  });
+  expect(sent.ok()).toBe(true);
+  await page.goto('/#office');
+  await expect(list(page)).toBeVisible();
+
+  const needs = list(page).getByRole('group', { name: /^Needs you/ });
+  const row = needs.locator('.flrow', { hasText: /^Atlas/ });
+  await expect(row).toBeVisible();
+  await expect(row.locator('.flq')).toHaveText('1 queued');
+  // One line for Atlas in the whole list.
+  await expect(list(page).locator('.flrow', { hasText: /^Atlas/ })).toHaveCount(1);
+
+  // Read at one instant: the groups add up to the agents, and the header's numbers are theirs.
+  // Sage may still be waiting on its own message, in the Queued group, so the header's queued is
+  // the Queued group plus the lines elsewhere that carry the cue.
+  await expect
+    .poll(async () => {
+      const read = await page.evaluate(() => {
+        const sizes: Record<string, number> = {};
+        for (const group of document.querySelectorAll('#floorList .flgroup')) {
+          sizes[group.querySelector('.mhead span')!.textContent!] = Number(
+            group.querySelector('.mhead .num')!.textContent,
+          );
+        }
+        return {
+          sizes,
+          header: document.querySelector('#officeClock')!.textContent!,
+          cued: document.querySelectorAll('#floorList .flgroup:not(.fl-queued) .flq').length,
+        };
+      });
+      const count = (pattern: RegExp) => Number(pattern.exec(read.header)?.[1] ?? 0);
+      return [
+        Object.values(read.sizes).reduce((sum, size) => sum + size, 0) === count(/(\d+) agents?/),
+        read.sizes['Needs you'] === count(/(\d+) needs? you/),
+        (read.sizes['Working'] ?? 0) === count(/(\d+) working/),
+        (read.sizes['Queued'] ?? 0) + read.cued === count(/(\d+) queued/),
+        read.cued >= 1,
+      ];
+    })
+    .toEqual([true, true, true, true, true]);
 });
 
 /** A project that starts with the lead's plan waiting for approval: a second approval. */

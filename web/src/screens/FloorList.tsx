@@ -19,6 +19,7 @@ function Row({ entry, selected, current, onFocus }: RowProps) {
   const dim = isAgent && entry.dim;
   const red = isAgent && entry.red;
   const amber = isAgent && entry.amber;
+  const queuedNote = isAgent ? entry.queuedNote : null;
   return (
     <button
       type="button"
@@ -26,7 +27,7 @@ function Row({ entry, selected, current, onFocus }: RowProps) {
       data-entry={entry.id}
       tabIndex={current ? 0 : -1}
       aria-pressed={on}
-      title={`${entry.name}: ${entry.detail}${where ? ` (${where.name})` : ''}`}
+      title={`${entry.name}: ${entry.detail}${queuedNote ? `, ${queuedNote}` : ''}${where ? ` (${where.name})` : ''}`}
       onFocus={onFocus}
       onClick={() => (isAgent ? selectAgent(entry.agent) : selectResting(entry.id))}
     >
@@ -38,6 +39,7 @@ function Row({ entry, selected, current, onFocus }: RowProps) {
       <span className="flmain">
         <span className="fltop">
           <span className="flname">{entry.name}</span>
+          {queuedNote ? <span className="flq">{queuedNote}</span> : null}
           {where ? (
             <span className="flwhere">
               <i style={{ background: where.color }} aria-hidden="true" />

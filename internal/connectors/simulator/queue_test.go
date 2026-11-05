@@ -155,3 +155,37 @@ func TestAnInstructionTakesADoneAgentOutOfDone(t *testing.T) {
 		t.Errorf("queued %d, asked %+v", len(finished.Queued), finished.Asked)
 	}
 }
+
+// An agent stopped by an error can't act until something starts it, so an instruction is answered
+// only if it does start it (NEW-5). Like an agent that has finished, it takes the instruction as
+// its new task, the error is cleared, and it stays at work: its "Got it" is true.
+func TestAnInstructionRestartsAnAgentThatStoppedOnAnError(t *testing.T) {
+	sim, engine, c, _ := setup(t, ":memory:", 1)
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	if stopped := agentSnapshot(engine, "Mori"); stopped.State != models.StateError || stopped.Error == "" {
+		t.Fatalf("Mori is %s with error %q", stopped.State, stopped.Error)
+	}
+	if err := engine.Do(func() { sim.Instruct(engine.AgentByName("Mori"), "Index the docs again without the embedding service") }); err != nil {
+		t.Fatal(err)
+	}
+	restarted := agentSnapshot(engine, "Mori")
+	if restarted.State == models.StateError || !restarted.State.Active() || restarted.Error != "" ||
+		restarted.Progress != 0 || restarted.Task != "Index the docs again without the embedding service" ||
+		restarted.Estimate == nil {
+		t.Errorf("Mori is %s on %q at %v with error %q", restarted.State, restarted.Task, restarted.Progress, restarted.Error)
+	}
+	if len(restarted.Queued) != 0 || len(restarted.Asked) != 1 ||
+		!strings.HasPrefix(restarted.Asked[0].Reply, "Got it") {
+		t.Errorf("queued %d, asked %+v", len(restarted.Queued), restarted.Asked)
+	}
+	// What it said holds: it carries on working, and doesn't fall back to the old error.
+	advance(t, sim, c, 10)
+	if later := agentSnapshot(engine, "Mori"); later.State == models.StateError || later.Error != "" {
+		t.Errorf("after 10 s Mori is %s with error %q", later.State, later.Error)
+	}
+	if row := logRow(t, engine, "without the embedding service"); row.Outcome != "Replied" || row.Chip != "ok" {
+		t.Errorf("row = %+v", row)
+	}
+}

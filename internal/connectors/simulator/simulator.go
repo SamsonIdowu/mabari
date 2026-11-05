@@ -801,7 +801,8 @@ func (s *Simulator) Decide(agent *models.LiveAgent, approval models.Approval) {
 // Instruct delivers a message, or holds it. An agent waiting on you, for an approval or an answer,
 // can't read anything until you've decided, so whatever it runs on the message waits and is
 // delivered the moment it carries on (FIRST-2): it isn't told "Got it" on its behalf. An active
-// Claude agent also takes it at its next checkpoint.
+// Claude agent also takes it at its next checkpoint. One that is idle, finished, paused or stopped
+// by an error takes it as a new task, so what it is told is true: it really starts (NEW-5).
 func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 	if agent.State == models.StateApproval || agent.Asking() {
 		s.engine.Queue(agent, text)
@@ -818,8 +819,9 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 	s.engine.Delivered(agent, text)
 	s.engine.AddEvent(agent, "instruction", "Received: "+text, nil)
 	switch agent.State {
-	case models.StateIdle, models.StateDone, models.StatePaused:
+	case models.StateIdle, models.StateDone, models.StatePaused, models.StateError:
 		agent.Task = models.WithoutName(text)
+		agent.Error = ""
 		agent.Progress = 0
 		agent.Rate = s.between(0.0012, 0.002)
 		s.setState(agent, models.StateThinking)

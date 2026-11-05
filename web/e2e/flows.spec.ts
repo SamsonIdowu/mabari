@@ -48,6 +48,23 @@ test('the reply to an instruction can be read in full in the agent panel', async
   await expect(page.locator('tr', { hasText: 'Add the pricing pages' })).toContainText('Replied');
 });
 
+test('an instruction to an agent stopped by an error starts it, so its reply is true', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  await target(page, 'Mori');
+  const panel = page.getByRole('complementary', { name: 'Agent details' });
+  await expect(panel).toContainText('Lost connection to the embedding service');
+  await expect(panel.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await message(page).fill('Index the docs again without the embedding service');
+  await page.getByRole('button', { name: 'Send instruction' }).click();
+  await expect(panel.getByTestId('agentReply')).toContainText('Got it');
+  // It said it had the instruction, and it did what it said: the error is gone and it is working.
+  await expect(panel).not.toContainText('Lost connection to the embedding service');
+  await expect(panel.getByRole('button', { name: 'Retry' })).toHaveCount(0);
+  await expect(page.locator('.tag', { hasText: 'Mori' })).not.toContainText('stopped');
+});
+
 test('flow b: instructions to busy Claude agents wait for a checkpoint', async ({ page }) => {
   await loadDemo(page);
   await target(page, 'Ledger');

@@ -32,15 +32,17 @@ var hookEvents = []string{
 // toolEvents take a matcher; "*" matches every tool.
 var toolEvents = map[string]bool{"PreToolUse": true, "PostToolUse": true, "PermissionRequest": true}
 
-// PermissionWait is how long a hook waits for a click in Mabari before Claude Code shows its own
-// prompt. The hook's timeout is a little longer, so Mabari always answers first.
+// PermissionWait is how long a hook waits for a click or an answer in Mabari before Claude Code
+// shows its own prompt. The hook's timeout is a little longer, so Mabari always answers first.
 const PermissionWait = 120
 
 // hookTimeout is each event's timeout in seconds. A timed-out hook only loses its output: the
 // action goes ahead through Claude Code's normal rules, because Mabari never sets onFailure.
+// PreToolUse waits as long as a permission request because Claude's questions (AskUserQuestion)
+// are answered there; the hook itself gives every other tool only quickWait.
 func hookTimeout(event string) int {
 	switch event {
-	case "PermissionRequest":
+	case "PermissionRequest", "PreToolUse":
 		return PermissionWait + 10
 	case "MessageDisplay":
 		// Claude Code holds each batch of lines until the hook returns, so keep it short.

@@ -35,6 +35,8 @@ function Summary({ office }: { office: Snapshot }) {
   const workflow = working.filter((agent) => agent.workflow).length;
   const estimated = agents.filter((agent) => agent.estimate);
   const need = agents.filter((a) => a.state === 'approval' || a.state === 'error').length;
+  // Questions wait on you too, but calmly: they are not approvals, so they aren't red.
+  const asking = agents.filter((agent) => agent.question).length;
   const finish = Math.max(0, ...estimated.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
     <p id="homeSum">
@@ -46,6 +48,7 @@ function Summary({ office }: { office: Snapshot }) {
           <b style={{ color: 'var(--red)' }}>{need} need you</b>
         </>
       ) : null}
+      {asking ? ` · ${asking} asking you a question` : ''}
       {estimated.length ? ` · done around ${clockText(finish)}` : ''}
     </p>
   );
@@ -70,6 +73,10 @@ function NeedLine({ line }: { line: VeeLine }) {
       {line.approvalId ? (
         <button type="button" className="btn sm danger-out" onClick={review}>
           Review
+        </button>
+      ) : line.questionId ? (
+        <button type="button" className="btn sm" onClick={() => openAgentById(line.agentId)}>
+          Answer
         </button>
       ) : (
         <button type="button" className="btn sm" onClick={() => openAgentById(line.agentId)}>

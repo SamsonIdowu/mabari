@@ -360,7 +360,8 @@ export interface SessionState {
    */
   files: string[];
   /**
-   * Bubble is what the speech bubble says now, and BubbleKind is "", "reply" or "talk".
+   * Bubble is what the speech bubble says now, and BubbleKind is "", "reply", "talk" or "ask",
+   * for a question waiting on the person.
    */
   bubble: string;
   bubbleKind: string;
@@ -403,7 +404,62 @@ export interface LiveAgent extends Agent, SessionState {
   feed: Event[];
   queued: Instruction[];
   approval: Approval | null;
+  /**
+   * Question is what the agent is asking the person and waiting to hear back on, or null. It
+   * lives only as long as the agent's session waits for it, so it is never stored.
+   */
+  question: Question | null;
 }
+/**
+ * Question is one or more questions an agent asks the person, each with options to pick from,
+ * such as Claude Code's AskUserQuestion. It is not an approval: auto approve never answers it.
+ */
+export interface Question {
+  id: string;
+  agentId: string;
+  time: number /* int64 */;
+  items: QuestionItem[];
+}
+/**
+ * QuestionItem is one question with its options. MultiSelect lets the person pick more than one.
+ */
+export interface QuestionItem {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+/**
+ * QuestionOption is one choice, with what it means.
+ */
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+/**
+ * QuestionAnswer is the person's answer to one QuestionItem: the options picked, by their place
+ * in the list, and their own words for "Other". An answer needs at least one of them.
+ */
+export interface QuestionAnswer {
+  picked: number /* int */[];
+  other: string;
+}
+/**
+ * Limits on questions. An agent asking more, or longer, is left to ask in its own window.
+ */
+export const QuestionsMax = 4;
+/**
+ * Limits on questions. An agent asking more, or longer, is left to ask in its own window.
+ */
+export const QuestionOptionsMax = 10;
+/**
+ * Limits on questions. An agent asking more, or longer, is left to ask in its own window.
+ */
+export const QuestionTextMax = 2000;
+/**
+ * AnswerOtherMax caps the person's own words for "Other", in characters.
+ */
+export const AnswerOtherMax = 1000;
 /**
  * Event is one thing an agent did, such as a tool call.
  */

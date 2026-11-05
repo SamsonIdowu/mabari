@@ -327,7 +327,7 @@ func (e *Engine) seatWorkflow() {
 		if agent.Leaving {
 			continue
 		}
-		onDuty := agent.State.OnDuty()
+		onDuty := agent.State.OnDuty() || agent.Asking()
 		switch {
 		case !onDuty && agent.Desk != models.OffFloor:
 			agent.Desk = models.OffFloor
@@ -893,6 +893,65 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	}
 }
 
+// Answerer is a connector whose agents can ask the person questions, and hear back.
+type Answerer interface {
+	// Answer passes checked answers to the agent's waiting session. Call inside Do.
+	Answer(agent *models.LiveAgent, question models.Question, answers []models.QuestionAnswer)
+}
+
+// ErrNoQuestion is returned for an answer to a question the agent isn't asking: one already
+// answered, one it gave up on, or one that was never asked.
+var ErrNoQuestion = errors.New("this question was already answered or is no longer asked")
+
+// Ask shows a question from the agent until the person answers it or the agent stops waiting.
+// An agent asks one question at a time, so a newer one replaces the last. It returns the question
+// with its id. Call inside Do.
+func (e *Engine) Ask(agent *models.LiveAgent, question models.Question) models.Question {
+	question.ID = newID("question-")
+	question.Agent = agent.ID
+	question.Time = e.now().UnixMilli()
+	agent.Question = &question
+	e.Touch(agent)
+	e.AddEvent(agent, "question", "Asked you: "+models.Clip(models.QuestionSummary(&question), 160), nil)
+	e.Toast(agent.Name + " is asking you a question")
+	return question
+}
+
+// AnswerQuestion checks the person's answers to the question the agent is asking and passes them
+// on. It answers only that agent's question with that id; anything else is ErrNoQuestion. Call
+// inside Do.
+func (e *Engine) AnswerQuestion(agentID, questionID string, answers []models.QuestionAnswer) error {
+	agent := e.Agent(agentID)
+	if agent == nil || agent.Question == nil || agent.Question.ID != questionID {
+		return ErrNoQuestion
+	}
+	question := *agent.Question
+	if err := models.CheckAnswers(&question, answers); err != nil {
+		return err
+	}
+	answerer, ok := e.connectors[agent.Source].(Answerer)
+	if !ok {
+		return ErrNoQuestion
+	}
+	agent.Question = nil
+	e.Touch(agent)
+	e.Log(agent.Name, models.LogInstruction, "Answered: "+models.Clip(models.QuestionSummary(&question), 160), "Answered", "ok")
+	e.AddEvent(agent, "question", "You answered in Mabari", nil)
+	answerer.Answer(agent, question, answers)
+	return nil
+}
+
+// DropQuestion takes the agent's question down when its session stops waiting for an answer.
+// A newer question stays. Call inside Do.
+func (e *Engine) DropQuestion(agent *models.LiveAgent, questionID string) bool {
+	if agent.Question == nil || agent.Question.ID != questionID {
+		return false
+	}
+	agent.Question = nil
+	e.Touch(agent)
+	return true
+}
+
 // SetAutoApprove turns auto approve on or off and records it. Turning it on also settles any
 // waiting approvals it covers, and returns how many. Call inside Do.
 func (e *Engine) SetAutoApprove(on bool, scope string) int {
@@ -1135,11 +1194,11 @@ func lastHeard(agent *models.LiveAgent) int64 {
 
 // dismissals walks dismissed agents out and removes them once they're gone, and dismisses
 // subagents that went quiet without a word that they finished: subagents never stay for good.
-// One waiting on an approval stays until someone decides. Call inside Do.
+// One waiting on an approval or an answer stays until someone decides. Call inside Do.
 func (e *Engine) dismissals(now int64) {
 	for _, agent := range slices.Clone(e.agents) {
 		if agent.Lead != nil && agent.LeavesAt == 0 && agent.State != models.StateApproval &&
-			now-lastHeard(agent) > models.SubagentStale {
+			!agent.Asking() && now-lastHeard(agent) > models.SubagentStale {
 			e.Dismiss(agent, 0)
 		}
 		if agent.LeavesAt == 0 || now < agent.LeavesAt {

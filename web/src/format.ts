@@ -38,7 +38,11 @@ export function shortMinutes(seconds: number): string {
   return `~${Math.max(1, Math.round(seconds / 60))}m`;
 }
 
-export function etaShort(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
+/** An agent asking you a question waits on your answer, whatever it was doing. */
+type Timed = Pick<LiveAgent, 'state' | 'estimate'> & { question?: LiveAgent['question'] };
+
+export function etaShort(agent: Timed): string {
+  if (agent.question) return 'asking';
   switch (agent.state) {
     case 'approval':
     case 'paused':
@@ -55,7 +59,8 @@ export function etaShort(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
 }
 
 /** The long form in the panel and spotlight, from the server's estimate. */
-export function etaLong(agent: Pick<LiveAgent, 'state' | 'estimate'>): string {
+export function etaLong(agent: Timed): string {
+  if (agent.question) return 'Waiting for your answer';
   switch (agent.state) {
     case 'approval':
       return 'Paused until you decide on the approval';

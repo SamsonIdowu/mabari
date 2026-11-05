@@ -52,6 +52,8 @@ type Line struct {
 	Summary string `json:"summary"`
 	// ApprovalID lets the UI open the card. It is empty for an agent stopped by an error.
 	ApprovalID string `json:"approvalId"`
+	// QuestionID is set for an agent asking you a question, answered in its panel.
+	QuestionID string `json:"questionId"`
 	// AI and Reply are set in a list of replies: who answered, and what it said.
 	AI    string `json:"ai"`
 	Reply string `json:"reply"`
@@ -180,11 +182,12 @@ func look(agents []*models.LiveAgent, now time.Time) view {
 	office := view{agents: agents, now: now}
 	var estimates []*models.Estimate
 	for _, agent := range agents {
-		if agent.State.Active() {
+		// An agent asking a question waits on you, so it needs you rather than works.
+		if agent.State.Active() && !agent.Asking() {
 			office.working = append(office.working, agent)
 			estimates = append(estimates, estimate(agent, now))
 		}
-		if agent.State.NeedsMe() {
+		if agent.State.NeedsMe() || agent.Asking() {
 			office.need = append(office.need, agent)
 		}
 	}
@@ -503,6 +506,9 @@ func (o view) needs() Reply {
 	for _, agent := range o.need {
 		line := o.line(agent)
 		switch {
+		case agent.Asking():
+			line.Summary = "is asking you: " + models.Clip(models.QuestionSummary(agent.Question), 160)
+			line.QuestionID = agent.Question.ID
 		case agent.State == models.StateApproval && agent.Approval != nil:
 			line.Summary = models.ApprovalSummary(agent.Approval)
 			line.ApprovalID = agent.Approval.ID

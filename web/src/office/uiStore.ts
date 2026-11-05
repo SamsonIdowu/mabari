@@ -159,7 +159,12 @@ export function openThread(key: string): void {
 const working = (agent: LiveAgent) => agent.working;
 
 export function needsYou(agent: LiveAgent): boolean {
-  return agent.state === 'approval' || agent.state === 'error' || (agent.queued?.length ?? 0) > 0;
+  return (
+    agent.state === 'approval' ||
+    agent.state === 'error' ||
+    Boolean(agent.question) ||
+    (agent.queued?.length ?? 0) > 0
+  );
 }
 
 /** Project and team decide who is on the floor. Hidden agents keep working. */

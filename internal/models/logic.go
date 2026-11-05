@@ -105,12 +105,17 @@ func CostOf(tokensIn, tokensOut int64, model string) float64 {
 // Refresh recomputes the session's derived fields: cost, working, estimate and speech bubble.
 func (a *LiveAgent) Refresh(now time.Time) {
 	a.Cost = CostOf(a.TokensIn, a.TokensOut, a.Model)
-	a.Working = a.State.Active()
+	// An agent waiting on the person's answer isn't working, whatever it was doing when it asked.
+	a.Working = a.State.Active() && !a.Asking()
 	a.Estimate = EstimateFor(a.State, a.Progress, a.Rate, now)
 	a.Bubble, a.BubbleKind = bubbleFor(a, now.UnixMilli())
 }
 
 func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
+	// A question waits on the person, so it shows until it is answered.
+	if a.Asking() {
+		return "Asking you a question", "ask"
+	}
 	if a.Reply != "" && a.ReplyUntil > now {
 		return a.Reply, "reply"
 	}
@@ -165,6 +170,9 @@ func bubbleFor(a *LiveAgent, now int64) (text, kind string) {
 
 // ETALong is the estimate in plain words, as the panel and answers say it.
 func ETALong(a *LiveAgent, now time.Time) string {
+	if a.Asking() {
+		return "Waiting for your answer"
+	}
 	switch a.State {
 	case StateApproval:
 		return "Paused until you decide on the approval"

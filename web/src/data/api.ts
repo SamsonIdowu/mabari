@@ -8,6 +8,7 @@ import type {
   Estimate,
   LiveAgent,
   Project,
+  QuestionAnswer,
   Settings,
   Snapshot,
   WhisperStatus,
@@ -129,6 +130,8 @@ export interface VeeLine {
   estimate: Estimate | null;
   summary: string;
   approvalId: string;
+  /** Set for an agent asking you a question, which is answered in its panel. */
+  questionId: string;
   /** In a list of replies: which AI answered, and the start of what it said. */
   ai: string;
   reply: string;
@@ -381,6 +384,12 @@ export const api = {
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),
+  /** Answers the question the agent is asking; the server checks the answers fit it. */
+  answerQuestion: (id: string, questionId: string, answers: QuestionAnswer[]) =>
+    send<{ answered: boolean }>('POST', `/api/agents/${encodeURIComponent(id)}/answer`, {
+      questionId,
+      answers,
+    }),
   saveKey: (kind: AccountKind, key: string) =>
     send<{ ok: boolean }>('PUT', `/api/accounts/${kind}/key`, { key }),
   deleteKey: (kind: AccountKind) => send<{ ok: boolean }>('DELETE', `/api/accounts/${kind}/key`),

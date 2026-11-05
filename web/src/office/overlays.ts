@@ -130,10 +130,11 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
 
     const isReply = walker.bubbleKind === 'reply';
     const isTalk = walker.bubbleKind === 'talk';
+    const isAsk = walker.bubbleKind === 'ask';
     const spotlit = ui.selected === walker.id && !ui.team && ui.spotlight;
     bubble.hidden = !walker.bubble || (walker.path.length > 0 && !isReply) || (spotlit && !isReply);
     if (bubble.textContent !== walker.bubble) bubble.textContent = walker.bubble;
-    bubble.className = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}`;
+    bubble.className = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${isAsk ? ' ask' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}`;
     bubble.style.borderColor = isTalk ? walker.talkColor : '';
     const raised = walker.state === 'thinking' || walker.state === 'error' ? 26 : 0;
     const bubblePoint = scene.screenOf({ x: walker.x, y: walker.y - 48 - raised });

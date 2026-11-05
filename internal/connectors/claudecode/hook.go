@@ -46,7 +46,7 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 		return
 	}
 	wait := quickWait
-	if event == "PermissionRequest" {
+	if waitsForPerson(event, body) {
 		wait = PermissionWait*time.Second + 2*time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
@@ -83,6 +83,21 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 		return
 	}
 	_, _ = stdout.Write(reply)
+}
+
+// waitsForPerson reports whether the hook waits for someone in Mabari: a permission request, or
+// a question Claude asks. Every other call, other tools' PreToolUse included, stays quick.
+func waitsForPerson(event string, body []byte) bool {
+	if event == "PermissionRequest" {
+		return true
+	}
+	if event != "PreToolUse" {
+		return false
+	}
+	var call struct {
+		ToolName string `json:"tool_name"`
+	}
+	return json.Unmarshal(body, &call) == nil && call.ToolName == AskTool
 }
 
 // EnsureToken keeps the install's hook token in the secret store, making one the first time.

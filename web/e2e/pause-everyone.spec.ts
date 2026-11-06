@@ -10,6 +10,7 @@ interface Agent {
   state: string;
   working: boolean;
   projectId: string | null;
+  queued: unknown[];
   question: unknown;
   approval: { id: string; decision: string | null } | null;
 }
@@ -228,6 +229,42 @@ test('an agent paused by hand stays paused when everyone continues', async ({ pa
   expect(after.find((agent) => agent.id === byHand.id)?.state).toBe('paused');
   for (const result of reply.results.filter((item) => item.outcome === 'paused')) {
     expect(after.find((agent) => agent.id === result.id)?.state).not.toBe('paused');
+  }
+});
+
+test('an agent continued by hand and then paused again by hand is no longer part of the pause', async ({
+  page,
+  request,
+}) => {
+  await loadDemo(page);
+  await pauseButton(page).click();
+  const reply = await confirm(page);
+  // An agent with an instruction queued is listed under Queued, not Interrupted, so pick another.
+  const queued = new Set(
+    (await agents(request)).filter((agent) => agent.queued.length > 0).map((agent) => agent.id),
+  );
+  const stopped = reply.results.filter(
+    (result) => result.outcome === 'paused' && !queued.has(result.id),
+  );
+  expect(stopped.length).toBeGreaterThan(1);
+  const first = stopped[0]!;
+  const others = stopped.slice(1);
+  const interrupted = page.getByRole('group', { name: /^Interrupted/ });
+  await expect(interrupted).toContainText(first.name);
+
+  // Continued by hand: the page sees it leave the interrupted group, and drops it from the pause.
+  await request.post(`/api/agents/${first.id}/continue`);
+  await expect(interrupted).not.toContainText(first.name);
+  // Paused again by hand, which is the person's own pause, not this one.
+  await request.post(`/api/agents/${first.id}/interrupt`);
+  await expect(interrupted).toContainText(first.name);
+
+  await continueButton(page).click();
+  await expect(pauseButton(page)).toBeVisible();
+  const after = await agents(request);
+  expect(after.find((agent) => agent.id === first.id)?.state).toBe('paused');
+  for (const other of others) {
+    expect(after.find((agent) => agent.id === other.id)?.state).not.toBe('paused');
   }
 });
 

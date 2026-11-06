@@ -127,6 +127,15 @@ export function stillStopped(
   return [...new Set(kept)];
 }
 
+/** The group with only the agents that still count, as stillStopped found them. */
+export function keepOnly(group: PauseGroup, live: readonly string[]): PauseGroup {
+  const keep = new Set(live);
+  return {
+    stopped: group.stopped.filter((id) => keep.has(id)),
+    asked: group.asked.filter((id) => keep.has(id)),
+  };
+}
+
 const KEY = 'mabari.pausedGroup';
 
 /** Reads a saved group, keeping only lists of ids. */

@@ -80,8 +80,8 @@ func (a *api) continueGroup(w http.ResponseWriter, r *http.Request) {
 	a.group(w, r, groupVerb{"Continue everyone", "ok", a.continueOne, continueSummary})
 }
 
-// cleanIDs drops blanks and repeats, keeping the order the page sent.
-func cleanIDs(ids []string) []string {
+// cleanGroupIDs drops blanks and repeats, keeping the order the page sent.
+func cleanGroupIDs(ids []string) []string {
 	seen := map[string]bool{}
 	clean := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -102,7 +102,7 @@ func (a *api) group(w http.ResponseWriter, r *http.Request, verb groupVerb) {
 	if !readJSON(w, r, &body) {
 		return
 	}
-	ids := cleanIDs(body.IDs)
+	ids := cleanGroupIDs(body.IDs)
 	switch {
 	case len(ids) == 0:
 		writeError(w, http.StatusBadRequest, "ids must name at least one agent")
@@ -295,8 +295,8 @@ func (a *api) carryOn(connector events.Connector, agent *models.LiveAgent) {
 	a.engine.AddEvent(agent, "start", "Continued by you, with everyone, from where it stopped", nil)
 }
 
-// names lists up to three of them, "Atlas, Mori and Quill", and counts the rest.
-func names(listed []string) string {
+// nameList lists up to three of them, "Atlas, Mori and Quill", and counts the rest.
+func nameList(listed []string) string {
 	const shown = 3
 	if len(listed) > shown {
 		return fmt.Sprintf("%s and %d more", strings.Join(listed[:shown], ", "), len(listed)-shown)
@@ -307,8 +307,8 @@ func names(listed []string) string {
 	return strings.Join(listed[:len(listed)-1], ", ") + " and " + listed[len(listed)-1]
 }
 
-// agentCount is "1 agent" or "3 agents".
-func agentCount(n int) string {
+// groupAgents is "1 agent" or "3 agents".
+func groupAgents(n int) string {
 	if n == 1 {
 		return "1 agent"
 	}
@@ -325,7 +325,7 @@ func (g groupReply) said(outcome string) string {
 		}
 		parts = append(parts, strings.TrimSpace(result.Name+" "+result.Why))
 	}
-	return names(parts)
+	return nameList(parts)
 }
 
 // left counts the agents named that had already gone.
@@ -343,7 +343,7 @@ func (g groupReply) left() int {
 func (g groupReply) summary(did, nobody string) string {
 	var sentences []string
 	if g.Paused+g.Resumed > 0 {
-		sentences = append(sentences, did+" "+agentCount(g.Paused+g.Resumed)+".")
+		sentences = append(sentences, did+" "+groupAgents(g.Paused+g.Resumed)+".")
 	} else {
 		sentences = append(sentences, nobody)
 	}
@@ -357,7 +357,7 @@ func (g groupReply) summary(did, nobody string) string {
 		sentences = append(sentences, "Left alone: "+said+".")
 	}
 	if gone := g.left(); gone > 0 {
-		sentences = append(sentences, fmt.Sprintf("%s had left the office.", agentCount(gone)))
+		sentences = append(sentences, fmt.Sprintf("%s had left the office.", groupAgents(gone)))
 	}
 	return strings.Join(sentences, " ")
 }

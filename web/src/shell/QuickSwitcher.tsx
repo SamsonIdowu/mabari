@@ -160,7 +160,11 @@ function Option(props: {
     'aria-selected': active,
     tabIndex: -1,
     className: active ? 'qsrow on' : 'qsrow',
-    onMouseMove: () => point(result),
+    // Only a mouse that moved chooses a row. A list scrolling under a still mouse, as it does for the
+    // arrow keys, must not take the choice back.
+    onMouseMove: (event: MouseEvent) => {
+      if (event.movementX !== 0 || event.movementY !== 0) point(result);
+    },
   } as const;
   // A result that opens a page is that page's own link, so it can be copied or opened in a new
   // tab. A plain click or Enter goes through the switcher, which closes first.

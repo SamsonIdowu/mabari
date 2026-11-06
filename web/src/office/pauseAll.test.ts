@@ -4,6 +4,7 @@ import type { GroupReply } from '../data/api.ts';
 import type { LiveAgent } from '../gen/models.ts';
 import {
   groupFrom,
+  keepOnly,
   modelScope,
   namesShown,
   parseGroup,
@@ -190,6 +191,12 @@ describe('the group a pause stopped', () => {
       typeof stillStopped
     >[1];
     expect(stillStopped(group, now)).toEqual(['a']);
+  });
+
+  it('keeps only the agents that still count, so one paused by hand again is not in it', () => {
+    const group = { stopped: ['a', 'b', 'c'], asked: ['d', 'e'] };
+    expect(keepOnly(group, ['a', 'e'])).toEqual({ stopped: ['a'], asked: ['e'] });
+    expect(keepOnly(group, [])).toEqual({ stopped: [], asked: [] });
   });
 
   it('is restored from what was saved, and only from lists of ids', () => {

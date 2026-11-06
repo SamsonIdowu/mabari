@@ -9,6 +9,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import {
   groupFrom,
+  keepOnly,
   modelScope,
   namesShown,
   pausable,
@@ -151,12 +152,18 @@ export function PauseEveryone({ office }: { office: Snapshot }) {
 
   const stopped = stillStopped(group, office.agents);
   const targets = pausable(office.agents, filters);
-  const remembered = group.stopped.length + group.asked.length > 0;
-  // Once nothing of the last pause is left, because everyone was continued by hand, finished or
-  // left, the button goes back to Pause everyone.
+  const stoppedKey = stopped.join(',');
+  const kept = group.stopped.length + group.asked.length;
+  // An agent that was continued by hand, finished or left drops out of the pause for good, so one
+  // paused by hand again later is not carried on with the rest. Once nothing of the pause is left
+  // the button goes back to Pause everyone.
   useEffect(() => {
-    if (remembered && !stopped.length) usePauseGroup.getState().forget();
-  }, [remembered, stopped.length]);
+    const { group: now, remember } = usePauseGroup.getState();
+    const next = keepOnly(now, stoppedKey ? stoppedKey.split(',') : []);
+    if (next.stopped.length + next.asked.length !== now.stopped.length + now.asked.length) {
+      remember(next);
+    }
+  }, [stoppedKey, kept]);
 
   const carryOn = () => {
     setBusy(true);

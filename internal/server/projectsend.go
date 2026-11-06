@@ -151,10 +151,16 @@ func (a *api) sendToProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
+	a.sendProject(w, r.PathValue("id"), text)
+}
+
+// sendProject routes a message to a project and writes what happened. The Chats screen and the
+// project's chat both come here.
+func (a *api) sendProject(w http.ResponseWriter, id, text string) {
 	var route projectRoute
 	var found bool
 	if err := a.engine.Do(func() {
-		project := a.engine.Project(r.PathValue("id"))
+		project := a.engine.Project(id)
 		if project == nil {
 			return
 		}

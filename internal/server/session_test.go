@@ -62,6 +62,7 @@ type runOffice struct {
 	config    string
 	folder    string
 	logs      string
+	data      string
 }
 
 func newRunOffice(t *testing.T) *runOffice {
@@ -86,7 +87,8 @@ func newRunOffice(t *testing.T) *runOffice {
 		t.Fatal(err)
 	}
 	config, folder, logs := filepath.Join(root, "config"), filepath.Join(root, "shop"), filepath.Join(root, "logs")
-	for _, dir := range []string{config, folder, logs} {
+	data := filepath.Join(root, "data")
+	for _, dir := range []string{config, folder, logs, data} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -104,12 +106,12 @@ func newRunOffice(t *testing.T) *runOffice {
 	sim := simulator.New(engine, simulator.Mulberry32(7), 0)
 	launcher := &fakeLauncher{}
 	handler := New(Options{
-		Engine: engine, Simulator: sim, Launcher: launcher,
+		Engine: engine, Simulator: sim, Launcher: launcher, DataDir: data,
 		Claude: &ClaudeOptions{Connector: connector, Secrets: secrets.NewMemory(), ConfigDir: config},
 	})
 	return &runOffice{
 		office:    &office{handler: handler, engine: engine, simulator: sim},
-		connector: connector, launcher: launcher, config: config, folder: folder, logs: logs,
+		connector: connector, launcher: launcher, config: config, folder: folder, logs: logs, data: data,
 	}
 }
 

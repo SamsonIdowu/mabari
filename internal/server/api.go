@@ -133,6 +133,11 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Attached files go with the conversations they were part of.
+	if err := a.wipeAttachments(); err != nil {
+		internalError(w, err)
+		return
+	}
 	if err := a.engine.Do(func() {
 		a.engine.Wipe()
 		// The wipe cleared the demo's office too, so the simulator lets go of it.

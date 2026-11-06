@@ -52,6 +52,9 @@ type Options struct {
 	AnyHost bool
 	// Defs keeps reusable agents as files. With nil, the builder's routes aren't served.
 	Defs *agentdefs.Library
+	// DataDir is Mabari's data folder, where attached files and saved instructions are kept. With
+	// none, the Chats screen can't keep either.
+	DataDir string
 	// Launcher opens Claude Code in a project's folder. With nil, Mabari says how to start it.
 	Launcher launch.Launcher
 	// Login runs Mabari at login. With nil, Settings shows LoginReason instead.
@@ -75,6 +78,7 @@ type api struct {
 	anyHost     func() bool
 	defs        *agentdefs.Library
 	launcher    launch.Launcher
+	dataDir     string
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -89,7 +93,7 @@ func New(options Options) http.Handler {
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
 		login: options.Login, loginReason: options.LoginReason, access: options.Access,
-		defs: options.Defs, launcher: options.Launcher,
+		defs: options.Defs, launcher: options.Launcher, dataDir: options.DataDir,
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -101,6 +105,7 @@ func New(options Options) http.Handler {
 	})
 	a.routes(mux)
 	a.projectStartRoutes(mux)
+	a.chatRoutes(mux)
 	a.loginRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)

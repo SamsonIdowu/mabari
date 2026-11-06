@@ -181,6 +181,7 @@ func serve(args []string, stdout, stderr io.Writer) error {
 		Secrets:   office.secrets,
 		Hub:       office.hub,
 		Codex:     office.codex,
+		DataDir:   cfg.DataDir,
 		Whisper:   whisper.New(filepath.Join(cfg.DataDir, "whisper"), whisper.Medium),
 		Login:     login, LoginReason: loginReason, Defs: defs, Launcher: launcher(inContainer),
 		Access: access, AnyHost: !config.IsLoopback(cfg.Bind),

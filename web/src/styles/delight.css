@@ -229,3 +229,89 @@ section[data-screen]:not([data-screen='office']) {
   color: var(--muted);
   line-height: 1.25;
 }
+
+/* ---------- shipping a project ----------
+   The banner is a bubble like the ones on the floor, in the floor's own cream and ink. It takes no
+   clicks, sits under every dialog, and is kept clear of the wall bar and the approvals. */
+.shippedwrap {
+  position: absolute;
+  left: 50%;
+  top: 76px;
+  z-index: 7;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.shipped {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fffdf7;
+  color: #1f1b16;
+  border: 2px solid #1f1b16;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-weight: 700;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
+  animation: bpop 0.22s var(--ease);
+  white-space: nowrap;
+}
+.shipped i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--pc, #8e8e93);
+  box-shadow: 0 0 0 2px #1f1b16;
+}
+.shipped b {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.shipped span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- the trophy shelf ----------
+   An invisible button over each trophy drawn on the floor: for the keyboard, for a screen reader
+   and for a name on hover. Only its focus ring shows. */
+.trophylayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.trophy {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.trophy:hover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.trophy:active {
+  transform: translateY(1px);
+}
+.trophydlg {
+  width: min(520px, 100%);
+}
+.trophyhead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.trophypic {
+  flex: none;
+  width: 56px;
+  height: 64px;
+  image-rendering: pixelated;
+  background: var(--surface3);
+  border-radius: 12px;
+  padding: 6px;
+  box-sizing: content-box;
+}

@@ -10,6 +10,21 @@ export const CHEER_MS = 2600;
 /** The hop itself: two small ones, each smaller than the last. */
 const HOP_MS = 800;
 const HOP_PX = 5;
+/** How long a shipped project's party lasts, and so how long its team cheers. */
+export const PARTY_MS = 4200;
+/** One cheer is a hop and a pause. */
+const CHEER_EVERY_MS = 1000;
+
+/** Whether an agent that began cheering at `cheerAt` is cheering `now`, and how high it is. */
+export function cheering(
+  cheerAt: number | undefined,
+  now: number,
+  calm: boolean,
+): { lift: number } | null {
+  if (calm || cheerAt === undefined || now < cheerAt || now - cheerAt >= PARTY_MS) return null;
+  return { lift: hop((now - cheerAt) % CHEER_EVERY_MS) };
+}
+
 /** How long a new agent waves as it walks in. */
 export const WAVE_MS = 1800;
 /** An agent that needs you glances at the camera for this long, once in every `GLANCE_EVERY_MS`. */
@@ -39,7 +54,11 @@ export interface Finishing {
  * finished some time ago. With `calm` (reduced motion) the tick still shows, as a still mark,
  * but nothing hops or falls.
  */
-export function finishing(doneAt: number | undefined, now: number, calm: boolean): Finishing | null {
+export function finishing(
+  doneAt: number | undefined,
+  now: number,
+  calm: boolean,
+): Finishing | null {
   if (!doneAt) return null;
   const elapsed = now - doneAt;
   if (elapsed < 0 || elapsed >= Math.max(TICK_MS, CHEER_MS)) return null;

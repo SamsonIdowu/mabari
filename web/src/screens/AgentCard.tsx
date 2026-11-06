@@ -40,7 +40,9 @@ interface Shown {
 
 /** The card for the agent whose name is hovered or focused, a small trading card. */
 function CardFor({ shown }: { shown: Shown }) {
-  const agent = useOfficeStore((state) => state.office?.agents.find((item) => item.id === shown.id));
+  const agent = useOfficeStore((state) =>
+    state.office?.agents.find((item) => item.id === shown.id),
+  );
   // The numbers are the server's, asked for each time the card is wanted afresh.
   const { data: card } = useQuery({
     queryKey: ['agent-card', shown.id],

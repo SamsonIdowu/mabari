@@ -17,6 +17,7 @@ import { Settings } from '../screens/Settings.tsx';
 import { Library } from '../screens/Library.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
+import { listenForCompletions } from '../office/shipped.ts';
 import { routeTitle } from '../routeTitles.ts';
 import { useHashRoute } from '../useHashRoute.ts';
 import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
@@ -69,6 +70,7 @@ export function Shell() {
   }, [route]);
 
   useEffect(listenForApprovals, []);
+  useEffect(listenForCompletions, []);
 
   return (
     <div className={collapsed ? 'app collapsed' : 'app'}>

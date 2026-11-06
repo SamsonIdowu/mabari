@@ -19,7 +19,7 @@ import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
-import { AgentCardHover } from './AgentCard.tsx';
+import { Delight } from './Delight.tsx';
 import { AgentPanel } from './AgentPanel.tsx';
 import { RestingPanel } from './RestingPanel.tsx';
 import { FloorList } from './FloorList.tsx';
@@ -984,7 +984,7 @@ function Stage({ office }: { office: Snapshot }) {
         </div>
         <FloorMessage office={office} />
         <MabariUpdates />
-        <AgentCardHover />
+        <Delight />
       </div>
     </div>
   );

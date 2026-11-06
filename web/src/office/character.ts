@@ -3,7 +3,7 @@
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { ell, R, rrect } from './background.ts';
 import { STATE_LOCATIONS } from './layout.ts';
-import { finishing, glancing, idleDoing, stretching, waving } from './moments.ts';
+import { cheering, finishing, glancing, idleDoing, stretching, waving } from './moments.ts';
 import type { Walker } from './scene.ts';
 
 type Ctx = CanvasRenderingContext2D;
@@ -66,7 +66,10 @@ export function drawChar(
   const needsYou = st === 'approval' || st === 'error' || !!a.question;
   const glance = !moving && glancing(a.n, t, needsYou, calm);
   const idle = st === 'idle' && !moving ? idleDoing(a.n, t, calm) : null;
-  const stretch = idle !== null && stretching(idle, t);
+  // The team of a project that just shipped cheers in the meeting room, arms up.
+  const cheer = !moving ? cheering(a.cheerAt, now, calm) : null;
+  if (cheer) bob -= cheer.lift;
+  const stretch = (idle !== null && stretching(idle, t)) || cheer !== null;
   let alpha = dim ? 0.2 : 1;
   if (a.popUntil > now) {
     const k = 1 - (a.popUntil - now) / 1600;
@@ -157,7 +160,7 @@ export function drawChar(
     }
     p(3.5 + ex, 5.7, 1, 0.6, 'rgba(240,120,120,.45)');
     p(7.5 + ex, 5.7, 1, 0.6, 'rgba(240,120,120,.45)');
-    if (st === 'done') p(5 + ex, 6, 2, 0.8, '#8A3B2B');
+    if (st === 'done' || cheer) p(5 + ex, 6, 2, 0.8, '#8A3B2B');
     if (st === 'error') p(5 + ex, 6.5, 2, 0.5, '#4A3B3B');
   }
   if (idle === 'book') {

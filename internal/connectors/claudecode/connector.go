@@ -275,6 +275,15 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	}
 	var reply []byte
 	_ = c.engine.Do(func() {
+		// The process may have been ended while this call waited to get in, and what it reports
+		// mustn't undo that, such as a prompt clearing the error that says why it was ended.
+		c.mu.Lock()
+		_, live := c.runs[c.sessions[in.SessionID]]
+		c.mu.Unlock()
+		if fromRun && !live {
+			reply = refused(in, "This session no longer runs in Mabari.")
+			return
+		}
 		reply = c.observe(in)
 		if reply == nil && fromRun && in.Event == "PreToolUse" {
 			if reply = c.attachedRead(in); reply == nil {

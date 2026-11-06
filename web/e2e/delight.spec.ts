@@ -228,11 +228,23 @@ test.describe('shipping a project', () => {
     // The demo's approval is still waiting, so there is no celebration over it.
     await nothingPlaysFor(page, 3000);
 
-    for (const approval of pending) {
-      await request.post(`/api/approvals/${approval.id}/decision`, {
-        data: { decision: 'denied' },
-      });
-    }
+    // Settle whatever waits, and anything the demo asks for in the meantime, until nothing does.
+    await expect
+      .poll(
+        async () => {
+          const waiting = (await (await request.get('/api/approvals?pending=1')).json()) as {
+            id: string;
+          }[];
+          for (const approval of waiting) {
+            await request.post(`/api/approvals/${approval.id}/decision`, {
+              data: { decision: 'denied' },
+            });
+          }
+          return waiting.length;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(0);
     await expect(phaseOf(page)).toHaveAttribute('data-shipped', 'party', { timeout: 10_000 });
   });
 

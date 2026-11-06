@@ -155,9 +155,21 @@ describe('which projects were just completed', () => {
     expect(newlyCompleted(undefined, [project('a', 5)])).toEqual([]);
   });
 
-  it('does not hear of a project that was already done, or one that is new', () => {
+  it('does not hear of a project that was already done', () => {
     expect(newlyCompleted([project('a', 5)], [project('a', 5)])).toEqual([]);
-    expect(newlyCompleted([], [project('a', 5)])).toEqual([]);
+  });
+
+  it('hears of a project it never saw open if it was completed moments ago, and not otherwise', () => {
+    // Made and finished in the same frame, so the page never saw it open.
+    expect(newlyCompleted([], [project('a', 99_000)], 100_000).map((item) => item.id)).toEqual([
+      'a',
+    ]);
+    // Done long ago, like the demo's: nothing to celebrate.
+    expect(newlyCompleted([], [project('a', 5)], 100_000)).toEqual([]);
+    // A clock that runs behind the server's doesn't make a project in the future count.
+    expect(newlyCompleted([], [project('a', 200_000)], 100_000)).toEqual([]);
+    // And still nothing on a page's first office, whatever it holds.
+    expect(newlyCompleted(undefined, [project('a', 99_000)], 100_000)).toEqual([]);
   });
 });
 

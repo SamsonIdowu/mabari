@@ -194,17 +194,26 @@ export const useShipped = create<ShippedStore>((set, get) => ({
   },
 }));
 
+/** A project this page never saw open still counts as just completed if it was this recently. */
+export const RECENT_MS = 15_000;
+
 /**
- * Which projects were completed between two offices: open before, done after. The first office a
- * page sees has nothing before it, so a reload hears of nothing, and neither does a project that
- * was already done.
+ * Which projects were completed between two offices: open before, done after. A project the page
+ * had not seen at all counts too when it was completed moments ago, because the messages that
+ * made it and finished it can arrive in the same frame. The first office a page sees has nothing
+ * before it, so a reload hears of nothing, and neither does a project that was done long ago.
  */
-export function newlyCompleted(before: Project[] | undefined, after: Project[]): Project[] {
+export function newlyCompleted(
+  before: Project[] | undefined,
+  after: Project[],
+  now: number = Date.now(),
+): Project[] {
   if (!before) return [];
   return after.filter((project) => {
     if (!project.done) return false;
     const was = before.find((item) => item.id === project.id);
-    return was !== undefined && !was.done;
+    if (was) return !was.done;
+    return now - project.done.at >= 0 && now - project.done.at < RECENT_MS;
   });
 }
 

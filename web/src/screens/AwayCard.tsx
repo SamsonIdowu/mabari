@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { cardShown, useAway } from '../data/away.ts';
 import { catchUp, recapGroups } from '../data/catchUp.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
@@ -78,6 +78,46 @@ function needsKey(agents: LiveAgent[] | undefined): string {
     .join(',');
 }
 
+/** Where the card sits above Mabari instead of beside it, and has room for little. */
+const NARROW = '(max-width: 1100px)';
+
+/**
+ * The card folded down to what it says in one line: how many of each kind, in the order of the
+ * lists, with the count of what needs you red only when an approval or an error waits. The rows
+ * are a tap away.
+ */
+function RecapSummary({ recap }: { recap: Recap }) {
+  const red = useOfficeStore((state) => {
+    const agents = state.office?.agents ?? [];
+    return floorCounts(counted(agents)).tone === 'red';
+  });
+  return (
+    <p className="recapsum" data-testid="recapsum">
+      {recapGroups(recap)
+        .filter(({ group }) => group.count > 0)
+        .map(({ key, title, group }) => (
+          <span key={key}>
+            {title}{' '}
+            <span className={key === 'needs' && red ? 'recapcount red' : 'recapcount'}>
+              {group.count}
+            </span>
+          </span>
+        ))}
+    </p>
+  );
+}
+
+function useNarrow(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(NARROW);
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(NARROW).matches,
+  );
+}
+
 /**
  * "While you were away": a calm card on Home after the person comes back from at least 15
  * minutes. It shows only when something happened, and stays dismissed for that absence.
@@ -88,6 +128,10 @@ export function AwayCard() {
   const ready = useOfficeStore((state) => state.office !== null);
   const waiting = useOfficeStore((state) => needsKey(state.office?.agents));
   const [recap, setRecap] = useState<Recap | null>(null);
+  // Narrow, the card is a line of counts and opens out to every row on request, so it is never cut
+  // off in the middle of a row, and never crowds Mabari's speech bubble or the buttons under it.
+  const narrow = useNarrow();
+  const [opened, setOpened] = useState(false);
   const from = absence?.from;
   const to = absence?.to;
   const dismissed = absence?.dismissed ?? false;
@@ -109,8 +153,14 @@ export function AwayCard() {
   if (!absence || !recap || recap.since !== absence.from || !cardShown(absence, recap.happened)) {
     return null;
   }
+  const folded = narrow && !opened;
   return (
-    <aside className="awaycard" aria-labelledby="awayTitle" data-testid="away-card">
+    <aside
+      className="awaycard"
+      aria-labelledby="awayTitle"
+      data-testid="away-card"
+      data-open={narrow && opened ? 'yes' : undefined}
+    >
       <div className="awayhead">
         <h2 id="awayTitle">
           While you were away{' '}
@@ -120,7 +170,17 @@ export function AwayCard() {
           Dismiss
         </button>
       </div>
-      <RecapBody recap={recap} />
+      {folded ? <RecapSummary recap={recap} /> : <RecapBody recap={recap} />}
+      {narrow ? (
+        <button
+          type="button"
+          className="btn sm awaymore"
+          aria-expanded={opened}
+          onClick={() => setOpened(!opened)}
+        >
+          {opened ? 'Hide details' : 'Show details'}
+        </button>
+      ) : null}
     </aside>
   );
 }

@@ -6,6 +6,8 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { blk, buildBg, ell, loungeProps, PAL, R, RACKS, rrect, WORK_RACKS } from './background.ts';
 import {
   clampView,
+  FRAME_SLACK,
+  frameView,
   homeView,
   teamView,
   toScreen,
@@ -17,17 +19,19 @@ import {
 } from './camera.ts';
 import { drawChar } from './character.ts';
 import {
-  BURST_MS,
-  burst,
-  LANDING,
   confettiColours,
-  drawPieces,
+  confettiOver,
+  drawConfetti,
   meetingCentre,
+  meetingFrame,
   meetingSpots,
-  stepPieces,
-  type Piece,
+  roomOf,
+  startConfetti,
+  stepConfetti,
+  stillConfetti,
+  type Confetti,
 } from './celebration.ts';
-import { WAVE_MS } from './moments.ts';
+import { cheering, WAVE_MS } from './moments.ts';
 import { restingLook, stableHash } from './resting.ts';
 import { drawEnvelopes } from './talk.ts';
 import { drawMascot } from './vee.ts';
@@ -123,17 +127,36 @@ export function officeBackground(
 /** The welcome screen's office: five desks in use and the free one, the lounge and the meeting room. */
 const HERO_FLOOR = floorFor({ taken: [0, 1, 2, 5, 6], working: [0, 1, 2, 5, 6] }, 1, ['meeting']);
 const HERO_AGENTS = [
-  { ...deskSeat({ desk: 0 }), provider: 'claude', state: 'editing' },
-  { ...deskSeat({ desk: 1 }), provider: 'openai', state: 'thinking' },
-  { ...deskSeat({ desk: 5 }), provider: 'custom', state: 'browsing' },
-  { ...loungeSeat(HERO_FLOOR, 0), provider: 'claude', state: 'idle' },
-  { ...deskSeat({ desk: 6 }), provider: 'openai', state: 'approval' },
+  { ...deskSeat({ desk: 0 }), desk: 0, provider: 'claude', state: 'editing' },
+  { ...deskSeat({ desk: 1 }), desk: 1, provider: 'openai', state: 'thinking' },
+  { ...deskSeat({ desk: 5 }), desk: 5, provider: 'custom', state: 'browsing' },
+  { ...loungeSeat(HERO_FLOOR, 0), desk: 2, provider: 'claude', state: 'idle' },
+  { ...deskSeat({ desk: 6 }), desk: 6, provider: 'openai', state: 'approval' },
 ];
 const HERO_SKINS = ['#F2C9A0', '#D9A27A', '#B07850', '#8C5A3A', '#6B4128'];
 const HERO_HAIR = ['#2A1B12', '#5A3A22', '#101010', '#B5651D', '#D9C27A'];
 
-/** The still picture on the welcome screen: the office with five agents at work. */
-export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
+/** The welcome office's characters, each with the look they have in the picture. */
+function heroWalkers(): Walker[] {
+  return HERO_AGENTS.map(
+    (agent, index) =>
+      ({
+        ...agent,
+        n: 900 + index,
+        path: [],
+        popUntil: 0,
+        dir: 0,
+        walk: 0,
+        working: agent.state !== 'idle',
+        skin: HERO_SKINS[index],
+        hair: HERO_HAIR[index],
+        hue: identityHues[index],
+      }) as unknown as Walker,
+  );
+}
+
+/** Sizes the welcome canvas to its office and paints the empty office on it. */
+function paintHeroOffice(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
   const canvas = c.canvas;
   if (canvas.width !== HERO_FLOOR.width || canvas.height !== HERO_FLOOR.height) {
     canvas.width = HERO_FLOOR.width;
@@ -142,20 +165,61 @@ export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'):
   }
   c.imageSmoothingEnabled = false;
   c.drawImage(officeBackground(theme, HERO_FLOOR), 0, 0);
-  HERO_AGENTS.forEach((agent, index) => {
-    const walker = {
-      ...agent,
-      n: 900 + index,
-      path: [],
-      popUntil: 0,
-      dir: 0,
-      walk: 0,
-      skin: HERO_SKINS[index],
-      hair: HERO_HAIR[index],
-      hue: identityHues[index],
-    } as unknown as Walker;
-    drawChar(c, walker, 1200 + index * 400, false, false);
-  });
+}
+
+/** The still picture on the welcome screen: the office with five agents at work. */
+export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
+  paintHeroOffice(c, theme);
+  heroWalkers().forEach((walker, index) => drawChar(c, walker, 1200 + index * 400, false, false));
+}
+
+/** Where the confetti goes up in the welcome office, and how often, in milliseconds. */
+const HERO_ROOM = { x0: 150, x1: 700, top: 120, floor: 330 };
+const HERO_PARTY_EVERY = 11_000;
+/** Project colours and neutrals: this office has no project, and none of these is a provider's. */
+const HERO_CONFETTI = ['#FF6B9A', '#48DBFB', '#7BED9F', '#FFFFFF', '#C4C4C7', '#FF6B9A', '#48DBFB'];
+
+/**
+ * The welcome screen's office, alive: the same five agents, typing, thinking, browsing and
+ * resting as they do on the floor, with their screens and lamps, and every few seconds the whole
+ * office has a little party, confetti and all, to show what shipping a project looks like. It
+ * runs until the returned function is called. With reduced motion the screen paints the still
+ * picture instead and never calls this.
+ */
+export function animateHero(canvas: HTMLCanvasElement, theme: 'dark' | 'light'): () => void {
+  const c = canvas.getContext('2d')!;
+  const walkers = heroWalkers();
+  let confetti: Confetti | null = null;
+  let nextParty = performance.now() + 2500;
+  let before = performance.now();
+  let frame = 0;
+  const loop = (now: number) => {
+    const dt = Math.min(50, now - before);
+    before = now;
+    paintHeroOffice(c, theme);
+    for (const walker of walkers) drawDeskScreen(c, walker, now);
+    walkers.forEach((walker) => drawChar(c, walker, now, false, false));
+    if (now >= nextParty) {
+      nextParty = now + HERO_PARTY_EVERY;
+      confetti = startConfetti(HERO_ROOM, HERO_CONFETTI, Date.now());
+      // Everyone who isn't waiting on someone joins in, one after another.
+      let order = 0;
+      for (const walker of walkers) {
+        if (walker.state !== 'approval') walker.cheerAt = Date.now() + order++ * 120;
+      }
+    }
+    if (confetti) {
+      const wall = Date.now();
+      if (confettiOver(confetti, wall)) confetti = null;
+      else {
+        stepConfetti(confetti, wall, dt);
+        drawConfetti(c, confetti, wall);
+      }
+    }
+    frame = requestAnimationFrame(loop);
+  };
+  frame = requestAnimationFrame(loop);
+  return () => cancelAnimationFrame(frame);
 }
 
 interface Mote {
@@ -183,6 +247,13 @@ const reducedMotion = () =>
   (motionQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)')).matches;
 
 const sizeOf = (floor: Floor): Size => ({ width: floor.width, height: floor.height });
+
+/**
+ * What a party's camera keeps clear, in screen pixels: at the top the wall bar and the "Shipped"
+ * banner under it, at the bottom the toolbar and the readout.
+ */
+const PARTY_CLEAR_TOP = 156;
+const PARTY_CLEAR_BOTTOM = 78;
 
 /** Draws the floor every frame. It lives outside React, which would be far too slow for this. */
 export class OfficeScene {
@@ -213,16 +284,18 @@ export class OfficeScene {
   };
   /** Where each agent sent to the meeting room for a shipped project stands there. */
   private readonly gathered = new Map<string, Point>();
-  /** The confetti in the air, and when it went up. */
-  private pieces: Piece[] = [];
-  private burstAt = 0;
-  /** Which party the confetti went up for, so each party has one burst. */
+  /** The confetti of the party under way, or null when there is none or it has gone. */
+  private confetti: Confetti | null = null;
+  /** The colours of the party under way, for the still confetti reduced motion shows. */
+  private partyColours: string[] = [];
+  /** Which party the confetti went up for, so each party has one. */
   private burstFor = '';
   /** Where the view was before it moved to the meeting room, to put it back. */
-  private panBefore: { x: number; y: number } | null = null;
-  private panAt: number | null = null;
-  /** The trophies on the shelf, for the page to put buttons over, and the glint on the newest. */
-  trophies: Pick<Shelf, 'spots' | 'hidden'> = { spots: [], hidden: 0 };
+  private viewBefore: { zoom: number; pan: { x: number; y: number } } | null = null;
+  /** Where the view was put to frame the room, to tell whether anyone has moved it since. */
+  private viewAt: { zoom: number; pan: { x: number; y: number } } | null = null;
+  /** The trophies on the display, for the page to put buttons over, and the glint on the newest. */
+  trophies: Pick<Shelf, 'spots' | 'hidden' | 'more'> = { spots: [], hidden: 0, more: null };
   private shelf: { projects: unknown; key: string; theme: string; picture: Shelf | null } = {
     projects: null,
     key: '',
@@ -369,7 +442,7 @@ export class OfficeScene {
     if (this.shelf.projects !== projects || this.shelf.key !== key || this.shelf.theme !== theme) {
       const picture = buildShelf(this.floor, projects, theme);
       this.shelf = { projects, key, theme, picture };
-      this.trophies = { spots: picture.spots, hidden: picture.hidden };
+      this.trophies = { spots: picture.spots, hidden: picture.hidden, more: picture.more };
     }
     if (!this.shelf.picture?.spots.length) return;
     this.context.drawImage(this.shelf.picture.canvas, 0, 0);
@@ -674,31 +747,38 @@ export class OfficeScene {
   }
 
   /**
-   * Chooses who walks to the meeting room for a shipped project, once: its agents who aren't
-   * waiting on you, as many as the room holds. They keep their places from frame to frame. With
-   * reduced motion nobody walks, and when the party is over they all go back to their own spots.
+   * Chooses who is at a shipped project's party, once: its agents who aren't waiting on you. The
+   * first few walk to the meeting room, as many as it holds, and the rest cheer at their desks. A
+   * party played again for a project whose people have all moved on, from its trophy, is for
+   * whoever is on the floor. Sorted by when they arrived, so the same few go every time.
+   */
+  private chooseTeam(agents: LiveAgent[], current: { key: string; id: string; replay?: boolean }) {
+    if (this.teamFor === current.key) return;
+    this.teamFor = current.key;
+    const here = agents
+      .filter((agent) => this.cheers(agent))
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    const mine = here.filter((agent) => agent.projectId === current.id);
+    this.team = (mine.length || !current.replay ? mine : here).map((agent) => agent.id);
+  }
+
+  /**
+   * Sends the team to the meeting room, where each has a place that holds from frame to frame.
+   * With reduced motion nobody walks, and when the party is over they all go back to their own
+   * spots.
    */
   private sendToMeeting(agents: LiveAgent[]): void {
     const current = useShipped.getState().current;
-    if (!current || !this.partyUnderWay() || reducedMotion()) {
+    if (!current || !this.partyUnderWay()) {
       this.gathered.clear();
       this.teamFor = '';
+      this.team = [];
       return;
     }
-    if (this.teamFor !== current.key) {
-      this.teamFor = current.key;
-      this.team = agents
-        .filter(
-          (agent) =>
-            agent.projectId === current.id &&
-            !agent.leaving &&
-            agent.desk >= 0 &&
-            agent.state !== 'approval' &&
-            agent.state !== 'error' &&
-            !agent.question,
-        )
-        .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-        .map((agent) => agent.id);
+    this.chooseTeam(agents, current);
+    if (reducedMotion()) {
+      this.gathered.clear();
+      return;
     }
     const spots = meetingSpots(this.floor, this.team.length);
     this.gathered.clear();
@@ -734,42 +814,90 @@ export class OfficeScene {
     const { phase, current } = useShipped.getState();
     if (phase === 'party' && current && this.burstFor !== current.key) {
       this.burstFor = current.key;
-      this.burstAt = now;
-      if (!calm) {
-        this.pieces = burst(meetingCentre(this.floor), confettiColours(current.color));
-        let order = 0;
-        for (const id of this.gathered.keys()) {
-          const walker = this.walkers.get(id);
-          if (walker) walker.cheerAt = now + order++ * 90;
-        }
+      this.partyColours = confettiColours(current.color);
+      // The confetti goes up, once, and everyone on the project who isn't waiting on you cheers:
+      // the team in the meeting room, the rest at their desks. With reduced motion there is no
+      // confetti in the air, and they hold their pose: see `draw`.
+      if (!calm) this.confetti = startConfetti(roomOf(this.floor), this.partyColours, now);
+      this.chooseTeam(agents, current);
+      let order = 0;
+      for (const id of this.team) {
+        const walker = this.walkers.get(id);
+        if (walker) walker.cheerAt = now + (calm ? 0 : order++ * 90);
       }
+    } else if (phase !== 'party' && this.burstFor) {
+      // Over, or stopped by an approval: not a piece of it is left, and everyone is back at work.
+      this.burstFor = '';
+      this.confetti = null;
+      for (const walker of this.walkers.values()) delete walker.cheerAt;
     }
     this.moveViewForParty(phase);
   }
 
+  /** Whether an agent joins the party: not one waiting on you, or on its way out. */
+  private cheers(agent: LiveAgent): boolean {
+    return (
+      !agent.leaving &&
+      agent.desk >= 0 &&
+      agent.state !== 'approval' &&
+      agent.state !== 'error' &&
+      !agent.question
+    );
+  }
+
+  /**
+   * The camera for a party. While the team walks to the meeting room the view follows only as far
+   * as bringing the room on screen. When they are all there it pushes in on the room, with the
+   * name tags, the banner and the confetti all clear of the bars over the floor, and when the party
+   * is over it goes back to where it was, unless someone has moved it since. Never with reduced
+   * motion, which has no camera moves, nor while following an agent or inside a team's office.
+   */
   private moveViewForParty(phase: 'idle' | 'gather' | 'party'): void {
     const ui = useOfficeUi.getState();
     if (phase === 'gather' && !this.focused) {
       this.focused = true;
       if (reducedMotion() || ui.follow || ui.team) return;
+      this.viewBefore = { zoom: ui.zoom, pan: { ...ui.pan } };
       const centre = meetingCentre(this.floor);
       const point = this.screenOf(centre);
       const { width, height } = this.size;
       const inView = point.x > 80 && point.x < width - 80 && point.y > 60 && point.y < height - 60;
-      if (inView) return;
-      this.panBefore = { ...ui.pan };
-      this.centreAt(centre.x / this.floor.width);
-    } else if (phase === 'party' && this.panBefore && this.panAt === null) {
-      // The view has had the whole walk to arrive, so this is where the party's view rests.
-      this.panAt = ui.pan.x;
+      if (!inView) this.centreAt(centre.x / this.floor.width);
+    } else if (phase === 'party' && this.viewBefore && !this.viewAt) {
+      // Everyone is there: push in on the room, and note where the view came to rest.
+      const frame = frameView(meetingFrame(this.floor), this.size, sizeOf(this.floor), {
+        top: PARTY_CLEAR_TOP,
+        bottom: PARTY_CLEAR_BOTTOM,
+      });
+      const home = homeView(this.size, sizeOf(this.floor));
+      const rested = clampView(
+        { cx: home.x + frame.pan.x, cy: home.y + frame.pan.y, s: frame.zoom },
+        sizeOf(this.floor),
+        this.visible(),
+        FRAME_SLACK,
+      );
+      const pan = { x: rested.cx - home.x, y: rested.cy - home.y };
+      this.viewAt = { zoom: frame.zoom, pan };
+      ui.set({ zoom: frame.zoom, pan, follow: false, team: null });
     } else if (phase === 'idle' && this.focused) {
       // Back where it was, unless someone has moved the view since.
-      if (this.panBefore && this.panAt !== null && Math.abs(ui.pan.x - this.panAt) < 2) {
-        ui.set({ pan: this.panBefore });
+      const at = this.viewAt;
+      if (
+        this.viewBefore &&
+        at &&
+        ui.zoom === at.zoom &&
+        Math.abs(ui.pan.x - at.pan.x) < 4 &&
+        Math.abs(ui.pan.y - at.pan.y) < 4
+      ) {
+        ui.set({ zoom: this.viewBefore.zoom, pan: this.viewBefore.pan });
+      }
+      // Stopped on the way, by an approval: the view only moved along, and goes back along.
+      if (this.viewBefore && !at && ui.zoom === this.viewBefore.zoom) {
+        ui.set({ pan: this.viewBefore.pan });
       }
       this.focused = false;
-      this.panBefore = null;
-      this.panAt = null;
+      this.viewBefore = null;
+      this.viewAt = null;
     }
   }
 
@@ -930,9 +1058,21 @@ export class OfficeScene {
     // Tests read the floor's size, and where the free desk is, to find things on it.
     const world = `${this.floor.width}x${this.floor.height}`;
     if (canvas.dataset.world !== world) canvas.dataset.world = world;
+    // Tests read how big the floor is drawn: screen pixels to a world pixel.
+    const scale = this.matrix().a.toFixed(2);
+    if (canvas.dataset.scale !== scale) canvas.dataset.scale = scale;
     // Tests read where a shipped project's celebration is: "", "gather" or "party".
     const shipped = useShipped.getState().phase === 'idle' ? '' : useShipped.getState().phase;
     if ((canvas.dataset.shipped ?? '') !== shipped) canvas.dataset.shipped = shipped;
+    // While a party is on, tests read where the meeting room is on the canvas, in pixels.
+    let room = '';
+    if (shipped && this.floor.rooms.includes('meeting')) {
+      const frame = meetingFrame(this.floor);
+      const from = this.screenOf({ x: frame.x0, y: frame.y0 });
+      const to = this.screenOf({ x: frame.x1, y: frame.y1 });
+      room = [from.x, from.y, to.x, to.y].map(Math.round).join(',');
+    }
+    if ((canvas.dataset.room ?? '') !== room) canvas.dataset.room = room;
     const tile = deskTile(this.floor.free);
     const free = `${tile.x * 32 + 34},${tile.y * 32 + 20}`;
     if (canvas.dataset.freeDesk !== free) canvas.dataset.freeDesk = free;
@@ -1155,79 +1295,7 @@ export class OfficeScene {
   }
 
   private drawDesk(walker: Walker, t: number): void {
-    const c = this.context;
-    const position = deskCorner(walker);
-    const x = position.x;
-    const y = position.y;
-    const here = STATE_LOCATIONS[walker.state] === 'desk' && !walker.path.length;
-    let glow: string | null = null;
-    if (walker.state === 'editing' && here) {
-      glow = (providers[walker.provider as ProviderName] ?? providers.custom).color;
-      R(c, x + 20, y - 10, 24, 14, glow);
-      for (let line = 0; line < 3; line++) {
-        const width = Math.round(6 + ((t / 50 + line * 7) % 10));
-        R(c, x + 22, y - 8 + ((t / 60 + line * 4) % 11), width, 1, '#1A1A22');
-      }
-    } else if (walker.state === 'error') {
-      R(c, x + 20, y - 10, 24, 14, '#5C606B');
-    } else if (walker.state === 'done' && here) {
-      glow = '#3FB97A';
-      R(c, x + 20, y - 10, 24, 14, glow);
-    } else if (walker.state === 'running' && here) {
-      // Test output scrolling past, mostly green with the odd amber line.
-      R(c, x + 20, y - 10, 24, 14, '#0F1A12');
-      for (let line = 0; line < 4; line++) {
-        const rowY = y - 8 + ((t / 90 + line * 3) % 12);
-        const width = Math.round(4 + ((line * 7 + Math.floor(t / 400)) % 14));
-        R(c, x + 22, rowY, width, 1, line % 3 ? '#3FB97A' : '#F2B33D');
-      }
-      glow = '#3FB97A';
-    } else if (walker.state === 'reading' && here) {
-      // A document.
-      R(c, x + 20, y - 10, 24, 14, '#F4F4F2');
-      for (let line = 0; line < 4; line++)
-        R(c, x + 22, y - 8 + line * 3, line % 2 ? 14 : 18, 1, '#9A9A9E');
-    } else if (walker.state === 'browsing' && here) {
-      // A web page: a bar, a picture and two lines of text.
-      R(c, x + 20, y - 10, 24, 14, '#EAF2FA');
-      R(c, x + 20, y - 10, 24, 3, '#9FB3CC');
-      R(c, x + 22, y - 5, 9, 6, '#5B9BF0');
-      R(c, x + 33, y - 5, 9, 1, '#9A9A9E');
-      R(c, x + 33, y - 2, 7, 1, '#9A9A9E');
-    } else if (walker.working) {
-      R(c, x + 20, y - 10, 24, 14, '#2A3546');
-      R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
-      R(c, x + 22, y - 3, 16, 1, '#9FB3CC');
-    }
-    if (glow) {
-      c.globalAlpha = 0.16;
-      c.fillStyle = glow;
-      ell(c, x + 32, y + 12, 30, 12);
-      c.globalAlpha = 1;
-    }
-    if (walker.state === 'approval') {
-      const lit = Math.floor(t / 400) % 2;
-      R(c, x + 6, y - 2, 8, 10, '#3A2A2A');
-      R(c, x + 7, y - 4, 6, 5, lit ? '#FF4D4F' : '#9E2A2C');
-      if (lit) {
-        c.globalAlpha = 0.18;
-        c.fillStyle = '#FF4D4F';
-        ell(c, x + 10, y, 26, 20);
-        c.globalAlpha = 0.25;
-        ell(c, x + 10, y, 12, 10);
-        c.globalAlpha = 1;
-      }
-    }
-    if (walker.queued?.length) {
-      const lit = Math.floor(t / 600) % 2;
-      R(c, x + 52, y - 2, 8, 8, lit ? '#F2B33D' : '#9E7420');
-      if (lit) {
-        c.globalAlpha = 0.25;
-        c.fillStyle = '#F2B33D';
-        ell(c, x + 56, y + 2, 14, 10);
-        c.globalAlpha = 1;
-      }
-    }
+    drawDeskScreen(this.context, walker, t);
   }
 
   private draw(t: number, dt: number): void {
@@ -1247,7 +1315,13 @@ export class OfficeScene {
       this.world = world;
     }
 
-    const target = clampView(this.viewTarget(), world, this.visible());
+    // While a party frames the meeting room at the office's end, the view may run a little past it.
+    const target = clampView(
+      this.viewTarget(),
+      world,
+      this.visible(),
+      this.viewAt ? FRAME_SLACK : 0,
+    );
     if (!ui.team && !ui.follow) {
       const home = homeView(this.size, world);
       const pan = { x: target.cx - home.x, y: target.cy - home.y };
@@ -1317,15 +1391,32 @@ export class OfficeScene {
     };
     drawEnvelopes(c, messages, where, Date.now(), reducedMotion());
     this.drawMabariDesk(theme, t);
-    if (this.pieces.length) {
-      const age = Date.now() - this.burstAt;
-      if (age > BURST_MS) this.pieces = [];
-      else {
-        stepPieces(this.pieces, dt, meetingCentre(this.floor).y + LANDING);
-        drawPieces(c, this.pieces, age);
+    this.drawParty(dt, calm);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /**
+   * The party's confetti, over everything on the floor but the overlays: going up and floating
+   * down, then gone. With reduced motion it is a still: pieces lying round each of the cheering
+   * team, the same every frame, for as long as the party lasts.
+   */
+  private drawParty(dt: number, calm: boolean): void {
+    const c = this.context;
+    const now = Date.now();
+    if (this.confetti) {
+      if (confettiOver(this.confetti, now)) {
+        this.confetti = null;
+      } else {
+        stepConfetti(this.confetti, now, dt);
+        drawConfetti(c, this.confetti, now);
       }
     }
-    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (!calm || !this.burstFor) return;
+    for (const walker of this.walkers.values()) {
+      if (cheering(walker.cheerAt, now, true)) {
+        stillConfetti(c, { x: walker.x, y: walker.y }, this.partyColours, walker.n);
+      }
+    }
   }
 
   /**
@@ -1342,12 +1433,14 @@ export class OfficeScene {
       .getState()
       .office?.log.find((row) => row.agent === 'Mabari' && row.outcome.startsWith('Routed to '));
     const ping = !!routed && Date.now() - routed.time < MABARI_PING_MS;
+    // At a shipped project's party Mabari waves and smiles, at its desk.
+    const party = useShipped.getState().phase === 'party';
     const visiting = m.visiting && !m.path.length ? this.walkers.get(m.visiting) : undefined;
     const walking = m.path.length > 0;
     drawMabariAt(c, m.x, m.y, 1.15, t, theme, {
-      pose: ping || visiting ? (ping || t % 4000 < 900 ? 'wave' : 'ask') : 'idle',
+      pose: ping || visiting ? (ping || t % 4000 < 900 ? 'wave' : 'ask') : party ? 'wave' : 'idle',
       turn: walking ? m.dir * 0.7 : visiting ? -0.5 : 0,
-      happy: ping,
+      happy: ping || party,
       dim: false,
       ring: '',
     });
@@ -1406,3 +1499,83 @@ function drawMabariAt(
 
 /** How long Mabari waves and names the agent after routing a request. */
 const MABARI_PING_MS = 2200;
+
+/**
+ * The screen on an agent's desk and the lamps beside it, for what the agent is doing: its working
+ * glow, scrolling code, test output, a document, a page, or the red lamp of an approval and the
+ * amber one of a waiting instruction. Shared by the floor and the welcome screen's office.
+ */
+function drawDeskScreen(c: CanvasRenderingContext2D, walker: Walker, t: number): void {
+  const position = deskCorner(walker);
+  const x = position.x;
+  const y = position.y;
+  const here = STATE_LOCATIONS[walker.state] === 'desk' && !walker.path.length;
+  let glow: string | null = null;
+  if (walker.state === 'editing' && here) {
+    glow = (providers[walker.provider as ProviderName] ?? providers.custom).color;
+    R(c, x + 20, y - 10, 24, 14, glow);
+    for (let line = 0; line < 3; line++) {
+      const width = Math.round(6 + ((t / 50 + line * 7) % 10));
+      R(c, x + 22, y - 8 + ((t / 60 + line * 4) % 11), width, 1, '#1A1A22');
+    }
+  } else if (walker.state === 'error') {
+    R(c, x + 20, y - 10, 24, 14, '#5C606B');
+  } else if (walker.state === 'done' && here) {
+    glow = '#3FB97A';
+    R(c, x + 20, y - 10, 24, 14, glow);
+  } else if (walker.state === 'running' && here) {
+    // Test output scrolling past, mostly green with the odd amber line.
+    R(c, x + 20, y - 10, 24, 14, '#0F1A12');
+    for (let line = 0; line < 4; line++) {
+      const rowY = y - 8 + ((t / 90 + line * 3) % 12);
+      const width = Math.round(4 + ((line * 7 + Math.floor(t / 400)) % 14));
+      R(c, x + 22, rowY, width, 1, line % 3 ? '#3FB97A' : '#F2B33D');
+    }
+    glow = '#3FB97A';
+  } else if (walker.state === 'reading' && here) {
+    // A document.
+    R(c, x + 20, y - 10, 24, 14, '#F4F4F2');
+    for (let line = 0; line < 4; line++)
+      R(c, x + 22, y - 8 + line * 3, line % 2 ? 14 : 18, 1, '#9A9A9E');
+  } else if (walker.state === 'browsing' && here) {
+    // A web page: a bar, a picture and two lines of text.
+    R(c, x + 20, y - 10, 24, 14, '#EAF2FA');
+    R(c, x + 20, y - 10, 24, 3, '#9FB3CC');
+    R(c, x + 22, y - 5, 9, 6, '#5B9BF0');
+    R(c, x + 33, y - 5, 9, 1, '#9A9A9E');
+    R(c, x + 33, y - 2, 7, 1, '#9A9A9E');
+  } else if (walker.working) {
+    R(c, x + 20, y - 10, 24, 14, '#2A3546');
+    R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
+    R(c, x + 22, y - 3, 16, 1, '#9FB3CC');
+  }
+  if (glow) {
+    c.globalAlpha = 0.16;
+    c.fillStyle = glow;
+    ell(c, x + 32, y + 12, 30, 12);
+    c.globalAlpha = 1;
+  }
+  if (walker.state === 'approval') {
+    const lit = Math.floor(t / 400) % 2;
+    R(c, x + 6, y - 2, 8, 10, '#3A2A2A');
+    R(c, x + 7, y - 4, 6, 5, lit ? '#FF4D4F' : '#9E2A2C');
+    if (lit) {
+      c.globalAlpha = 0.18;
+      c.fillStyle = '#FF4D4F';
+      ell(c, x + 10, y, 26, 20);
+      c.globalAlpha = 0.25;
+      ell(c, x + 10, y, 12, 10);
+      c.globalAlpha = 1;
+    }
+  }
+  if (walker.queued?.length) {
+    const lit = Math.floor(t / 600) % 2;
+    R(c, x + 52, y - 2, 8, 8, lit ? '#F2B33D' : '#9E7420');
+    if (lit) {
+      c.globalAlpha = 0.25;
+      c.fillStyle = '#F2B33D';
+      ell(c, x + 56, y + 2, 14, 10);
+      c.globalAlpha = 1;
+    }
+  }
+}

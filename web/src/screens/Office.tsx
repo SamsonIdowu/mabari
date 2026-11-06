@@ -6,6 +6,8 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
+import { savePicture } from '../office/picture.ts';
+import { useThemeStore } from '../theme/themeStore.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
@@ -285,7 +287,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   ];
 
   return (
-    <div className="obar2 inhead">
+    <div className="obar2 inhead" id="officeFilters">
       <div className="ddwrap">
         <button
           type="button"
@@ -608,6 +610,26 @@ function FloorMessage({ office }: { office: Snapshot }) {
   );
 }
 
+/** Saves what the floor shows now as a picture, with a strip of counts under it. */
+function savePictureOfOffice() {
+  const canvas = document.getElementById('floor');
+  const { office, toast } = useOfficeStore.getState();
+  if (!(canvas instanceof HTMLCanvasElement) || !office) return;
+  const agents = onFloor(office.agents);
+  savePicture(
+    canvas,
+    {
+      agents: agents.length,
+      working: agents.filter((agent) => agent.working).length,
+      shipped: office.projects.filter((project) => project.done).length,
+      at: new Date(),
+    },
+    useThemeStore.getState().theme,
+  )
+    .then((name) => toast(`Saved ${name}.`))
+    .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'));
+}
+
 function CanvasTools() {
   const selected = useOfficeUi((state) => state.selected);
   const follow = useOfficeUi((state) => state.follow);
@@ -690,6 +712,18 @@ function CanvasTools() {
           <circle cx="19" cy="6" r="2" />
           <circle cx="19" cy="18" r="2" />
           <path d="M7 12h5V6h5M12 12v6h5" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        id="pictureBtn"
+        title="Save a picture of the office to keep or show"
+        aria-label="Save a picture of the office"
+        onClick={savePictureOfOffice}
+      >
+        <Icon>
+          <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+          <circle cx="12" cy="13" r="3.5" />
         </Icon>
       </button>
       <button
@@ -1040,14 +1074,38 @@ const HEAD_GAP = 12;
 
 function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }) {
   const head = useOneRowWhenItFits();
+  // On a phone the filters are folded away behind a button, so the floor has the screen. A data
+  // attribute, not a class, because the header's own measuring adds and removes classes.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filters = useFilters();
+  const narrowed = [
+    filters.project !== 'all',
+    filters.provider !== 'all',
+    filters.model !== 'all',
+    filters.status !== 'all',
+  ].filter(Boolean).length;
   return (
-    <div className="ohead" ref={head}>
+    <div className="ohead" ref={head} data-filters={filtersOpen ? 'open' : 'closed'}>
       <div className="ohtitle">
         <h1 id="oTitle">Agents</h1>
         <Summary scoped={scoped} />
       </div>
       <FilterBar office={office} scoped={scoped} />
       <div className="ohact">
+        {/* Only on a phone: the filters sit behind this, and say how many are narrowing the floor. */}
+        <button
+          type="button"
+          className="btn filtertoggle"
+          aria-expanded={filtersOpen}
+          aria-controls="officeFilters"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <Icon>
+            <path d="M4 6h16M7 12h10M10 18h4" />
+          </Icon>
+          Filters
+          {narrowed ? <span className="badge calm">{narrowed}</span> : null}
+        </button>
         <AutoApproveButton settings={office.settings} />
         <PauseEveryone office={office} />
         <MabariUpdatesButton />

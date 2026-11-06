@@ -10,19 +10,33 @@ export const CHEER_MS = 2600;
 /** The hop itself: two small ones, each smaller than the last. */
 const HOP_MS = 800;
 const HOP_PX = 5;
-/** How long a shipped project's party lasts, and so how long its team cheers. */
-export const PARTY_MS = 4200;
-/** One cheer is a hop and a pause. */
-const CHEER_EVERY_MS = 1000;
+/**
+ * How long a shipped project's party lasts, and so how long its team cheers: long enough for the
+ * confetti to go up and come down and settle, and to be seen, without outstaying it.
+ */
+export const PARTY_MS = 7000;
+/** One cheer is a jump: up and down in this long, again and again. */
+export const JUMP_MS = 560;
+/** How high the jump is, in pixels. */
+export const JUMP_PX = 10;
 
-/** Whether an agent that began cheering at `cheerAt` is cheering `now`, and how high it is. */
+/** How far off the floor a cheering agent is, `elapsed` ms into its jump: a clean arc, then down. */
+export function jump(elapsed: number): number {
+  return Math.round(JUMP_PX * Math.abs(Math.sin((elapsed / JUMP_MS) * Math.PI)));
+}
+
+/**
+ * Whether an agent that began cheering at `cheerAt` is cheering `now`, and how high it is. It jumps
+ * with its arms up and a smile. With `calm` (reduced motion) it holds the same pose, still, on the
+ * floor: the party becomes a picture, not a shorter animation.
+ */
 export function cheering(
   cheerAt: number | undefined,
   now: number,
   calm: boolean,
 ): { lift: number } | null {
-  if (calm || cheerAt === undefined || now < cheerAt || now - cheerAt >= PARTY_MS) return null;
-  return { lift: hop((now - cheerAt) % CHEER_EVERY_MS) };
+  if (cheerAt === undefined || now < cheerAt || now - cheerAt >= PARTY_MS) return null;
+  return { lift: calm ? 0 : jump((now - cheerAt) % JUMP_MS) };
 }
 
 /** How long a new agent waves as it walks in. */

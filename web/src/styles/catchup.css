@@ -240,11 +240,30 @@ button.tllabel:hover .tlname {
 /* The line at now runs over every row, aligned to the same column as the rows' tracks. */
 .tlplot {
   position: absolute;
-  top: 12px;
-  bottom: 14px;
-  left: calc(var(--tl-pad) + var(--tl-label) + var(--tl-gap));
-  right: var(--tl-pad);
+  top: 0;
+  bottom: 0;
+  left: calc(var(--tl-label) + var(--tl-gap));
+  right: 0;
   pointer-events: none;
+}
+/* The lanes scroll under the hours when there are many: about eight show, then the chart scrolls,
+   so a crowd of agents never pushes the log and its Export off the first screen. The line at now
+   is inside the scrolling part and so runs the full length of it. */
+.tlscroll {
+  max-height: 322px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 calc(var(--tl-pad) * -1);
+  padding: 0 var(--tl-pad);
+}
+.tlscroll:focus-visible {
+  outline-offset: -2px;
+}
+.tlinner {
+  position: relative;
+}
+.tlmore {
+  margin: 0;
 }
 .tlnow {
   position: absolute;

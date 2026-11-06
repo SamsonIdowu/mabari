@@ -17,6 +17,7 @@ import {
 import { drawChar } from './character.ts';
 import { restingLook } from './resting.ts';
 import type { OfficeScene, Walker } from './scene.ts';
+import { moved, spreadTags, type Shift } from './tagSpread.ts';
 import { chipFor } from './talk.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
 import { placeTrophies } from './trophyLayer.ts';
@@ -136,6 +137,8 @@ interface Placing {
   rank: number;
   /** Not wanted at all: nothing to say, walking, or in the spotlight. */
   quiet: boolean;
+  /** Well off the screen, so its tag takes no part in keeping tags apart. */
+  offscreen: boolean;
   /** What the bubble says, so quiet bubbles that say the same in a row show once. */
   text: string;
   /** May be cut to one line to make room. A reply is read in full, and an approval is brief. */
@@ -144,11 +147,14 @@ interface Placing {
   bubbleKey: string;
 }
 
+/** How far past the floor's edge, in pixels, an agent is before it counts as off the screen. */
+const OFFSCREEN = 90;
+
 /** A session running as Mabari, the default agent, is "Mabari · Shop", after its folder. */
 const shownName = (agent: Pick<LiveAgent, 'name' | 'defId'>) =>
   agent.defId === MabariDef ? `Mabari · ${agent.name}` : agent.name;
 
-function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): void {
+function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[]): Placing[] {
   const ui = useOfficeUi.getState();
   const { width, height } = scene.size;
   const seen = new Set<string>();
@@ -206,11 +212,19 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     const isTalk = walker.bubbleKind === 'talk';
     const isAsk = walker.bubbleKind === 'ask';
     const spotlit = ui.selected === walker.id && !ui.team && ui.spotlight;
+    // An agent well off the screen, as one is when the view is zoomed in on a party or a desk, has
+    // nothing to say: its quiet bubble would only be pushed in at the edge, away from its agent.
+    const offscreen =
+      point.x < -OFFSCREEN ||
+      point.x > width + OFFSCREEN ||
+      point.y < -OFFSCREEN ||
+      point.y > height + OFFSCREEN;
     const quiet = !walker.bubble || (walker.path.length > 0 && !isReply) || (spotlit && !isReply);
     // What needs you and what answers you is never hidden. See bubbles.ts.
     const asking = isAsk || (walker.state === 'approval' && !isTalk);
     const rank = asking ? 3 : isReply || (walker.state === 'error' && !isTalk) ? 2 : isTalk ? 1 : 0;
-    bubble.hidden = quiet;
+    const away = offscreen && rank < PINNED_RANK;
+    bubble.hidden = quiet || away;
     if (bubble.textContent !== walker.bubble) bubble.textContent = walker.bubble;
     const bubbleClass = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${isAsk ? ' ask' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}${rank >= PINNED_RANK ? ' pin' : ''}`;
     bubble.className = cutShort.has(bubble) ? `${bubbleClass} one` : bubbleClass;
@@ -227,7 +241,8 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
       bubbleAt: bubblePoint,
       settle: MAX_SETTLE + Math.max(0, usual - bubblePoint.y),
       rank,
-      quiet,
+      quiet: quiet || away,
+      offscreen,
       text: walker.bubble ?? '',
       shortenable: rank < 3 && !isReply,
       tagKey: `${tagHtml}|${chip?.text ?? ''}|${queued}|${tag.className}`,
@@ -237,14 +252,61 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
   for (const element of [...layer.querySelectorAll<HTMLElement>('[data-o]')]) {
     if (!seen.has(element.dataset.o!)) element.remove();
   }
-  placeOnFloor(layer, scene, placing);
+  return placing;
 }
 
 /**
- * Puts each bubble over its agent, moved clear of the name tags and of other bubbles, or hidden if
- * it cannot be, and keeps it on the floor. See bubbles.ts for the rules.
+ * A label other than an agent's: a resting agent file's tag in the lounge, or Mabari's. They take
+ * part in keeping tags apart, so neither is ever drawn over an agent's name.
  */
-function placeOnFloor(layer: HTMLElement, scene: OfficeScene, placing: Placing[]): void {
+interface Label {
+  id: string;
+  element: HTMLElement;
+  /** Where it hangs from, in pixels from the floor's top left corner. */
+  at: { x: number; y: number };
+  /** What is in it, so its size is measured only when that changes. */
+  key: string;
+  /** Mabari's label sits over its head on its rounds, hanging up from where it is anchored. */
+  above?: boolean;
+  /** At its desk, Mabari's label sits flush under it, not 4 pixels lower like a tag. */
+  flush?: boolean;
+  /** Not drawn when the layer hides tags (the quiet ones, not Mabari's label on its rounds). */
+  quiet: boolean;
+}
+
+/** Moves an element by margin, which no transform of its own undoes. Writes only on a change. */
+function shiftBy(element: HTMLElement, shift: Shift | undefined): void {
+  const place = shift ? `${shift.dx}|${shift.dy}` : '';
+  if (element.dataset.shift === place) return;
+  if (place) element.dataset.shift = place;
+  else delete element.dataset.shift;
+  element.style.marginLeft = shift && shift.dx ? `${shift.dx}px` : '';
+  element.style.marginTop = shift && shift.dy ? `${shift.dy}px` : '';
+}
+
+/**
+ * Where a label's box is, given the way the overlay scales and positions it. A tag hangs 4 pixels
+ * under its anchor; Mabari's label hangs flush under it at its desk, and up from its head out on
+ * its rounds. All of them scale about the edge they hang from.
+ */
+function labelBox(label: Label, size: Size, scale: number): Box {
+  if (label.above) return bubbleBox(label.at.x, label.at.y, size.width, size.height, scale);
+  const box = tagBox(label.at.x, label.at.y, size.width, size.height, scale);
+  if (!label.flush) return box;
+  return { ...box, top: label.at.y, bottom: label.at.y + scale * size.height };
+}
+
+/**
+ * Puts each name tag clear of the others, then each bubble over its agent, moved clear of the
+ * name tags and of other bubbles, or hidden if it cannot be, and keeps it on the floor. See
+ * tagSpread.ts and bubbles.ts for the rules.
+ */
+function placeOnFloor(
+  layer: HTMLElement,
+  scene: OfficeScene,
+  placing: Placing[],
+  labels: Label[],
+): void {
   const { width, height } = scene.size;
   const overlay = layer.closest<HTMLElement>('.ovl');
   const scale = overlayScale(scene.matrix().a);
@@ -252,15 +314,50 @@ function placeOnFloor(layer: HTMLElement, scene: OfficeScene, placing: Placing[]
   const tiny = overlay?.classList.contains('tiny') ? 'tiny' : '';
   const tagsHidden = layer.classList.contains('hide-tags');
   const bubblesHidden = layer.classList.contains('hide-bub');
-  const tags: Box[] = [];
+  // Every tag on the floor, with the box it fills where it hangs. A tag that is not drawn covers
+  // nothing, and takes no room.
+  const shown: { id: string; element: HTMLElement; box: Box; fixed: boolean }[] = [];
+  for (const entry of placing) {
+    const selected = entry.tag.classList.contains('sel') || entry.tag.classList.contains('attn');
+    if (!entry.offscreen && (!tagsHidden || selected)) {
+      const size = sizeOf(entry.tag, `${entry.tagKey}|${tiny}`);
+      if (size) {
+        shown.push({
+          id: `o:${entry.id}`,
+          element: entry.tag,
+          box: tagBox(entry.at.x, entry.at.y, size.width, size.height, scale),
+          fixed: selected,
+        });
+      }
+    }
+  }
+  for (const label of labels) {
+    if (label.element.hidden || (label.quiet && tagsHidden)) {
+      shiftBy(label.element, undefined);
+      continue;
+    }
+    const size = sizeOf(label.element, `${label.key}|${tiny}`);
+    if (size) {
+      shown.push({
+        id: `l:${label.id}`,
+        element: label.element,
+        box: labelBox(label, size, scale),
+        fixed: false,
+      });
+    }
+  }
+  const shifts = spreadTags(
+    shown.map(({ id, box, fixed }) => ({ id, box, fixed })),
+    width,
+  );
+  // A tag that is not drawn this frame goes back to where it hangs, so it is not stale when it is.
+  const drawn = new Set(shown.map((one) => one.element));
+  for (const entry of placing) if (!drawn.has(entry.tag)) shiftBy(entry.tag, undefined);
+  for (const one of shown) shiftBy(one.element, shifts.get(one.id));
+  // Bubbles keep clear of the tags where they now are.
+  const tags: Box[] = shown.map((one) => moved(one.box, shifts.get(one.id)));
   const items: BubbleItem[] = [];
   for (const entry of placing) {
-    // A tag that is not drawn covers nothing.
-    const selected = entry.tag.classList.contains('sel') || entry.tag.classList.contains('attn');
-    if (!tagsHidden || selected) {
-      const size = sizeOf(entry.tag, `${entry.tagKey}|${tiny}`);
-      if (size) tags.push(tagBox(entry.at.x, entry.at.y, size.width, size.height, scale));
-    }
     // A bubble the zoom or the noise filters already hide needs no place.
     const pinned = entry.rank >= PINNED_RANK;
     if (entry.quiet || (!pinned && (far || bubblesHidden))) continue;
@@ -301,10 +398,11 @@ function placeOnFloor(layer: HTMLElement, scene: OfficeScene, placing: Placing[]
  * Quiet name tags for the agent definitions resting in the lounge. They aren't agents, so they
  * have no model, bubble or message chip, and a search or filter doesn't pick them out.
  */
-function renderResting(layer: HTMLElement, scene: OfficeScene): void {
+function renderResting(layer: HTMLElement, scene: OfficeScene): Label[] {
   const { width, height } = scene.size;
   const shown = scene.restingShown();
   const seen = new Set<string>();
+  const labels: Label[] = [];
   for (const { def, walker } of scene.resting) {
     seen.add(walker.id);
     let element = layer.querySelector<HTMLElement>(`[data-r="${CSS.escape(walker.id)}"]`);
@@ -322,10 +420,12 @@ function renderResting(layer: HTMLElement, scene: OfficeScene): void {
     const point = scene.screenOf(walker);
     element.style.left = `${(point.x / width) * 100}%`;
     element.style.top = `${(point.y / height) * 100}%`;
+    labels.push({ id: walker.id, element, at: point, key: `rest|${def.name}`, quiet: true });
   }
   for (const element of [...layer.querySelectorAll<HTMLElement>('[data-r]')]) {
     if (!seen.has(element.dataset.r!)) element.remove();
   }
+  return labels;
 }
 
 function renderReadout(readout: HTMLElement, agents: LiveAgent[], selected: LiveAgent | null) {
@@ -519,7 +619,7 @@ function placeQueueNote(note: HTMLElement, scene: OfficeScene, agents: LiveAgent
  * Mabari's label. At its desk it sits under Mabari, as in the prototype; out on its rounds it
  * goes above its head, over the bubbles, so it's never hidden by whoever it's with.
  */
-function renderMabari(layer: HTMLElement, scene: OfficeScene): void {
+function renderMabari(layer: HTMLElement, scene: OfficeScene): Label {
   let element = layer.querySelector<HTMLElement>('.mabtag');
   if (!element) {
     element = document.createElement('div');
@@ -533,6 +633,16 @@ function renderMabari(layer: HTMLElement, scene: OfficeScene): void {
   element.style.left = `${(point.x / width) * 100}%`;
   element.style.top = `${(point.y / height) * 100}%`;
   if (element.textContent !== scene.mabariLabel) element.textContent = scene.mabariLabel;
+  return {
+    id: 'mabari',
+    element,
+    at: point,
+    key: `mabari|${scene.mabariLabel}|${scene.mabariHome}`,
+    above: !scene.mabariHome,
+    flush: scene.mabariHome,
+    // At its desk the label goes when tags are hidden; out on its rounds it stays.
+    quiet: scene.mabariHome,
+  };
 }
 
 /** Everything drawn in HTML over the canvas, updated once a frame. */
@@ -544,10 +654,10 @@ export function renderOverlays(
   const ui = useOfficeUi.getState();
   const walker = ui.selected ? (scene.walkers.get(ui.selected) ?? null) : null;
   const shown = walker && inScope(walker, ui, agents) && matches(walker, ui) ? walker : null;
-  renderTags(elements.tags, scene, agents);
-  renderResting(elements.tags, scene);
-  renderMabari(elements.tags, scene);
+  const placing = renderTags(elements.tags, scene, agents);
+  const labels = [...renderResting(elements.tags, scene), renderMabari(elements.tags, scene)];
   scaleTags(elements.tags, scene);
+  placeOnFloor(elements.tags, scene, placing, labels);
   const overlay = elements.tags.closest<HTMLElement>('.ovl');
   if (overlay) placeTrophies(overlay, scene);
   renderReadout(elements.readout, agents, walker);

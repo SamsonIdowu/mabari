@@ -24,6 +24,8 @@ export interface Shipment {
   color: string;
   /** When this page heard of it, in milliseconds. */
   heardAt: number;
+  /** Played again from the project's trophy, rather than because it was just completed. */
+  replay?: boolean;
 }
 
 export type ShippedPhase = 'idle' | 'gather' | 'party';
@@ -193,6 +195,24 @@ export const useShipped = create<ShippedStore>((set, get) => ({
     if (after.phase === 'party' && before.phase !== 'party') playChime();
   },
 }));
+
+/**
+ * Plays a completed project's party again, because someone asked from its trophy. It is a new
+ * completion as far as this page is concerned, so it plays once, and never on a reload.
+ */
+export function playAgain(
+  project: Pick<Project, 'id' | 'name' | 'color'>,
+  now: number = Date.now(),
+): void {
+  useShipped.getState().heard({
+    key: `again:${project.id}:${now}`,
+    id: project.id,
+    name: project.name,
+    color: project.color,
+    heardAt: now,
+    replay: true,
+  });
+}
 
 /** A project this page never saw open still counts as just completed if it was this recently. */
 export const RECENT_MS = 15_000;

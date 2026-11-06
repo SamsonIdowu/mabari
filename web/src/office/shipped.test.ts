@@ -9,9 +9,11 @@ import {
   loadSeen,
   newlyCompleted,
   PARTY_MS,
+  playAgain,
   saveSeen,
   shipmentKey,
   step,
+  useShipped,
   watching,
   type Frame,
   type Shipment,
@@ -205,5 +207,45 @@ describe('what has been celebrated, kept in storage', () => {
     expect(kept.size).toBe(200);
     expect(kept.has('k499')).toBe(true);
     expect(kept.has('k0')).toBe(false);
+  });
+});
+
+describe('playing a party again from its trophy', () => {
+  const project = { id: 'a', name: 'Landing page', color: '#7BED9F' };
+
+  it('queues a party that plays once, as a completion does, marked as a replay', () => {
+    useShipped.setState({ ...initialShipped });
+    playAgain(project, 1000);
+    const { queue } = useShipped.getState();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ id: 'a', name: 'Landing page', replay: true, heardAt: 1000 });
+    // On screen it starts, and runs its course like any other.
+    let state = watching(useShipped.getState(), true);
+    state = step(state, 1000, frame({ calm: true }));
+    expect(state.phase).toBe('party');
+    expect(state.current?.replay).toBe(true);
+    expect(step(state, 1000 + PARTY_MS + 1, frame({ calm: true })).phase).toBe('idle');
+  });
+
+  it('can be asked for again and again, each time a new party', () => {
+    useShipped.setState({ ...initialShipped });
+    playAgain(project, 1000);
+    playAgain(project, 2000);
+    const keys = useShipped.getState().queue.map((item) => item.key);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('never plays while an approval waits, and is not played late once it has been waiting', () => {
+    useShipped.setState({ ...initialShipped });
+    playAgain(project, 1000);
+    let state = watching(useShipped.getState(), true);
+    state = step(state, 1100, frame({ approval: true }));
+    expect(state.phase).toBe('idle');
+    expect(state.queue).toHaveLength(1);
+    // The approval is dealt with: it plays then.
+    expect(step(state, 1200, frame()).phase).toBe('gather');
+    // Left waiting too long it is dropped, not played late.
+    expect(step(state, 1000 + EXPIRES_MS + 1, frame()).phase).toBe('idle');
+    expect(step(state, 1000 + EXPIRES_MS + 1, frame()).queue).toEqual([]);
   });
 });

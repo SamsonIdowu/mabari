@@ -1,0 +1,176 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * Mabari on a phone. The office, Home's catch-up card and the chat thread each took more of a
+ * 390 pixel screen than they should: the Agents header, with its filters and five buttons, took
+ * about half of it; the "While you were away" card was cut off mid-row against Mabari's bubble; a
+ * chat thread had about 300 pixels, under a title and tabs. This keeps the same classes, colours
+ * and wording, and only folds, scrolls and reflows. Flat colour; nothing here is red or amber.
+ * It loads last, so it wins over the rules it narrows.
+ */
+
+/* The Filters button is only for a phone. */
+.filtertoggle {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  /* ---- Agents ----
+     A header of three short rows: the title and what is happening, one row of buttons that
+     scrolls sideways, and, when asked for, the filters. The floor gets the rest of the screen. */
+  .ohead,
+  .ohead.stack {
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    padding: 8px 12px 6px !important;
+    row-gap: 4px !important;
+  }
+  .ohead .ohtitle,
+  .ohead.stack .ohtitle {
+    order: 1;
+    flex: 1 1 100% !important;
+    gap: 0 10px;
+    align-items: baseline;
+  }
+  .ohead h1,
+  #oTitle {
+    font-size: 26px !important;
+  }
+  .ohead .ohact,
+  .ohead.stack .ohact {
+    order: 2 !important;
+    flex: 1 1 100% !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    margin-left: 0 !important;
+    gap: 8px;
+    /* A few pixels of room so a focus ring isn't cut off, and a scroll with no bar to look at. */
+    padding: 3px 3px 5px;
+    margin: -3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ohead .ohact::-webkit-scrollbar {
+    display: none;
+  }
+  .ohead .ohact > * {
+    flex: none;
+  }
+  .filtertoggle {
+    display: inline-flex;
+  }
+  .filtertoggle .badge {
+    margin-left: 2px;
+  }
+  .ohead .obar2.inhead,
+  .ohead.stack .obar2.inhead {
+    order: 3 !important;
+    flex: 1 1 100% !important;
+    flex-wrap: wrap;
+  }
+  .ohead[data-filters='closed'] .obar2.inhead {
+    display: none;
+  }
+  /* The banners above the floor take less. */
+  .ocol > div > .banner {
+    margin-top: 6px !important;
+  }
+}
+
+/* ---- Home's "While you were away" card, above Mabari ----
+   Narrow, the card sits above the stage. It takes the height its rows need rather than being cut
+   at a third of the screen, wraps its rows rather than clipping them, and leaves room before
+   Mabari's bubble. Opened out, it scrolls inside a limit. */
+@media (max-width: 1100px) {
+  /* Through .home2, so these win over the card's own rules, which load after this file. */
+  .home2 .awaycard {
+    max-height: none;
+    margin-bottom: 18px;
+  }
+  .home2 .awaycard[data-open='yes'] {
+    max-height: 56vh;
+  }
+  .awaycard .recap .recaptext {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+  .awaycard .recap .hclist li {
+    align-items: baseline;
+  }
+  .awaymore {
+    margin-top: 10px;
+  }
+}
+/* The folded card: a line of counts, in the lists' own small capitals. */
+.recapsum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.awaymore {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .awaymore {
+    display: inline-flex;
+  }
+}
+@media (max-width: 600px) {
+  /* Home grows with what is on it, so a longer card never pushes the greeting off the top. */
+  .home2 {
+    height: auto;
+    min-height: 100%;
+    justify-content: flex-start;
+    padding-top: 14px;
+    padding-bottom: 28px;
+  }
+  .h2stage {
+    height: min(46vh, 380px);
+    min-height: 280px;
+  }
+  /* With the card above it, Mabari gets a shorter stage, so the buttons under it stay on screen. */
+  .home2:has(.awaycard) .h2stage {
+    height: min(32vh, 280px);
+    min-height: 210px;
+  }
+}
+
+/* ---- The chat thread on a phone ----
+   Open, the thread owns the screen. The page's title and the tabs are only a way back, and
+   "All chats" in the thread's own header is that already, so they step aside and the messages
+   have the height. The thread's card runs down to the bottom edge instead of stopping short. */
+@media (max-width: 600px) {
+  section[data-screen='conversations'] .page:has(.wywrap.open) {
+    padding-top: 10px;
+    gap: 8px;
+  }
+  section[data-screen='conversations'] .page:has(.wywrap.open) > .phead,
+  section[data-screen='conversations'] .page:has(.wywrap.open) > .wytabs {
+    display: none;
+  }
+  section[data-screen='conversations'] .wywrap.convwrap {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 460px;
+  }
+  section[data-screen='conversations'] .wywrap.open > .wycard {
+    flex: 1 1 auto;
+    height: 100%;
+  }
+  /* The thread's header is two short lines, not four. */
+  .wyhead {
+    padding: 8px 12px;
+  }
+  .wytitle h2 {
+    font-size: 16px;
+  }
+}

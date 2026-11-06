@@ -277,7 +277,7 @@ test.describe('shipping a project', () => {
     await expect(trophy).toBeFocused();
   });
 
-  test('the shelf fills up as projects ship, six to a case', async ({ page, request }) => {
+  test('the trophy display fills up as projects ship, left to right', async ({ page, request }) => {
     test.setTimeout(60_000);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const token = await hubToken(request);

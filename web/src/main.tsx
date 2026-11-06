@@ -14,6 +14,7 @@ import './styles/calm.css';
 import './styles/chat.css';
 import './styles/command.css';
 import './styles/delight.css';
+import './styles/phone.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

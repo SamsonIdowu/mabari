@@ -241,10 +241,15 @@ export type BackRowKind = 'shelf' | 'cabinets' | 'printer';
 const BACK_ROW_KINDS: BackRowKind[] = ['shelf', 'cabinets', 'printer'];
 const BACK_ROW_WIDTHS = [56, 64, 52];
 
+/** How wide a piece of back row furniture is, so the trophy display can cover whole pieces. */
+export function backRowWidth(kind: BackRowKind): number {
+  return BACK_ROW_WIDTHS[BACK_ROW_KINDS.indexOf(kind)]!;
+}
+
 /**
  * Where the back row's furniture stands for a work area that ends at `end`: bookshelves, filing
- * cabinets and one printer, in turn, for as long as there is room. The trophy shelf takes the
- * bookshelves' places, so it asks for them here.
+ * cabinets and one printer, in turn, for as long as there is room. The trophy display takes the
+ * furniture's places from the left, as many as it needs, so it asks for them here.
  */
 export function backRow(end: number): { x: number; kind: BackRowKind }[] {
   const places: { x: number; kind: BackRowKind }[] = [];

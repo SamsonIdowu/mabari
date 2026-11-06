@@ -249,8 +249,11 @@ section[data-screen]:not([data-screen='office']) {
 }
 .shipped {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 2px 10px;
+  max-width: calc(100vw - 24px);
   background: #fffdf7;
   color: #1f1b16;
   border: 2px solid #1f1b16;
@@ -274,9 +277,18 @@ section[data-screen]:not([data-screen='office']) {
   letter-spacing: 0.02em;
 }
 .shipped span {
-  max-width: 220px;
+  max-width: min(220px, 50vw);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* What it took, on a line of its own under the name. The numbers are the server's. */
+.shipped small {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5c5448;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- the trophy shelf ----------
@@ -301,6 +313,28 @@ section[data-screen]:not([data-screen='office']) {
 }
 .trophy:active {
   transform: translateY(1px);
+}
+/* The "+N" tile in the display's last place: how many shipped projects it has no room for. A link
+   to the Projects page, where they all are. Dark like the name tags, in the display's own glass. */
+.trophymore {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: rgba(14, 13, 18, 0.9);
+  color: #f5f5f5;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.trophymore:hover {
+  background: #000;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 .trophydlg {
   width: min(520px, 100%);
@@ -383,4 +417,13 @@ input[type='range'].volume:disabled {
 }
 .page > #accBanner:empty {
   display: none;
+}
+
+/* "Tell me when it's done" at the top of a working agent's panel: a quiet strip of its own, so it
+   is seen. Flat, with no colour: only red and amber ask for attention. */
+.sect.watchtop {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+  padding: 10px 12px;
 }

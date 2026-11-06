@@ -2,12 +2,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampView,
+  FRAME_SLACK,
   fitScale,
+  frameView,
   fromScreen,
   homeView,
   nextZoom,
+  PHONE_FIT,
+  PHONE_WIDTH,
   teamView,
   toScreen,
+  ZOOMS,
   viewMatrix,
   visibleWorld,
   type Size,
@@ -33,6 +38,61 @@ describe('fitScale', () => {
     expect(fitScale({ width: W, height: H })).toBeCloseTo((H - WALL_BAR) / (H - 44));
     expect(fitScale({ width: W * 2, height: 2000 })).toBeCloseTo(2);
     expect(fitScale({ width: W / 2, height: 1000 })).toBeCloseTo(0.5);
+  });
+});
+
+describe('fitScale on a phone', () => {
+  it('draws the floor big enough to read, not squeezed whole into the width', () => {
+    // 332 by 523 is the floor area of a 390 pixel phone, with the rail beside it.
+    const phone = { width: 332, height: 523 };
+    const whole = phone.width / W;
+    expect(fitScale(phone)).toBeGreaterThan(whole * 2);
+    expect(fitScale(phone)).toBeGreaterThanOrEqual(PHONE_FIT.min);
+    expect(fitScale(phone)).toBeLessThanOrEqual(PHONE_FIT.max);
+    // So an agent is about 24 pixels across and 33 tall, where it was 9 and 12: a face and a name
+    // you can see.
+    expect(fitScale(phone) * 32).toBeGreaterThan(22);
+    expect(fitScale(phone) * 44).toBeGreaterThan(30);
+  });
+
+  it('shows the first desks and lets the rest be dragged to', () => {
+    const phone = { width: 332, height: 523 };
+    const world = sizeOf(floorFor(desksUpTo(22)));
+    expect(visibleWorld(phone).width).toBeLessThan(world.width / 2);
+    // Dragging reaches both ends, and no further.
+    const visible = visibleWorld(phone);
+    const end = clampView({ cx: 99999, cy: 352, s: 1 }, world, visible);
+    expect(end.cx).toBe(world.width - visible.width / 2);
+    expect(clampView({ cx: -99999, cy: 352, s: 1 }, world, visible).cx).toBe(visible.width / 2);
+  });
+
+  it('puts the floor right under the wall bar, so no screen is left empty above it', () => {
+    const phone = { width: 332, height: 727 };
+    const world = sizeOf(floorFor(desksUpTo(4)));
+    const top = atRest({ x: 0, y: 44 }, phone, world);
+    expect(top.y).toBeCloseTo(WALL_BAR, 3);
+    // A wider screen still centres the floor.
+    const wide = { width: 1124, height: 802 };
+    expect(atRest({ x: 0, y: 44 }, wide, world).y).toBeGreaterThan(WALL_BAR + 20);
+  });
+
+  it('grows with a taller phone, up to a limit, and never past what the height allows', () => {
+    const short = fitScale({ width: 332, height: 420 });
+    const tall = fitScale({ width: 332, height: 900 });
+    expect(tall).toBeGreaterThanOrEqual(short);
+    expect(tall).toBeLessThanOrEqual(PHONE_FIT.max);
+  });
+
+  it('leaves every wider screen exactly as it was', () => {
+    for (const width of [PHONE_WIDTH, 700, 1024, 1440]) {
+      const size = { width, height: 800 };
+      const across = size.width / W;
+      const down = size.height / H;
+      const low = Math.min(across, down);
+      const high = Math.max(across, down);
+      const base = high / low <= 1.1 ? high : low;
+      expect(fitScale(size)).toBeCloseTo(Math.min(base, (size.height - WALL_BAR) / (H - 44)));
+    }
   });
 });
 
@@ -138,5 +198,80 @@ describe('nextZoom', () => {
     expect(nextZoom(0.5, -1)).toBe(0.5);
     expect(nextZoom(2, -1)).toBe(1.5);
     expect(nextZoom(1.1, 1)).toBe(1.25);
+  });
+});
+
+describe('framing a room', () => {
+  const floor = floorFor({ taken: [0], working: [0] }, 0, ['meeting']);
+  const world = sizeOf(floor);
+  const room = { x0: floor.wall! - 16, x1: floor.width + 6, y0: 196, y1: 424 };
+  const clear = { top: 156, bottom: 78 };
+  const centre = { x: (room.x0 + room.x1) / 2, y: (room.y0 + room.y1) / 2 };
+
+  /** Where the room's middle lands on screen, with the view the frame asks for. */
+  function landed(size: Size) {
+    const frame = frameView(room, size, world, clear);
+    const home = homeView(size, world);
+    const view: View = { cx: home.x + frame.pan.x, cy: home.y + frame.pan.y, s: frame.zoom };
+    return { frame, matrix: viewMatrix(view, size, world), view };
+  }
+
+  it('puts the middle of the room in the middle of what the bars leave clear', () => {
+    for (const size of [
+      { width: 1124, height: 765 },
+      { width: 900, height: 600 },
+      { width: 1500, height: 900 },
+    ]) {
+      const { matrix } = landed(size);
+      const at = toScreen(centre, matrix);
+      expect(at.x).toBeCloseTo(size.width / 2, 3);
+      expect(at.y).toBeCloseTo(clear.top + (size.height - clear.top - clear.bottom) / 2, 3);
+    }
+  });
+
+  it('zooms in on a big screen, to a zoom the controls know, and never so far that tags swell', () => {
+    const { frame } = landed({ width: 1124, height: 765 });
+    expect(ZOOMS).toContain(frame.zoom);
+    expect(frame.zoom).toBeGreaterThan(1);
+    expect(frame.zoom).toBeLessThanOrEqual(2);
+  });
+
+  it('shows the whole room, with a margin, once clamped with the slack a party allows', () => {
+    for (const size of [
+      { width: 1124, height: 765 },
+      { width: 700, height: 520 },
+      { width: 332, height: 523 },
+    ]) {
+      const { frame, view } = landed(size);
+      const clamped = clampView(view, world, visibleWorld(size), FRAME_SLACK);
+      const matrix = viewMatrix(clamped, size, world);
+      const topLeft = toScreen({ x: room.x0, y: room.y0 }, matrix);
+      const bottomRight = toScreen({ x: room.x1, y: room.y1 }, matrix);
+      expect(topLeft.x).toBeGreaterThanOrEqual(-0.5);
+      expect(bottomRight.x).toBeLessThanOrEqual(size.width + 0.5);
+      expect(topLeft.y).toBeGreaterThanOrEqual(clear.top - 0.5);
+      expect(bottomRight.y).toBeLessThanOrEqual(size.height - clear.bottom + 0.5);
+      expect(frame.zoom).toBeGreaterThan(0);
+    }
+  });
+
+  it('needs the slack to put a room at the end of the office in the middle', () => {
+    const size = { width: 1124, height: 765 };
+    const { view } = landed(size);
+    const strict = clampView(view, world, visibleWorld(size));
+    const slack = clampView(view, world, visibleWorld(size), FRAME_SLACK);
+    expect(slack.cx).toBe(view.cx);
+    expect(strict.cx).toBeLessThan(view.cx);
+  });
+});
+
+describe('the view clamp with slack', () => {
+  const size = { width: 1000, height: 700 };
+  it('adds nothing by default', () => {
+    const wide = { width: 3000, height: 704 };
+    const view: View = { cx: 99999, cy: 352, s: 1 };
+    const visible = visibleWorld(size);
+    expect(clampView(view, wide, visible).cx).toBe(wide.width - visible.width / 2);
+    expect(clampView(view, wide, visible, 50).cx).toBe(wide.width - visible.width / 2 + 50);
   });
 });

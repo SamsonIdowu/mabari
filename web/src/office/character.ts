@@ -229,6 +229,24 @@ export function drawChar(
     if (fin?.tick) {
       drawTick(c, hx + 14, oy + 4 - Math.round(fin.tick.rise * 10), fin.tick.alpha);
     }
+    if (cheer) {
+      // Sparkles round the head of an agent at its project's party: two of the four at a time,
+      // swapping. With reduced motion all four are there and still.
+      const beat = Math.floor(t / 220) % 2;
+      [
+        [-17, 8],
+        [17, 4],
+        [-11, -6],
+        [11, -8],
+      ].forEach(([dx, dy], index) => {
+        if (!calm && index % 2 !== beat) return;
+        const sx = Math.round(hx + dx!);
+        const sy = Math.round(hy + dy!);
+        const spark = index % 2 ? '#FFF3B0' : '#FFFFFF';
+        R(c, sx - 2, sy, 5, 1, spark);
+        R(c, sx, sy - 2, 1, 5, spark);
+      });
+    }
     if (st === 'spawning') {
       for (let k3 = 0; k3 < 6; k3++) {
         const aa = k3 * 1.05 + t / 700,

@@ -29,16 +29,67 @@ const FIT_INDEX = 3;
  * An office narrower than the view sits at its left edge, where the desks start, so it never
  * moves when it grows or shrinks; a wider one pans along.
  */
-export function clampView(view: View, world: Size = BASE_WORLD, visible: Size = world): View {
+export function clampView(
+  view: View,
+  world: Size = BASE_WORLD,
+  visible: Size = world,
+  slack = 0,
+): View {
   const W = world.width;
   const H = world.height;
   const halfW = visible.width / 2 / view.s;
   const halfH = visible.height / 2 / view.s;
   return {
     s: view.s,
-    cx: halfW >= W / 2 ? halfW : Math.min(W - halfW, Math.max(halfW, view.cx)),
+    // `slack` lets the view run a little past the sides, so a room at the very end of the office
+    // can be put in the middle of the screen for a moment.
+    cx: halfW >= W / 2 ? halfW : Math.min(W - halfW + slack, Math.max(halfW - slack, view.cx)),
     cy: halfH >= H / 2 ? H / 2 : Math.min(H - halfH, Math.max(halfH, view.cy)),
   };
+}
+
+/** A box in the office, in world pixels. */
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** How far past the office's sides the view may run while a room is framed, in world pixels. */
+export const FRAME_SLACK = 400;
+
+/**
+ * The zoom and pan that frame `rect` in the middle of what is left of the screen once `top` and
+ * `bottom` pixels are kept clear for what lies over the floor (the wall bar, a banner, the
+ * toolbar). It zooms in as far as the zooms allow without losing a margin, and never past
+ * `maxZoom`, which keeps the name tags from growing larger than a face. The pan is the one
+ * `useOfficeUi` stores: the view's centre less the office's home view.
+ */
+export function frameView(
+  rect: Rect,
+  size: Size,
+  world: Size,
+  clear: { top: number; bottom: number },
+  maxZoom = 2,
+): { zoom: number; pan: Point } {
+  const fit = fitScale(size);
+  const margin = 16;
+  const roomW = (rect.x1 - rect.x0) * fit;
+  const roomH = (rect.y1 - rect.y0) * fit;
+  const availW = Math.max(40, size.width - 2 * margin);
+  const availH = Math.max(40, size.height - clear.top - clear.bottom);
+  const wanted = Math.min(maxZoom, availW / roomW, availH / roomH);
+  const zoom = [...ZOOMS].reverse().find((one) => one <= wanted + 1e-6) ?? ZOOMS[0]!;
+  // Where on the screen the middle of the rect should be, and the view that puts it there.
+  const at = { x: size.width / 2, y: clear.top + availH / 2 };
+  const offsetX = (size.width - world.width * fit) / 2;
+  const offsetY = floorTop(size, world, fit);
+  const centre = { x: (rect.x0 + rect.x1) / 2, y: (rect.y0 + rect.y1) / 2 };
+  const cx = (world.width / 2 - (at.x - offsetX) / fit) / zoom + centre.x;
+  const cy = (world.height / 2 - (at.y - offsetY) / fit) / zoom + centre.y;
+  const home = homeView(size, world);
+  return { zoom, pan: { x: cx - home.x, y: cy - home.y } };
 }
 
 /** Within this ratio of shapes the prototype's office covers the view instead of fitting in it. */
@@ -57,7 +108,24 @@ export function fitScale(size: Size): number {
   const base = high / low <= COVER_WITHIN ? high : low;
   // Drawn small, the back wall gets thinner than the wall bar over it, so the floor below the
   // wall is fitted into the space under the bar.
-  return Math.min(base, (size.height - WALL_BAR) / (BASE_H - BACK_WALL));
+  const fit = Math.min(base, (size.height - WALL_BAR) / (BASE_H - BACK_WALL));
+  return size.width < PHONE_WIDTH ? phoneFit(size, fit) : fit;
+}
+
+/** Narrower than this, the floor is not drawn whole: it would be too small to read. */
+export const PHONE_WIDTH = 560;
+/** On a phone the floor is drawn at least this big, and at most this, however tall the screen. */
+export const PHONE_FIT = { min: 0.5, max: 0.75 } as const;
+
+/**
+ * The scale on a phone. Fitting the whole floor into a screen 330 pixels wide draws agents a few
+ * pixels across, with names nobody can read. So the floor is drawn as big as the screen's height
+ * allows, within limits, which shows its first few desks at a size that reads, and the rest is a
+ * drag or a scroll bar away, as a wide office is on any screen.
+ */
+function phoneFit(size: Size, whole: number): number {
+  const tall = (size.height - WALL_BAR) / (BASE_H - BACK_WALL);
+  return Math.max(whole, Math.min(PHONE_FIT.max, Math.max(PHONE_FIT.min, tall)));
 }
 
 /** How much of the world shows at 100%, in world pixels. */
@@ -80,12 +148,23 @@ export const WALL_BAR = 58;
 /** The back wall's height in world pixels, which sits under the wall bar. */
 const BACK_WALL = 44;
 
+/**
+ * Where the floor's top edge is on the canvas at 100%. It is centred, but never so high that the
+ * wall bar covers the first row of desks. On a phone it sits right under the bar, since a floor
+ * drawn to the screen's height has no room to spare and what is left over is better below it.
+ */
+function floorTop(size: Size, world: Size, fit: number): number {
+  const lowest = WALL_BAR - BACK_WALL * fit;
+  return size.width < PHONE_WIDTH
+    ? lowest
+    : Math.max((size.height - world.height * fit) / 2, lowest);
+}
+
 /** Shows the office in the canvas at fitScale times the zoom, centred on the view's point. */
 export function viewMatrix(view: View, size: Size, world: Size = BASE_WORLD): Matrix {
   const fit = fitScale(size);
   const offsetX = (size.width - world.width * fit) / 2;
-  // The floor starts below the wall bar, so its first row of desks is never hidden.
-  const offsetY = Math.max((size.height - world.height * fit) / 2, WALL_BAR - BACK_WALL * fit);
+  const offsetY = floorTop(size, world, fit);
   return {
     a: fit * view.s,
     e: offsetX + fit * (world.width / 2 - view.cx * view.s),

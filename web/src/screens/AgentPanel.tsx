@@ -842,14 +842,18 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         <AnswerCard agent={agent} />
         {tab === 'live' ? (
           <>
+            {/* First thing under the tabs, where it is seen: it sat under the conversation and the
+                session, below the fold, and was missed. */}
+            {agentWatchable(agent) ? (
+              <div className="sect watchtop">
+                <WatchControl office={office} kind="agent" target={agent.id} name={agent.name} />
+              </div>
+            ) : null}
             <LatestConversation agent={agent} />
             <Replies agent={agent} />
             <SessionSection agent={agent} />
             <Section title="Current task">
               <p style={{ fontWeight: 700, fontSize: 15 }}>{agent.task}</p>
-              {agentWatchable(agent) ? (
-                <WatchControl office={office} kind="agent" target={agent.id} name={agent.name} />
-              ) : null}
             </Section>
             <WatchesWaiting office={office} agentId={agent.id} />
             <OfficeSection

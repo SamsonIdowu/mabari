@@ -21,6 +21,8 @@ import '../styles/catchup.css';
 const REFRESH_MS = 60_000;
 /** After an agent changes what it is doing, the chart waits this long for more before reading again. */
 const SETTLE_MS = 800;
+/** How many lanes show before the chart scrolls: about eight, so the log is still on the first screen. */
+export const LANES_SHOWN = 8;
 const KINDS = ['working', 'approval', 'question', 'error'] as const;
 
 /** What each agent is doing, for what the timeline cares about, so it is read again when that changes. */
@@ -133,60 +135,76 @@ export function Timeline() {
                 })}
               </div>
             </div>
-            {data.lanes.map((lane) => (
-              <div className="tlrow" key={lane.agentId} data-agent={lane.agentId}>
-                {lane.present ? (
-                  <button type="button" className="tllabel" onClick={() => openLane(lane)}>
-                    <span className={`pdot p-${lane.provider}`} />
-                    <span className="tlname">{lane.agent}</span>
-                  </button>
-                ) : (
-                  <span className="tllabel gone" title="This agent has left the office">
-                    <span className={`pdot p-${lane.provider || 'custom'}`} />
-                    <span className="tlname">{lane.agent}</span>
-                  </span>
-                )}
-                {/* Each row is a picture with its own words, so it is read as the sentence it says.
+            {/* The hours' time scale stays put above, and the lanes scroll under it when there are
+                many, so the log below is never pushed off the first screen by a crowd. */}
+            <div
+              className="tlscroll"
+              {...(data.lanes.length > LANES_SHOWN
+                ? { role: 'region', 'aria-label': 'Agents on the timeline', tabIndex: 0 }
+                : {})}
+            >
+              <div className="tlinner">
+                {data.lanes.map((lane) => (
+                  <div className="tlrow" key={lane.agentId} data-agent={lane.agentId}>
+                    {lane.present ? (
+                      <button type="button" className="tllabel" onClick={() => openLane(lane)}>
+                        <span className={`pdot p-${lane.provider}`} />
+                        <span className="tlname">{lane.agent}</span>
+                      </button>
+                    ) : (
+                      <span className="tllabel gone" title="This agent has left the office">
+                        <span className={`pdot p-${lane.provider || 'custom'}`} />
+                        <span className="tlname">{lane.agent}</span>
+                      </span>
+                    )}
+                    {/* Each row is a picture with its own words, so it is read as the sentence it says.
                     Its blocks are for the mouse; the name beside it opens the agent from the keyboard. */}
-                <div className="tltrack" role="img" aria-label={laneText(lane)}>
-                  {lane.blocks.map((block) => {
-                    const box = blockBox(axis, block);
-                    return (
-                      <div
-                        key={`${block.kind}-${block.from}`}
-                        className={`tlblock ${block.kind}${lane.present ? ' clickable' : ''}`}
-                        data-testid="tl-block"
-                        data-kind={block.kind}
-                        style={{ left: `${box.left}%`, width: `${box.width}%` }}
-                        title={blockTitle(lane, block)}
-                        onClick={lane.present ? () => openLane(lane) : undefined}
-                      />
-                    );
-                  })}
-                  {lane.markers.map((marker, index) => (
+                    <div className="tltrack" role="img" aria-label={laneText(lane)}>
+                      {lane.blocks.map((block) => {
+                        const box = blockBox(axis, block);
+                        return (
+                          <div
+                            key={`${block.kind}-${block.from}`}
+                            className={`tlblock ${block.kind}${lane.present ? ' clickable' : ''}`}
+                            data-testid="tl-block"
+                            data-kind={block.kind}
+                            style={{ left: `${box.left}%`, width: `${box.width}%` }}
+                            title={blockTitle(lane, block)}
+                            onClick={lane.present ? () => openLane(lane) : undefined}
+                          />
+                        );
+                      })}
+                      {lane.markers.map((marker, index) => (
+                        <span
+                          key={`${marker.kind}-${marker.time}-${index}`}
+                          className={`tlmark ${marker.kind}`}
+                          data-testid="tl-marker"
+                          data-kind={marker.kind}
+                          style={{ left: `${percent(axis, marker.time)}%` }}
+                          title={markerTitle(lane, marker)}
+                          onClick={lane.present ? () => openLane(lane) : undefined}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {today && data.now >= axis.start && data.now <= axis.end ? (
+                  <div className="tlplot" aria-hidden="true">
                     <span
-                      key={`${marker.kind}-${marker.time}-${index}`}
-                      className={`tlmark ${marker.kind}`}
-                      data-testid="tl-marker"
-                      data-kind={marker.kind}
-                      style={{ left: `${percent(axis, marker.time)}%` }}
-                      title={markerTitle(lane, marker)}
-                      onClick={lane.present ? () => openLane(lane) : undefined}
+                      className="tlnow"
+                      data-testid="tl-now"
+                      style={{ left: `${percent(axis, data.now)}%` }}
                     />
-                  ))}
-                </div>
+                  </div>
+                ) : null}
               </div>
-            ))}
-            {today && data.now >= axis.start && data.now <= axis.end ? (
-              <div className="tlplot" aria-hidden="true">
-                <span
-                  className="tlnow"
-                  data-testid="tl-now"
-                  style={{ left: `${percent(axis, data.now)}%` }}
-                />
-              </div>
-            ) : null}
+            </div>
           </div>
+          {data.lanes.length > LANES_SHOWN ? (
+            <p className="help tlmore">
+              {data.lanes.length} agents. Scroll the chart to see them all.
+            </p>
+          ) : null}
           <ul className="tllegend" aria-hidden="true">
             {KINDS.map((kind) => (
               <li key={kind}>

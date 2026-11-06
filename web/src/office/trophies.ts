@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Project } from '../gen/models.ts';
-import { backRow, PAL, R } from './background.ts';
+import { backRow, backRowWidth, PAL, R } from './background.ts';
 import { stableHash } from './resting.ts';
 import type { Floor } from './layout.ts';
 
 /**
- * The trophy shelf: every completed project puts a small pixel trophy in its own colour in a
- * glass case in the office's back row, in the order they were finished, so the office fills up with
- * what has been shipped. A case holds six, on two shelves, and replaces one of the bookshelves
- * along the back wall; a long office gets another case when the first is full. All drawn here
- * from small bitmaps, with no image files.
+ * The trophy display: every completed project puts a trophy in its own colour in a glass display
+ * along the office's back row, in the order they were finished, so the office fills up with what
+ * has been shipped. The display stands where the bookshelves, cabinets and printer do, and takes
+ * their places from the left as it needs the room, so a first project makes a small case and a
+ * long run of them a long one. When the whole row is full, the newest are shown and a "+N" tile
+ * says how many are not. All drawn here from small bitmaps, with no image files.
  */
 
-/** A trophy is 7 cells wide and 8 tall, each cell 2 pixels. */
-export const TROPHY = { width: 14, height: 16 } as const;
-/** How many a case holds: three across, on two shelves. */
-export const PER_CASE = 6;
-/** A case stands where a bookshelf does: this wide, from the back wall down. */
-const CASE = { width: 52, top: 54, front: 60, bottom: 100 } as const;
+/** A trophy is 7 cells wide and 8 tall, each cell 4 pixels: as tall as an agent. */
+const CELL = 4;
+export const TROPHY = { width: 28, height: 32 } as const;
+/** How far apart trophies stand, and the glass left clear before the first. */
+export const PITCH = 34;
+const PAD = 5;
+/** The display, from the back wall's foot: its top, where the front begins, and its bottom. */
+const CASE = { top: 53, front: 60, bottom: 102 } as const;
+/** Where a trophy's top edge is, standing on the display's shelf. */
+export const TROPHY_Y = 64;
 
 /**
  * Bitmaps. `c` is the project's colour, `d` a darker shade of it, `l` a lighter one, `b` the
@@ -53,7 +58,7 @@ export function shade(hex: string, amount: number): string {
   return `#${mix.join('')}`;
 }
 
-/** One trophy on the shelf: whose it is and where it stands, in world pixels. */
+/** One trophy on the display: whose it is and where it stands, in world pixels. */
 export interface Spot {
   id: string;
   name: string;
@@ -73,38 +78,81 @@ export function trophiesOf(projects: Project[]): Project[] {
     .sort((a, b) => a.done!.at - b.done!.at || a.id.localeCompare(b.id));
 }
 
-/** Where each case stands: the back row's bookshelves, from the left. */
-export function caseSlots(floor: Floor): number[] {
-  return backRow(floor.workEnd + 24)
-    .filter((item) => item.kind === 'shelf')
-    .map((item) => item.x);
+/** The furniture the display stands in the place of: the back row, from the left. */
+function furniture(floor: Floor) {
+  return backRow(floor.workEnd + 24).map((place) => ({
+    from: place.x,
+    to: place.x + backRowWidth(place.kind),
+  }));
+}
+
+/** How many trophies a display `length` pixels long holds. */
+export function capacityOf(length: number): number {
+  return Math.max(0, Math.floor((length - 2 * PAD + (PITCH - TROPHY.width)) / PITCH));
+}
+
+/** The display's extent along the wall, in world pixels, and how many pieces of furniture it covers. */
+export interface Run {
+  x0: number;
+  x1: number;
+  pieces: number;
+  /** How many trophies it holds, filled or not. */
+  capacity: number;
+}
+
+/** Where the "+N" tile stands, when there are more trophies than the display holds. */
+export interface More {
+  x: number;
+  y: number;
+  hidden: number;
 }
 
 /**
- * Where each trophy stands. Cases fill from the left, six to a case; when there are more
- * trophies than the back row has room for, the newest are shown and `hidden` says how many are
- * not.
+ * How many trophies the whole back row can hold, which is as many as the display will ever show
+ * on this floor. A wider office, with more columns of desks, holds more.
+ */
+export function roomFor(floor: Floor): number {
+  const row = furniture(floor);
+  return row.length ? capacityOf(row.at(-1)!.to - row[0]!.from) : 0;
+}
+
+/**
+ * Where each trophy stands. They fill from the left. The display grows a piece of furniture at a
+ * time as it fills, so it is always the smallest that holds them. When there are more trophies
+ * than the whole row holds, the newest are shown, the last place is a "+N" tile, and `more` says
+ * where it is and how many the display has no room for.
  */
 export function layout(
   floor: Floor,
   projects: Project[],
-): { spots: Spot[]; hidden: number; cases: number } {
-  const slots = caseSlots(floor);
+): { spots: Spot[]; hidden: number; run: Run | null; more: More | null } {
   const all = trophiesOf(projects);
-  const room = slots.length * PER_CASE;
-  const shown = all.slice(Math.max(0, all.length - room));
-  const spots = shown.map((project, index): Spot => {
-    const at = index % PER_CASE;
-    return {
-      id: project.id,
-      name: project.name,
-      color: project.color,
-      at: project.done!.at,
-      x: slots[Math.floor(index / PER_CASE)]! + 4 + (at % 3) * 15,
-      y: at < 3 ? 62 : 80,
-    };
-  });
-  return { spots, hidden: all.length - shown.length, cases: Math.ceil(shown.length / PER_CASE) };
+  const row = furniture(floor);
+  if (!all.length || !row.length) return { spots: [], hidden: all.length, run: null, more: null };
+  const x0 = row[0]!.from;
+  const capacityAt = (pieces: number) => capacityOf(row[pieces - 1]!.to - x0);
+  const most = capacityAt(row.length);
+  const overflow = all.length > most;
+  // With no room for them all, the last place is the "+N" tile.
+  const shown = overflow ? all.slice(all.length - Math.max(0, most - 1)) : all;
+  const needed = shown.length + (overflow ? 1 : 0);
+  let pieces = 1;
+  while (pieces < row.length && capacityAt(pieces) < needed) pieces++;
+  const spots = shown.map((project, index): Spot => ({
+    id: project.id,
+    name: project.name,
+    color: project.color,
+    at: project.done!.at,
+    x: x0 + PAD + index * PITCH,
+    y: TROPHY_Y,
+  }));
+  const hidden = all.length - shown.length;
+  return {
+    spots,
+    hidden,
+    run: { x0, x1: row[pieces - 1]!.to, pieces, capacity: capacityAt(pieces) },
+    more: hidden ? { x: x0 + PAD + shown.length * PITCH, y: TROPHY_Y, hidden } : null,
+  };
 }
 
 /** Draws a trophy with its top left corner at x, y. */
@@ -125,35 +173,41 @@ export function drawTrophy(
   SHAPES[trophyShape(id)]!.forEach((row, cy) => {
     for (let cx = 0; cx < row.length; cx++) {
       const cell = palette[row[cx]!];
-      if (cell) R(c, x + cx * 2, y + cy * 2, 2, 2, cell);
+      if (cell) R(c, x + cx * CELL, y + cy * CELL, CELL, CELL, cell);
     }
   });
 }
 
-/** Draws the cases the trophies stand in, empty, over the bookshelves they replace. */
-export function drawCases(
+/**
+ * Draws the glass display over the furniture it replaces, empty: a wood frame, a dark back, one
+ * shelf, and a faint plinth in each place still to be filled, so you can see room for more.
+ */
+export function drawDisplay(
   c: CanvasRenderingContext2D,
-  floor: Floor,
-  cases: number,
+  run: Run,
+  filled: number,
   theme: 'dark' | 'light',
 ): void {
   const P = PAL[theme];
-  const slots = caseSlots(floor).slice(0, cases);
-  for (const x of slots) {
-    // A shadow and a top that match the furniture round it, then a glass front with two shelves.
-    c.fillStyle = P.shadow;
-    c.fillRect(x + 3, CASE.bottom, CASE.width, 4);
-    c.fillRect(x + CASE.width, CASE.top + 4, 3, CASE.bottom - CASE.top);
-    R(c, x, CASE.top, CASE.width, CASE.bottom - CASE.top, P.woodD);
-    R(c, x, CASE.top, CASE.width, CASE.front - CASE.top, P.wood);
-    R(c, x, CASE.top, CASE.width, 1, P.deskEdge);
-    R(c, x + 3, 62, CASE.width - 6, 36, theme === 'dark' ? '#0E0E10' : '#E4E4E1');
-    R(c, x + 3, 78, CASE.width - 6, 2, P.wood);
-    R(c, x + 3, 96, CASE.width - 6, 2, P.wood);
-    c.fillStyle = P.glass;
-    c.fillRect(x + 3, 62, CASE.width - 6, 36);
-    R(c, x + 3, 62, CASE.width - 6, 1, 'rgba(255,255,255,.3)');
+  const width = run.x1 - run.x0;
+  // A shadow on the floor and down the right side, and a top that matches the furniture beside it.
+  c.fillStyle = P.shadow;
+  c.fillRect(run.x0 + 3, CASE.bottom, width, 4);
+  c.fillRect(run.x1, CASE.top + 4, 3, CASE.bottom - CASE.top);
+  R(c, run.x0, CASE.top, width, CASE.bottom - CASE.top, P.woodD);
+  R(c, run.x0, CASE.top, width, CASE.front - CASE.top, P.wood);
+  R(c, run.x0, CASE.top, width, 1, P.deskEdge);
+  const back = theme === 'dark' ? '#0E0E10' : '#E4E4E1';
+  R(c, run.x0 + 3, 62, width - 6, CASE.bottom - 2 - 62, back);
+  R(c, run.x0 + 3, CASE.bottom - 4, width - 6, 2, P.wood);
+  // Places still to fill, each with a quiet plinth.
+  for (let slot = filled; slot < run.capacity; slot++) {
+    const x = run.x0 + PAD + slot * PITCH;
+    R(c, x + 6, TROPHY_Y + TROPHY.height - 3, 16, 3, theme === 'dark' ? '#25252A' : '#D2D2CE');
   }
+  c.fillStyle = P.glass;
+  c.fillRect(run.x0 + 3, 62, width - 6, CASE.bottom - 2 - 62);
+  R(c, run.x0 + 3, 62, width - 6, 1, 'rgba(255,255,255,.3)');
 }
 
 /** A glint on the newest trophy for a few seconds after its project shipped. */
@@ -166,30 +220,33 @@ export function drawGlint(
 ): void {
   const on = calm || Math.floor(t / 300) % 2 === 0;
   if (!on) return;
-  R(c, x + 10, y + 1, 2, 2, '#FFFFFF');
-  R(c, x + 9, y + 2, 4, 0.5, '#FFFFFF');
-  R(c, x + 11, y, 0.5, 4, '#FFFFFF');
+  R(c, x + 21, y - 1, 3, 3, '#FFFFFF');
+  R(c, x + 19, y, 7, 1, '#FFFFFF');
+  R(c, x + 22, y - 3, 1, 7, '#FFFFFF');
 }
 
-/** The shelf as one picture, drawn again only when a project is completed or the floor changes. */
+/** The display as one picture, drawn again only when a project is completed or the floor changes. */
 export interface Shelf {
   canvas: HTMLCanvasElement;
   spots: Spot[];
   hidden: number;
+  more: More | null;
 }
 
 /**
- * Paints every case and trophy on a canvas the size of the floor's back wall, to be drawn each
- * frame in one go. The trophies are small and many, and painting each cell of each one every frame
- * would cost the floor more than it should.
+ * Paints the display and every trophy on a canvas the size of the floor's back wall, to be drawn
+ * each frame in one go. The trophies are small and many, and painting each cell of each one every
+ * frame would cost the floor more than it should.
  */
 export function buildShelf(floor: Floor, projects: Project[], theme: 'dark' | 'light'): Shelf {
-  const { spots, hidden, cases } = layout(floor, projects);
+  const { spots, hidden, run, more } = layout(floor, projects);
   const canvas = document.createElement('canvas');
   canvas.width = floor.width;
   canvas.height = CASE.bottom + 6;
   const c = canvas.getContext('2d')!;
-  drawCases(c, floor, cases, theme);
-  for (const spot of spots) drawTrophy(c, spot.id, spot.color, spot.x, spot.y, theme);
-  return { canvas, spots, hidden };
+  if (run) {
+    drawDisplay(c, run, spots.length + (more ? 1 : 0), theme);
+    for (const spot of spots) drawTrophy(c, spot.id, spot.color, spot.x, spot.y, theme);
+  }
+  return { canvas, spots, hidden, more };
 }

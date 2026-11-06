@@ -70,9 +70,11 @@ export function ThreadView({ mode, label, agents, project, composer, empty }: Pr
   // Where the thread was when it last settled, so rows added above can be made up for.
   const metrics = useRef({ height: 0, top: 0, first: '' });
 
+  // By the project's id: its object is new with every change to the office.
+  const projectId = project?.id;
   useEffect(() => {
-    if (project) void loadAsks(project.id).catch(() => undefined);
-  }, [project, loadAsks]);
+    if (projectId) void loadAsks(projectId).catch(() => undefined);
+  }, [projectId, loadAsks]);
 
   const threads = useMemo(() => {
     const mine: Record<string, Thread> = {};

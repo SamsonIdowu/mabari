@@ -888,10 +888,11 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto(`/#conversations?project=${known.projects['Docs site']}`);
       await expect(thread(page, 'Docs site')).toBeVisible();
       const ask = page.getByRole('button', { name: /Ask everyone/ });
+      // Typed until it takes: a page that has only just opened the thread can drop the first try.
       await expect(async () => {
-        await box(page, 'Docs site').fill('one line please');
+        await box(page, 'Docs site').fill('one line please', { timeout: 3000 });
         await expect(ask).toBeEnabled({ timeout: 1000 });
-      }).toPass();
+      }).toPass({ timeout: 20_000 });
       await ask.click();
       await expect(thread(page, 'Docs site').getByTestId('chatRound')).toBeVisible();
       await check('a project thread with a round');

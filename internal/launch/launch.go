@@ -104,8 +104,20 @@ func shellWord(word string) string {
 	return ShellQuote(word)
 }
 
-// ContinueCommand is the exact command that carries a session on in a terminal.
+// sessionShape is what a Claude Code session id looks like: a UUID, which `--session-id` requires
+// and every transcript is named with. The hook docs show "abc123", which is only a placeholder.
+var sessionShape = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// ValidSession reports whether an id can be a Claude Code session's. It comes from a hook's input,
+// and ends up on a command line, where anything else could be read as a flag.
+func ValidSession(id string) bool { return sessionShape.MatchString(id) }
+
+// ContinueCommand is the exact command that carries a session on in a terminal, or nothing for a
+// session id that would be read as a flag, which quoting can't prevent.
 func ContinueCommand(folder, session string) string {
+	if strings.HasPrefix(session, "-") {
+		return ""
+	}
 	return "cd " + shellWord(folder) + " && claude --resume " + shellWord(session)
 }
 

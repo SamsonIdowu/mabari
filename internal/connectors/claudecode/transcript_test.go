@@ -29,7 +29,7 @@ func newTranscript(t *testing.T) *transcriptBench {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return &transcriptBench{bench: b, session: "elsewhere-1", path: path}
+	return &transcriptBench{bench: b, session: testSession(66), path: path}
 }
 
 func (b *transcriptBench) write(lines ...string) {

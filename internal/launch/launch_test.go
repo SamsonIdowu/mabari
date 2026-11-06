@@ -124,3 +124,28 @@ func TestContinueCommand(t *testing.T) {
 		t.Errorf("command = %q", got)
 	}
 }
+
+func TestASessionIdThatIsAFlagHasNoContinueCommand(t *testing.T) {
+	for _, session := range []string{"--dangerously-skip-permissions", "-p", "-"} {
+		if got := ContinueCommand("/Users/me/shop", session); got != "" {
+			t.Errorf("%q = %q", session, got)
+		}
+	}
+}
+
+func TestOnlyAUUIDIsASessionId(t *testing.T) {
+	for _, id := range []string{"550e8400-e29b-41d4-a716-446655440000", "550E8400-E29B-41D4-A716-446655440000"} {
+		if !ValidSession(id) {
+			t.Errorf("%q was refused", id)
+		}
+	}
+	for _, id := range []string{
+		"", "abc123", "--dangerously-skip-permissions", "-550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440000\n", "550e8400-e29b-41d4-a716-44665544000g",
+		"550e8400e29b41d4a716446655440000", "../../550e8400-e29b-41d4-a716-446655440000",
+	} {
+		if ValidSession(id) {
+			t.Errorf("%q was accepted", id)
+		}
+	}
+}

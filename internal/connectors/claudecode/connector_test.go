@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -42,7 +43,7 @@ func newConnector(t *testing.T) (*Connector, *events.Engine) {
 func hook(t *testing.T, c *Connector, event string, fields map[string]any) []byte {
 	t.Helper()
 	body := map[string]any{
-		"session_id": "abc-123", "cwd": "/home/me/shop", "hook_event_name": event,
+		"session_id": "abcabc00-0000-4000-8000-000000000123", "cwd": "/home/me/shop", "hook_event_name": event,
 		"permission_mode": "default", "transcript_path": "/tmp/t.jsonl",
 	}
 	for key, value := range fields {
@@ -52,10 +53,13 @@ func hook(t *testing.T, c *Connector, event string, fields map[string]any) []byt
 	return c.Handle(context.Background(), data)
 }
 
+// testSession is a session id like the ones Claude Code gives.
+func testSession(n int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) }
+
 func agentOf(t *testing.T, engine *events.Engine) *models.LiveAgent {
 	t.Helper()
 	var agent *models.LiveAgent
-	_ = engine.Do(func() { agent = engine.Agent("cc-abc-123") })
+	_ = engine.Do(func() { agent = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123") })
 	return agent
 }
 
@@ -118,7 +122,7 @@ func TestToolsChangeTheStateAndSecretsAreMasked(t *testing.T) {
 func TestQueuedInstructionsArriveAtTheNextCheckpoint(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Also add a changelog entry") })
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Also add a changelog entry") })
 	if len(agentOf(t, engine).Queued) != 1 {
 		t.Fatal("not queued")
 	}
@@ -149,7 +153,7 @@ func TestQueuedInstructionsArriveAtTheNextCheckpoint(t *testing.T) {
 func TestStopKeepsGoingOnlyWhenSomethingWaits(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Then run the tests") })
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Then run the tests") })
 	var block struct {
 		Decision string `json:"decision"`
 		Reason   string `json:"reason"`
@@ -170,7 +174,7 @@ func TestStopKeepsGoingOnlyWhenSomethingWaits(t *testing.T) {
 func TestTheAnswerToAMabariInstructionIsKeptInFull(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Then run the tests") })
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Then run the tests") })
 	hook(t, c, "Stop", nil)
 	answer := "Ran the tests: 42 passed.\n\nThe one flaky test now waits for the clock, and the token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 is masked."
 	hook(t, c, "Stop", map[string]any{"stop_hook_active": true, "last_assistant_message": answer})
@@ -294,7 +298,7 @@ func TestLowRiskAutoApproveStillAsksForRiskyCommands(t *testing.T) {
 func TestInterruptPausesAtTheNextTool(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build"})
-	_ = engine.Do(func() { c.Interrupt(engine.Agent("cc-abc-123")) })
+	_ = engine.Do(func() { c.Interrupt(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")) })
 	var out struct {
 		Continue *bool  `json:"continue"`
 		Reason   string `json:"stopReason"`
@@ -319,7 +323,7 @@ func TestSessionEndLeavesAndStopIgnoresTheSession(t *testing.T) {
 		t.Error("still in the office")
 	}
 	hook(t, c, "SessionStart", nil)
-	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abc-123")) })
+	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")) })
 	hook(t, c, "PreToolUse", map[string]any{"tool_name": "Bash"})
 	if agentOf(t, engine) != nil {
 		t.Error("a stopped session came back")
@@ -444,11 +448,11 @@ func TestASessionJoinsTheProjectForItsFolder(t *testing.T) {
 	_ = engine.Do(func() {
 		engine.SaveProject(models.Project{ID: "shop", Name: "Shop", Repository: &models.Repository{Path: "~/code/shop"}})
 	})
-	data, _ := json.Marshal(map[string]any{"session_id": "s9", "cwd": home + "/code/shop/web", "hook_event_name": "SessionStart"})
+	data, _ := json.Marshal(map[string]any{"session_id": testSession(9), "cwd": home + "/code/shop/web", "hook_event_name": "SessionStart"})
 	c.Handle(context.Background(), data)
 	var project string
 	_ = engine.Do(func() {
-		if agent := engine.Agent("cc-s9"); agent != nil && agent.Project != nil {
+		if agent := engine.Agent(agentID(testSession(9))); agent != nil && agent.Project != nil {
 			project = *agent.Project
 		}
 	})
@@ -466,8 +470,8 @@ func TestSubagentsJoinTheLeadsOffice(t *testing.T) {
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "sub-1", "agent_type": "explorer"})
 	var helper *models.LiveAgent
 	var messages []models.Message
-	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-sub-1") })
-	if helper == nil || helper.Name != "explorer" || helper.Lead == nil || *helper.Lead != "cc-abc-123" ||
+	_ = engine.Do(func() { helper = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-sub-1") })
+	if helper == nil || helper.Name != "explorer" || helper.Lead == nil || *helper.Lead != "cc-abcabc00-0000-4000-8000-000000000123" ||
 		helper.Task != "Find the failing test" {
 		t.Fatalf("helper = %+v", helper)
 	}
@@ -506,7 +510,7 @@ func TestWorkflowSubAgentsAreToldApartFromDefinedAgents(t *testing.T) {
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a3", "agent_type": "tester"})
 	var reviewer, general, tester *models.LiveAgent
 	_ = engine.Do(func() {
-		reviewer, general, tester = engine.Agent("cc-abc-123-a1"), engine.Agent("cc-abc-123-a2"), engine.Agent("cc-abc-123-a3")
+		reviewer, general, tester = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a1"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a2"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a3")
 	})
 	// Every subagent sits at the free desk nearest its lead: here, just below it.
 	if reviewer.Workflow || reviewer.DefID != "project:p1:code-reviewer" || reviewer.Desk != 4 {
@@ -539,13 +543,13 @@ func TestASessionStartedWithAnAgentTakesADesk(t *testing.T) {
 	// Its general-purpose helper is a workflow sub-agent, at the desk just below it.
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "general-purpose"})
 	var helper *models.LiveAgent
-	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-a1") })
+	_ = engine.Do(func() { helper = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a1") })
 	if !helper.Workflow || helper.Desk != 4 {
 		t.Errorf("helper = %+v", helper.Agent)
 	}
 	// A planner helper of its own sits at the next desk along.
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a2", "agent_type": "planner"})
-	_ = engine.Do(func() { helper = engine.Agent("cc-abc-123-a2") })
+	_ = engine.Do(func() { helper = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a2") })
 	if helper.Workflow || helper.Desk != 1 {
 		t.Errorf("planner helper = %+v", helper.Agent)
 	}
@@ -567,7 +571,7 @@ func TestAForkedSkillsSubagentTakesADeskFromItsFirstToolCall(t *testing.T) {
 		"tool_input": map[string]any{"file_path": "/home/me/shop/README.md"}}
 	hook(t, c, "PreToolUse", fork)
 	var lead, auditor *models.LiveAgent
-	_ = engine.Do(func() { lead, auditor = engine.Agent("cc-abc-123"), engine.Agent("cc-abc-123-f1") })
+	_ = engine.Do(func() { lead, auditor = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-f1") })
 	if auditor == nil {
 		t.Fatal("the forked skill's subagent isn't in the office")
 	}
@@ -618,13 +622,13 @@ func TestEverySessionAndSubagentIsShown(t *testing.T) {
 	c, engine := newConnector(t)
 	for n := range 20 {
 		for _, event := range []string{"SessionStart", "UserPromptSubmit"} {
-			body, _ := json.Marshal(map[string]any{"session_id": "s" + strconv.Itoa(n), "cwd": "/home/me/shop",
+			body, _ := json.Marshal(map[string]any{"session_id": testSession(n), "cwd": "/home/me/shop",
 				"hook_event_name": event, "prompt": "Work"})
 			c.Handle(context.Background(), body)
 		}
 	}
 	for n := range 6 {
-		body, _ := json.Marshal(map[string]any{"session_id": "s0", "cwd": "/home/me/shop", "hook_event_name": "SubagentStart",
+		body, _ := json.Marshal(map[string]any{"session_id": testSession(0), "cwd": "/home/me/shop", "hook_event_name": "SubagentStart",
 			"agent_id": "a" + strconv.Itoa(n), "agent_type": "Explore"})
 		c.Handle(context.Background(), body)
 	}
@@ -672,7 +676,7 @@ func TestTheFirstStreamedMessageAfterAnInstructionIsTheReply(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
 	hook(t, c, "MessageDisplay", map[string]any{"message_id": "m0", "index": 0, "final": false, "delta": "Reading the code.\n"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "Also add a dark mode") })
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Also add a dark mode") })
 	if reply := hook(t, c, "PostToolUse", map[string]any{"tool_name": "Read"}); !strings.Contains(string(reply), "Also add a dark mode") {
 		t.Fatalf("not delivered: %s", reply)
 	}
@@ -711,21 +715,21 @@ func TestSessionsAreNamedAfterTheirFolder(t *testing.T) {
 		_ = engine.Do(func() { agent = engine.Agent(agentID(session)) })
 		return agent
 	}
-	if got := send("s1", "/home/me/shop").Name; got != "Shop" {
+	if got := send(testSession(1), "/home/me/shop").Name; got != "Shop" {
 		t.Errorf("first = %q", got)
 	}
-	if got := send("s2", "/home/me/shop").Name; got != "Shop 2" {
+	if got := send(testSession(2), "/home/me/shop").Name; got != "Shop 2" {
 		t.Errorf("second = %q", got)
 	}
-	if got := send("s3", "/Users/me/Projects/mabari").Name; got != "Mabari 2" {
+	if got := send(testSession(3), "/Users/me/Projects/mabari").Name; got != "Mabari 2" {
 		t.Errorf("mabari = %q", got)
 	}
-	if got := send("s4", "/home/me/docs-site").Name; got != "Docs Site" {
+	if got := send(testSession(4), "/home/me/docs-site").Name; got != "Docs Site" {
 		t.Errorf("docs-site = %q", got)
 	}
 	// A session that an earlier version called Juniper is renamed after its folder.
-	_ = engine.Do(func() { engine.Agent(agentID("s4")).Name = "Juniper" })
-	if got := send("s4", "/home/me/docs-site").Name; got != "Docs Site" {
+	_ = engine.Do(func() { engine.Agent(agentID(testSession(4))).Name = "Juniper" })
+	if got := send(testSession(4), "/home/me/docs-site").Name; got != "Docs Site" {
 		t.Errorf("renamed = %q", got)
 	}
 }
@@ -734,7 +738,7 @@ func TestSessionsAreNamedAfterTheirFolder(t *testing.T) {
 func TestQueuedSlashCommandsAreAskedForInWords(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abc-123"), "/ux-audit https://example.com/Issue/1") })
+	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "/ux-audit https://example.com/Issue/1") })
 	reply := string(hook(t, c, "PostToolUse", map[string]any{"tool_name": "Read"}))
 	if !strings.Contains(reply, "run the /ux-audit command with: https://example.com/Issue/1 (a slash command; use the Skill tool for it).") {
 		t.Errorf("reply = %s", reply)
@@ -777,7 +781,7 @@ func TestASubagentsStepsDeliverInstructionsAndPause(t *testing.T) {
 	hook(t, c, "SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "Explore"})
 	var lead, helper *models.LiveAgent
 	_ = engine.Do(func() {
-		lead, helper = engine.Agent("cc-abc-123"), engine.Agent("cc-abc-123-a1")
+		lead, helper = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-a1")
 		c.Instruct(helper, "Check the tests too")
 	})
 	step := map[string]any{"agent_id": "a1", "agent_type": "Explore", "tool_name": "Read", "tool_input": map[string]any{}}
@@ -818,7 +822,7 @@ func TestASessionRunningAsMabariGetsTheMap(t *testing.T) {
 	if agent := agentOf(t, engine); agent.Desk < 0 {
 		t.Errorf("working, but off the floor: %+v", agent.Agent)
 	}
-	body, _ := json.Marshal(map[string]any{"session_id": "other", "cwd": "/home/me/shop", "hook_event_name": "SessionStart"})
+	body, _ := json.Marshal(map[string]any{"session_id": testSession(77), "cwd": "/home/me/shop", "hook_event_name": "SessionStart"})
 	if reply := c.Handle(context.Background(), body); reply != nil {
 		t.Errorf("a plain session got %s", reply)
 	}
@@ -830,7 +834,7 @@ func TestAHookFromAGoneRunIsToldNo(t *testing.T) {
 	c, engine := newConnector(t)
 	call := func(event string) []byte {
 		body, _ := json.Marshal(map[string]any{
-			"session_id": "abc-123", "cwd": "/home/me/shop", "hook_event_name": event, "tool_name": "Bash",
+			"session_id": "abcabc00-0000-4000-8000-000000000123", "cwd": "/home/me/shop", "hook_event_name": event, "tool_name": "Bash",
 			"tool_input": map[string]any{"command": "npm test"},
 		})
 		return c.HandleRun(context.Background(), body)
@@ -879,7 +883,7 @@ func callPermission(c *Connector, fields map[string]any) chan []byte {
 // callPermissionUntil is a call whose hook goes away when ctx ends.
 func callPermissionUntil(ctx context.Context, c *Connector, fields map[string]any) chan []byte {
 	body := map[string]any{
-		"session_id": "abc-123", "cwd": "/home/me/shop", "hook_event_name": "PermissionRequest",
+		"session_id": "abcabc00-0000-4000-8000-000000000123", "cwd": "/home/me/shop", "hook_event_name": "PermissionRequest",
 		"tool_name": "Bash",
 	}
 	for key, value := range fields {
@@ -902,7 +906,7 @@ func cardFor(t *testing.T, engine *events.Engine, command string) models.Approva
 	for time.Now().Before(deadline) {
 		var card *models.Approval
 		_ = engine.Do(func() {
-			if agent := engine.Agent("cc-abc-123"); agent != nil && agent.Approval != nil {
+			if agent := engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"); agent != nil && agent.Approval != nil {
 				copied := *agent.Approval
 				card = &copied
 			}
@@ -993,7 +997,7 @@ func TestACallReplacedByAPlanIsNotToldItWasDenied(t *testing.T) {
 	hook(t, c, "SessionStart", nil)
 	waiting := callPermission(c, bashCommand("rm -rf build"))
 	cardFor(t, engine, "rm -rf build")
-	_ = engine.Do(func() { c.askAboutPlan(engine.Agent("cc-abc-123"), "1. Do it") })
+	_ = engine.Do(func() { c.askAboutPlan(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "1. Do it") })
 	reply := replyOf(t, waiting)
 	if !strings.Contains(reply, `"deny"`) || !strings.Contains(reply, "replaced") || strings.Contains(reply, "user denied") {
 		t.Fatalf("reply = %s", reply)
@@ -1010,7 +1014,7 @@ func TestAStopIsNotTheUserDenying(t *testing.T) {
 	cardFor(t, engine, "rm -rf one")
 	queued := callPermission(c, bashCommand("rm -rf two"))
 	notYet(t, queued)
-	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abc-123")) })
+	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")) })
 	for _, done := range []chan []byte{shown, queued} {
 		if reply := replyOf(t, done); !strings.Contains(reply, "withdrawn") || strings.Contains(reply, "user denied") {
 			t.Fatalf("reply = %s", reply)
@@ -1173,5 +1177,38 @@ func TestACardShowsAnUnknownToolsInput(t *testing.T) {
 	}
 	if card := approvalFor(input{ToolName: "Mystery", Cwd: "/x"}, "/x"); card.Detail.Cmd != "Mystery" {
 		t.Errorf("no input: %s", card.Detail.Cmd)
+	}
+}
+
+// A session id ends up on a command line, so at the hook boundary only what Claude Code really
+// gives gets in. Nothing is seated for anything else, and a run's gating hook hears no.
+func TestAHookWithAnOddSessionIdGetsNowhere(t *testing.T) {
+	c, engine := newConnector(t)
+	for _, id := range []string{"--dangerously-skip-permissions", "abc123", "", "../../x"} {
+		body := func(event string) []byte {
+			data, _ := json.Marshal(map[string]any{
+				"session_id": id, "cwd": "/home/me/shop", "hook_event_name": event, "tool_name": "Bash",
+				"tool_input": map[string]any{"command": "npm test"},
+			})
+			return data
+		}
+		if reply := c.Handle(context.Background(), body("SessionStart")); reply != nil {
+			t.Errorf("%q: %s", id, reply)
+		}
+		if reply := c.Handle(context.Background(), body("PreToolUse")); reply != nil {
+			t.Errorf("%q: %s", id, reply)
+		}
+		if reply := c.HandleRun(context.Background(), body("PreToolUse")); !bytes.Contains(reply, []byte(`"deny"`)) {
+			t.Errorf("%q, a run's PreToolUse = %s", id, reply)
+		}
+		if reply := c.HandleRun(context.Background(), body("PermissionRequest")); !bytes.Contains(reply, []byte(`"deny"`)) {
+			t.Errorf("%q, a run's PermissionRequest = %s", id, reply)
+		}
+		if reply := c.HandleRun(context.Background(), body("Stop")); reply != nil {
+			t.Errorf("%q, a run's Stop = %s", id, reply)
+		}
+	}
+	if agents := engine.Snapshot().Agents; len(agents) != 0 {
+		t.Fatalf("seated %+v", agents)
 	}
 }

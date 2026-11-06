@@ -4,6 +4,7 @@
 // any state it likes, including an error and done, and a Claude Code session is the real
 // `mabari hook` command, as Claude Code would run it. Nothing here runs the real `claude`.
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -43,6 +44,12 @@ export function disconnectClaude(binary: string) {
   execFileSync(binary, ['disconnect', 'claude'], { env: mabariEnv() });
 }
 
+/** Claude Code's session ids are UUIDs and Mabari takes nothing else, so a test's name gets one. */
+export function sessionId(name: string): string {
+  const hex = createHash('sha256').update(name).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /** A hook call from a Claude Code session, as the command runs it. */
 export interface Hook {
   /** Resolves with what the hook printed once it ends. */
@@ -60,7 +67,7 @@ export function claudeHook(
   const process = spawn(binary, ['hook', '--port', apiPort, event], { env: mabariEnv() });
   let printed = '';
   process.stdout.on('data', (chunk: Buffer) => (printed += chunk.toString()));
-  process.stdin.end(JSON.stringify({ session_id: session, cwd, hook_event_name: event, ...extra }));
+  process.stdin.end(JSON.stringify({ session_id: sessionId(session), cwd, hook_event_name: event, ...extra }));
   return { process, printed: new Promise((done) => process.on('close', () => done(printed))) };
 }
 

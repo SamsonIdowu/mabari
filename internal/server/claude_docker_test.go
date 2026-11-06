@@ -45,7 +45,7 @@ func TestClaudeCodeOnTheHostWithMabariInDocker(t *testing.T) {
 	}})
 	o := &claudeOffice{office: &office{handler: handler, engine: engine, simulator: sim}}
 
-	body := `{"session_id":"s1","cwd":"/tmp/shop","hook_event_name":"SessionStart"}`
+	body := `{"session_id":"00000000-0000-4000-8000-000000000001","cwd":"/tmp/shop","hook_event_name":"SessionStart"}`
 	if response := o.hook(t, token, "SessionStart", body); response.Code != http.StatusOK {
 		t.Fatalf("hook = %d %s", response.Code, response.Body)
 	}

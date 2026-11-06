@@ -81,19 +81,19 @@ type preToolReply struct {
 func TestAnAnswerInMabariIsGivenToClaudeAsUpdatedInput(t *testing.T) {
 	c, engine := newConnector(t)
 	done := asking(t, c, engine, nil)
-	question := waitForQuestion(t, engine, "cc-abc-123")
+	question := waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123")
 	if len(question.Items) != 2 || question.Items[0].Header != "Database" || !question.Items[1].MultiSelect ||
 		question.Items[1].Options[2].Description != "Type check" {
 		t.Errorf("question = %+v", question)
 	}
 	_ = engine.Do(func() {
-		if agent := engine.Agent("cc-abc-123"); agent.Bubble != "Asking you a question" || agent.Working || agent.Approval != nil {
+		if agent := engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"); agent.Bubble != "Asking you a question" || agent.Working || agent.Approval != nil {
 			t.Errorf("agent: bubble %q, working %v", agent.Bubble, agent.Working)
 		}
 	})
 	answers := []models.QuestionAnswer{{Picked: []int{1}}, {Picked: []int{2, 0}, Other: "Docs build"}}
 	var err error
-	_ = engine.Do(func() { err = engine.AnswerQuestion("cc-abc-123", question.ID, answers) })
+	_ = engine.Do(func() { err = engine.AnswerQuestion("cc-abcabc00-0000-4000-8000-000000000123", question.ID, answers) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,21 +132,21 @@ func TestAnAnswerInMabariIsGivenToClaudeAsUpdatedInput(t *testing.T) {
 func TestOnlyThatAgentsQuestionCanBeAnswered(t *testing.T) {
 	c, engine := newConnector(t)
 	c.SetWait(300 * time.Millisecond)
-	hook(t, c, "SessionStart", map[string]any{"session_id": "other-1"})
+	hook(t, c, "SessionStart", map[string]any{"session_id": "00000000-0000-4000-8000-000000000061"})
 	done := asking(t, c, engine, nil)
-	question := waitForQuestion(t, engine, "cc-abc-123")
+	question := waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123")
 	good := []models.QuestionAnswer{{Picked: []int{0}}, {Picked: []int{1}}}
 	cases := map[string]struct {
 		agent, question string
 		answers         []models.QuestionAnswer
 		noQuestion      bool
 	}{
-		"wrong question id": {"cc-abc-123", "question-nope", good, true},
-		"another agent":     {"cc-other-1", question.ID, good, true},
+		"wrong question id": {"cc-abcabc00-0000-4000-8000-000000000123", "question-nope", good, true},
+		"another agent":     {"cc-00000000-0000-4000-8000-000000000061", question.ID, good, true},
 		"no such agent":     {"cc-nobody", question.ID, good, true},
-		"too few answers":   {"cc-abc-123", question.ID, good[:1], false},
-		"no such option":    {"cc-abc-123", question.ID, []models.QuestionAnswer{{Picked: []int{5}}, {Picked: []int{0}}}, false},
-		"two for one":       {"cc-abc-123", question.ID, []models.QuestionAnswer{{Picked: []int{0, 1}}, {Picked: []int{0}}}, false},
+		"too few answers":   {"cc-abcabc00-0000-4000-8000-000000000123", question.ID, good[:1], false},
+		"no such option":    {"cc-abcabc00-0000-4000-8000-000000000123", question.ID, []models.QuestionAnswer{{Picked: []int{5}}, {Picked: []int{0}}}, false},
+		"two for one":       {"cc-abcabc00-0000-4000-8000-000000000123", question.ID, []models.QuestionAnswer{{Picked: []int{0, 1}}, {Picked: []int{0}}}, false},
 	}
 	for name, test := range cases {
 		var err error
@@ -156,7 +156,7 @@ func TestOnlyThatAgentsQuestionCanBeAnswered(t *testing.T) {
 		}
 	}
 	_ = engine.Do(func() {
-		if engine.Agent("cc-abc-123").Question == nil {
+		if engine.Agent("cc-abcabc00-0000-4000-8000-000000000123").Question == nil {
 			t.Error("a refused answer took the question down")
 		}
 	})
@@ -234,12 +234,12 @@ func TestSecretsInAQuestionAreMaskedButTheAnswerKeyIsExact(t *testing.T) {
 	defer engine.Unsubscribe(joined.Sub)
 	done := make(chan []byte, 1)
 	go func() { done <- hook(t, c, "PreToolUse", map[string]any{"tool_name": AskTool, "tool_input": input}) }()
-	question := waitForQuestion(t, engine, "cc-abc-123")
+	question := waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123")
 	if strings.Contains(question.Items[0].Question, "abcdefghijklmnop") {
 		t.Errorf("shown = %q", question.Items[0].Question)
 	}
 	_ = engine.Do(func() {
-		_ = engine.AnswerQuestion("cc-abc-123", question.ID, []models.QuestionAnswer{{Other: "Ask me later"}})
+		_ = engine.AnswerQuestion("cc-abcabc00-0000-4000-8000-000000000123", question.ID, []models.QuestionAnswer{{Other: "Ask me later"}})
 	})
 	var reply preToolReply
 	_ = json.Unmarshal(<-done, &reply)
@@ -253,15 +253,15 @@ func TestASubagentsQuestionIsShownOnTheSubagent(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Plan the shop"})
 	done := asking(t, c, engine, map[string]any{"agent_id": "h1", "agent_type": "Plan"})
-	question := waitForQuestion(t, engine, "cc-abc-123-h1")
+	question := waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123-h1")
 	_ = engine.Do(func() {
-		if engine.Agent("cc-abc-123").Question != nil {
+		if engine.Agent("cc-abcabc00-0000-4000-8000-000000000123").Question != nil {
 			t.Error("the lead shows its subagent's question")
 		}
-		if err := engine.AnswerQuestion("cc-abc-123", question.ID, []models.QuestionAnswer{{Picked: []int{0}}, {Picked: []int{0}}}); !errors.Is(err, events.ErrNoQuestion) {
+		if err := engine.AnswerQuestion("cc-abcabc00-0000-4000-8000-000000000123", question.ID, []models.QuestionAnswer{{Picked: []int{0}}, {Picked: []int{0}}}); !errors.Is(err, events.ErrNoQuestion) {
 			t.Errorf("answered through the lead: %v", err)
 		}
-		if err := engine.AnswerQuestion("cc-abc-123-h1", question.ID, []models.QuestionAnswer{{Picked: []int{0}}, {Picked: []int{0}}}); err != nil {
+		if err := engine.AnswerQuestion("cc-abcabc00-0000-4000-8000-000000000123-h1", question.ID, []models.QuestionAnswer{{Picked: []int{0}}, {Picked: []int{0}}}); err != nil {
 			t.Error(err)
 		}
 	})
@@ -277,11 +277,11 @@ func TestASessionThatEndsTakesItsQuestionWithIt(t *testing.T) {
 	c, engine := newConnector(t)
 	c.SetWait(100 * time.Millisecond)
 	done := asking(t, c, engine, nil)
-	question := waitForQuestion(t, engine, "cc-abc-123")
+	question := waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123")
 	hook(t, c, "SessionEnd", map[string]any{"reason": "exit"})
 	var err error
 	_ = engine.Do(func() {
-		err = engine.AnswerQuestion("cc-abc-123", question.ID, []models.QuestionAnswer{{Other: "x"}, {Other: "y"}})
+		err = engine.AnswerQuestion("cc-abcabc00-0000-4000-8000-000000000123", question.ID, []models.QuestionAnswer{{Other: "x"}, {Other: "y"}})
 	})
 	if !errors.Is(err, events.ErrNoQuestion) {
 		t.Errorf("answered after the session ended: %v", err)
@@ -331,8 +331,8 @@ func TestStoppingAnAgentLetsGoOfItsQuestion(t *testing.T) {
 	askCheck = 10 * time.Millisecond
 	t.Cleanup(func() { askCheck = time.Second })
 	done := asking(t, c, engine, nil)
-	waitForQuestion(t, engine, "cc-abc-123")
-	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abc-123")) })
+	waitForQuestion(t, engine, "cc-abcabc00-0000-4000-8000-000000000123")
+	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")) })
 	select {
 	case reply := <-done:
 		if reply != nil {
@@ -352,14 +352,14 @@ func TestASecondQuestionIsLeftToClaudeCode(t *testing.T) {
 	joined := engine.Subscribe(events.Resume{})
 	t.Cleanup(func() { engine.Unsubscribe(joined.Sub) })
 	_ = engine.Do(func() {
-		lead := engine.Agent("cc-abc-123")
+		lead := engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")
 		engine.Ask(lead, models.Question{Items: []models.QuestionItem{{Question: "First?"}}})
 	})
 	if reply := hook(t, c, "PreToolUse", map[string]any{"tool_name": AskTool, "tool_input": askInput()}); reply != nil {
 		t.Errorf("a second question replaced the first: %s", reply)
 	}
 	_ = engine.Do(func() {
-		lead := engine.Agent("cc-abc-123")
+		lead := engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")
 		if lead.Question == nil || lead.Question.Items[0].Question != "First?" {
 			t.Errorf("question = %+v", lead.Question)
 		}
@@ -373,7 +373,7 @@ func TestAnAnswerNobodyHearsIsRefused(t *testing.T) {
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Plan the shop"})
 	var err error
 	_ = engine.Do(func() {
-		lead := engine.Agent("cc-abc-123")
+		lead := engine.Agent("cc-abcabc00-0000-4000-8000-000000000123")
 		question := engine.Ask(lead, models.Question{Items: []models.QuestionItem{{Question: "First?",
 			Options: []models.QuestionOption{{Label: "Yes"}}}}})
 		err = engine.AnswerQuestion(lead.ID, question.ID, []models.QuestionAnswer{{Picked: []int{0}}})

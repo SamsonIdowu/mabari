@@ -210,7 +210,14 @@ func (c *Connector) HandleRun(ctx context.Context, body []byte) []byte {
 
 func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byte {
 	var in input
-	if json.Unmarshal(body, &in) != nil || in.SessionID == "" {
+	if json.Unmarshal(body, &in) != nil {
+		return nil
+	}
+	// The id becomes an agent's and ends up on a command line, so nothing else gets that far.
+	if !launch.ValidSession(in.SessionID) {
+		if fromRun {
+			return refused(in, "Mabari doesn't recognise this session.")
+		}
 		return nil
 	}
 	c.mu.Lock()

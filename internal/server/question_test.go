@@ -15,7 +15,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
 
-const askHook = `{"session_id":"s1","cwd":"/tmp/shop","hook_event_name":"PreToolUse","tool_name":"AskUserQuestion",
+const askHook = `{"session_id":"00000000-0000-4000-8000-000000000001","cwd":"/tmp/shop","hook_event_name":"PreToolUse","tool_name":"AskUserQuestion",
 "tool_input":{"questions":[{"question":"Which database?","header":"Database","multiSelect":false,
 "options":[{"label":"Postgres","description":"A server"},{"label":"SQLite","description":"One file"}]},
 {"question":"Which checks?","header":"Checks","multiSelect":true,
@@ -34,7 +34,7 @@ func TestAnsweringAQuestionThroughTheAPI(t *testing.T) {
 
 	var question models.Question
 	for range 400 {
-		agent := decode[models.LiveAgent](t, o.do(t, http.MethodGet, "/api/agents/cc-s1", ""))
+		agent := decode[models.LiveAgent](t, o.do(t, http.MethodGet, "/api/agents/cc-00000000-0000-4000-8000-000000000001", ""))
 		if agent.Question != nil {
 			question = *agent.Question
 			break
@@ -53,26 +53,26 @@ func TestAnsweringAQuestionThroughTheAPI(t *testing.T) {
 		code              int
 	}{
 		{"unknown agent", "cc-nobody", good, http.StatusNotFound},
-		{"wrong question id", "cc-s1", `{"questionId":"question-x","answers":[{"picked":[1]},{"picked":[0]}]}`, http.StatusConflict},
-		{"no question id", "cc-s1", `{"answers":[{"picked":[1]}]}`, http.StatusBadRequest},
-		{"too few answers", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"picked":[1]}]}`, http.StatusBadRequest},
-		{"no such option", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"picked":[7]},{"picked":[0]}]}`, http.StatusBadRequest},
-		{"two for one", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"picked":[0,1]},{"picked":[0]}]}`, http.StatusBadRequest},
-		{"empty answer", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"other":" "},{"picked":[0]}]}`, http.StatusBadRequest},
-		{"words too long", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"other":"` + strings.Repeat("a", models.AnswerOtherMax+1) + `"},{"picked":[0]}]}`, http.StatusBadRequest},
-		{"unknown field", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{"picked":[1]},{"picked":[0]}],"approve":true}`, http.StatusBadRequest},
-		{"five answers", "cc-s1", `{"questionId":"` + question.ID + `","answers":[{},{},{},{},{}]}`, http.StatusBadRequest},
+		{"wrong question id", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"question-x","answers":[{"picked":[1]},{"picked":[0]}]}`, http.StatusConflict},
+		{"no question id", "cc-00000000-0000-4000-8000-000000000001", `{"answers":[{"picked":[1]}]}`, http.StatusBadRequest},
+		{"too few answers", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"picked":[1]}]}`, http.StatusBadRequest},
+		{"no such option", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"picked":[7]},{"picked":[0]}]}`, http.StatusBadRequest},
+		{"two for one", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"picked":[0,1]},{"picked":[0]}]}`, http.StatusBadRequest},
+		{"empty answer", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"other":" "},{"picked":[0]}]}`, http.StatusBadRequest},
+		{"words too long", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"other":"` + strings.Repeat("a", models.AnswerOtherMax+1) + `"},{"picked":[0]}]}`, http.StatusBadRequest},
+		{"unknown field", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{"picked":[1]},{"picked":[0]}],"approve":true}`, http.StatusBadRequest},
+		{"five answers", "cc-00000000-0000-4000-8000-000000000001", `{"questionId":"` + question.ID + `","answers":[{},{},{},{},{}]}`, http.StatusBadRequest},
 	}
 	for _, test := range cases {
 		if response := answer(test.agent, test.body); response.Code != test.code {
 			t.Errorf("%s = %d %s", test.name, response.Code, response.Body)
 		}
 	}
-	if response := answer("cc-s1", good); response.Code != http.StatusOK {
+	if response := answer("cc-00000000-0000-4000-8000-000000000001", good); response.Code != http.StatusOK {
 		t.Fatalf("answer = %d %s", response.Code, response.Body)
 	}
 	// A second tab answering the same question is told it has gone.
-	if response := answer("cc-s1", good); response.Code != http.StatusConflict {
+	if response := answer("cc-00000000-0000-4000-8000-000000000001", good); response.Code != http.StatusConflict {
 		t.Errorf("second answer = %d", response.Code)
 	}
 	response := <-done
@@ -99,7 +99,7 @@ func TestAnsweringAQuestionThroughTheAPI(t *testing.T) {
 		answers["Which database?"] != "SQLite" || answers["Which checks?"] != "Lint, Tests, Types" {
 		t.Errorf("reply = %s", response.Body)
 	}
-	agent := decode[models.LiveAgent](t, o.do(t, http.MethodGet, "/api/agents/cc-s1", ""))
+	agent := decode[models.LiveAgent](t, o.do(t, http.MethodGet, "/api/agents/cc-00000000-0000-4000-8000-000000000001", ""))
 	if agent.Question != nil {
 		t.Error("the question is still showing")
 	}

@@ -52,7 +52,7 @@ function askFromClaudeCode(): Promise<string> {
   hook.stdout.on('data', (chunk: Buffer) => (printed += chunk.toString()));
   hook.stdin.end(
     JSON.stringify({
-      session_id: 'e2e-floor-question',
+      session_id: '00000000-0000-4000-8000-000000000071',
       cwd: '/tmp/quizshop',
       hook_event_name: 'PreToolUse',
       tool_name: 'AskUserQuestion',

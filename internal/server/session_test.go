@@ -521,10 +521,10 @@ func TestProjectChatAsksAboutAFolderThatBringsCode(t *testing.T) {
 func TestTakingOverASessionNeedsThePersonsWord(t *testing.T) {
 	o := newRunOffice(t)
 	body, _ := json.Marshal(map[string]any{
-		"session_id": "elsewhere", "cwd": o.folder, "hook_event_name": "Stop", "last_assistant_message": "Done.",
+		"session_id": "00000000-0000-4000-8000-000000000005", "cwd": o.folder, "hook_event_name": "Stop", "last_assistant_message": "Done.",
 	})
 	o.connector.Handle(context.Background(), body)
-	id := "cc-elsewhere"
+	id := "cc-00000000-0000-4000-8000-000000000005"
 	response := o.do(t, http.MethodPost, "/api/agents/"+id+"/session/resume", `{}`)
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "may still be open") {
 		t.Fatalf("resume: %d %s", response.Code, response.Body.String())

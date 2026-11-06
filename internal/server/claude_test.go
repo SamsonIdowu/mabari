@@ -120,7 +120,7 @@ func TestHooksNeedTheInstallToken(t *testing.T) {
 	o := newClaudeOffice(t)
 	o.do(t, http.MethodPost, "/api/accounts/claude/connect", `{"confirm":true}`)
 	token, _ := o.vault.Get(claudecode.TokenName)
-	body := `{"session_id":"s1","cwd":"/tmp/shop","hook_event_name":"SessionStart"}`
+	body := `{"session_id":"00000000-0000-4000-8000-000000000001","cwd":"/tmp/shop","hook_event_name":"SessionStart"}`
 	for name, given := range map[string]string{"no token": "", "wrong token": "mab_hook_nope"} {
 		if response := o.hook(t, given, "SessionStart", body); response.Code != http.StatusUnauthorized {
 			t.Errorf("%s = %d", name, response.Code)

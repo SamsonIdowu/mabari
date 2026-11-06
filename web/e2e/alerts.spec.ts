@@ -5,6 +5,7 @@ import {
   claudeHook,
   connectClaude,
   disconnectClaude,
+  sessionId,
   faviconText,
   favicon,
   hubReport,
@@ -240,7 +241,7 @@ test('a notification shows only while the page is hidden, once for each, and a c
   const before = await stub.focused();
   await stub.click(1);
   expect(await stub.focused()).toBe(before + 1);
-  await expect(page).toHaveURL(/#office\?agent=cc-alerts-notify$/);
+  await expect(page).toHaveURL(new RegExp(`#office\\?agent=cc-${sessionId('alerts-notify')}$`));
   const panel = page.getByRole('complementary', { name: 'Agent details' });
   await expect(panel.getByRole('heading', { name: 'Quizshop', exact: true })).toBeVisible();
   expect((await stub.seen())[1]?.closed).toBe(true);

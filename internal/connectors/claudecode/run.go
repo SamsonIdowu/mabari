@@ -70,6 +70,7 @@ const (
 	ErrNoClaude   = sessionProblem("Claude Code isn't installed on this computer. Install it, then try again.")
 	ErrOfficeFull = sessionProblem("The office is full. Stop an agent to free a desk.")
 	ErrDeskTaken  = sessionProblem("That desk has just been taken. Pick another.")
+	ErrBadSession = sessionProblem("This session's id isn't one Claude Code would give, so Mabari won't pass it on.")
 )
 
 // CapError says the most sessions allowed are all busy.
@@ -306,6 +307,10 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	program := c.program()
 	if program == "" {
 		return nil, ErrNoClaude
+	}
+	// Saved by an earlier version, which took any id. --resume would read a dash as a flag.
+	if !launch.ValidSession(agent.Session.ID) {
+		return nil, ErrBadSession
 	}
 	if err := c.folderProblem(agent); err != nil {
 		return nil, err
@@ -775,6 +780,9 @@ func (c *Connector) ResumeSession(agent *models.LiveAgent) error {
 	}
 	if agent.Session.Status == models.SessionRunning {
 		return nil
+	}
+	if !launch.ValidSession(agent.Session.ID) {
+		return ErrBadSession
 	}
 	if agent.Session.Status == models.SessionElsewhere {
 		if agent.State.Active() {

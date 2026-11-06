@@ -749,6 +749,35 @@ func TestAMessageToAFolderThatGainedConfigWaits(t *testing.T) {
 	}
 }
 
+// A session saved by an earlier version can have any id. One that reads as a flag never reaches
+// --resume, and Mabari says why.
+func TestASavedSessionIdThatIsAFlagStartsNoProcess(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
+	b.until("the process to end", func() bool { return b.read(agent.ID).Session.PID == 0 })
+	const hostile = "--dangerously-skip-permissions"
+	real := agent.Session.ID
+	var delivered, resumed error
+	_ = b.engine.Do(func() {
+		saved := b.engine.Agent(agent.ID)
+		session := *saved.Session
+		session.ID, session.Started = hostile, true
+		saved.Session = &session
+		delivered = b.c.deliverNow(saved, "hello")
+		session.Status = models.SessionElsewhere
+		saved.Session = &session
+		resumed = b.c.ResumeSession(saved)
+	})
+	if !errors.Is(delivered, ErrBadSession) || !errors.Is(resumed, ErrBadSession) {
+		t.Fatalf("delivered = %v, resumed = %v", delivered, resumed)
+	}
+	if runs := b.argsOf(real); len(runs) != 1 {
+		t.Fatalf("runs = %q", runs)
+	}
+}
+
 func TestStopEndsTheProcess(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("fake:hang")
@@ -1155,11 +1184,11 @@ func TestTakingOverASessionStartedElsewhere(t *testing.T) {
 func TestItWontTakeOverASessionThatIsWorking(t *testing.T) {
 	b := newBench(t)
 	body, _ := json.Marshal(map[string]any{
-		"session_id": "busy", "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
+		"session_id": testSession(88), "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
 	})
 	b.c.Handle(context.Background(), body)
 	var err error
-	_ = b.engine.Do(func() { err = b.c.ResumeSession(b.engine.Agent(agentID("busy"))) })
+	_ = b.engine.Do(func() { err = b.c.ResumeSession(b.engine.Agent(agentID(testSession(88)))) })
 	if err == nil || !strings.Contains(err.Error(), "working") {
 		t.Fatalf("err = %v", err)
 	}

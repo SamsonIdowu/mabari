@@ -370,51 +370,51 @@ func TestPauseEveryoneWithClaudeCodeSessions(t *testing.T) {
 			`{"session_id":"`+session+`","cwd":"/tmp/shop","hook_event_name":"PreToolUse","tool_name":"`+tool+
 				`","tool_input":{"file_path":"/tmp/shop/a.go"}}`)
 	}
-	step("s1", "Read")
-	step("s2", "Read")
-	step("s3", "Read")
+	step("00000000-0000-4000-8000-000000000001", "Read")
+	step("00000000-0000-4000-8000-000000000002", "Read")
+	step("00000000-0000-4000-8000-000000000003", "Read")
 
-	reply := pauseAction(t, o.office, "interrupt", `{"ids":["cc-s1","cc-s2","cc-s3"]}`)
+	reply := pauseAction(t, o.office, "interrupt", `{"ids":["cc-00000000-0000-4000-8000-000000000001","cc-00000000-0000-4000-8000-000000000002","cc-00000000-0000-4000-8000-000000000003"]}`)
 	if reply.Asked != 3 || reply.Paused != 0 {
 		t.Fatalf("counts = %d asked, %d paused", reply.Asked, reply.Paused)
 	}
-	if got := pauseResult(t, reply, "cc-s1"); got.Why != "stops at its next step" {
+	if got := pauseResult(t, reply, "cc-00000000-0000-4000-8000-000000000001"); got.Why != "stops at its next step" {
 		t.Errorf("claude = %+v", got)
 	}
 	// Nothing has stopped yet: Claude Code only hears it at its next tool call.
-	if state := pauseAgent(t, o.office, "cc-s1").State; state != models.StateReading {
-		t.Errorf("cc-s1 is %s before its next step", state)
+	if state := pauseAgent(t, o.office, "cc-00000000-0000-4000-8000-000000000001").State; state != models.StateReading {
+		t.Errorf("cc-00000000-0000-4000-8000-000000000001 is %s before its next step", state)
 	}
 
 	// Session 3 is continued before it reaches its next step, so the pause is lifted.
-	lifted := pauseAction(t, o.office, "continue", `{"ids":["cc-s3"]}`)
+	lifted := pauseAction(t, o.office, "continue", `{"ids":["cc-00000000-0000-4000-8000-000000000003"]}`)
 	if lifted.Resumed != 1 {
 		t.Errorf("continue before the pause = %+v", lifted)
 	}
 	// The next steps: 1 and 2 stop, 3 carries on.
-	for _, session := range []string{"s1", "s2"} {
+	for _, session := range []string{"00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"} {
 		response := step(session, "Edit")
 		if !strings.Contains(response.Body.String(), `"continue":false`) {
 			t.Errorf("%s did not stop: %s", session, response.Body)
 		}
 	}
-	if response := step("s3", "Edit"); strings.Contains(response.Body.String(), `"continue":false`) {
+	if response := step("00000000-0000-4000-8000-000000000003", "Edit"); strings.Contains(response.Body.String(), `"continue":false`) {
 		t.Errorf("s3 stopped though its pause was lifted: %s", response.Body)
 	}
-	if state := pauseAgent(t, o.office, "cc-s1").State; state != models.StatePaused {
-		t.Errorf("cc-s1 = %s", state)
+	if state := pauseAgent(t, o.office, "cc-00000000-0000-4000-8000-000000000001").State; state != models.StatePaused {
+		t.Errorf("cc-00000000-0000-4000-8000-000000000001 = %s", state)
 	}
 	// A paused session can't be restarted from here: it is waiting for the person to type in it.
-	back := pauseAction(t, o.office, "continue", `{"ids":["cc-s1","cc-s2"]}`)
+	back := pauseAction(t, o.office, "continue", `{"ids":["cc-00000000-0000-4000-8000-000000000001","cc-00000000-0000-4000-8000-000000000002"]}`)
 	if back.Waiting != 2 || back.Resumed != 0 {
 		t.Errorf("continue = %+v", back)
 	}
-	if got := pauseResult(t, back, "cc-s1"); got.Outcome != outcomeWaiting ||
+	if got := pauseResult(t, back, "cc-00000000-0000-4000-8000-000000000001"); got.Outcome != outcomeWaiting ||
 		got.Why != "ended its turn, so type in its session to carry on" {
 		t.Errorf("claude after the pause = %+v", got)
 	}
-	if state := pauseAgent(t, o.office, "cc-s1").State; state != models.StateIdle {
-		t.Errorf("cc-s1 = %s, want it waiting for its person", state)
+	if state := pauseAgent(t, o.office, "cc-00000000-0000-4000-8000-000000000001").State; state != models.StateIdle {
+		t.Errorf("cc-00000000-0000-4000-8000-000000000001 = %s, want it waiting for its person", state)
 	}
 	if !strings.Contains(back.Summary, "type in its session to carry on") {
 		t.Errorf("summary = %q", back.Summary)

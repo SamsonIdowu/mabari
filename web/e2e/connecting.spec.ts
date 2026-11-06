@@ -77,7 +77,7 @@ function aSessionStarts(binaryPath: string) {
   execFileSync(binaryPath, ['hook', '--port', apiPort, 'SessionStart'], {
     env,
     input: JSON.stringify({
-      session_id: 'e2e-setup-1',
+      session_id: '00000000-0000-4000-8000-000000000073',
       cwd: '/tmp/setupshop',
       hook_event_name: 'SessionStart',
     }),

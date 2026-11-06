@@ -127,17 +127,36 @@ export function officeBackground(
 /** The welcome screen's office: five desks in use and the free one, the lounge and the meeting room. */
 const HERO_FLOOR = floorFor({ taken: [0, 1, 2, 5, 6], working: [0, 1, 2, 5, 6] }, 1, ['meeting']);
 const HERO_AGENTS = [
-  { ...deskSeat({ desk: 0 }), provider: 'claude', state: 'editing' },
-  { ...deskSeat({ desk: 1 }), provider: 'openai', state: 'thinking' },
-  { ...deskSeat({ desk: 5 }), provider: 'custom', state: 'browsing' },
-  { ...loungeSeat(HERO_FLOOR, 0), provider: 'claude', state: 'idle' },
-  { ...deskSeat({ desk: 6 }), provider: 'openai', state: 'approval' },
+  { ...deskSeat({ desk: 0 }), desk: 0, provider: 'claude', state: 'editing' },
+  { ...deskSeat({ desk: 1 }), desk: 1, provider: 'openai', state: 'thinking' },
+  { ...deskSeat({ desk: 5 }), desk: 5, provider: 'custom', state: 'browsing' },
+  { ...loungeSeat(HERO_FLOOR, 0), desk: 2, provider: 'claude', state: 'idle' },
+  { ...deskSeat({ desk: 6 }), desk: 6, provider: 'openai', state: 'approval' },
 ];
 const HERO_SKINS = ['#F2C9A0', '#D9A27A', '#B07850', '#8C5A3A', '#6B4128'];
 const HERO_HAIR = ['#2A1B12', '#5A3A22', '#101010', '#B5651D', '#D9C27A'];
 
-/** The still picture on the welcome screen: the office with five agents at work. */
-export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
+/** The welcome office's characters, each with the look they have in the picture. */
+function heroWalkers(): Walker[] {
+  return HERO_AGENTS.map(
+    (agent, index) =>
+      ({
+        ...agent,
+        n: 900 + index,
+        path: [],
+        popUntil: 0,
+        dir: 0,
+        walk: 0,
+        working: agent.state !== 'idle',
+        skin: HERO_SKINS[index],
+        hair: HERO_HAIR[index],
+        hue: identityHues[index],
+      }) as unknown as Walker,
+  );
+}
+
+/** Sizes the welcome canvas to its office and paints the empty office on it. */
+function paintHeroOffice(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
   const canvas = c.canvas;
   if (canvas.width !== HERO_FLOOR.width || canvas.height !== HERO_FLOOR.height) {
     canvas.width = HERO_FLOOR.width;
@@ -146,20 +165,61 @@ export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'):
   }
   c.imageSmoothingEnabled = false;
   c.drawImage(officeBackground(theme, HERO_FLOOR), 0, 0);
-  HERO_AGENTS.forEach((agent, index) => {
-    const walker = {
-      ...agent,
-      n: 900 + index,
-      path: [],
-      popUntil: 0,
-      dir: 0,
-      walk: 0,
-      skin: HERO_SKINS[index],
-      hair: HERO_HAIR[index],
-      hue: identityHues[index],
-    } as unknown as Walker;
-    drawChar(c, walker, 1200 + index * 400, false, false);
-  });
+}
+
+/** The still picture on the welcome screen: the office with five agents at work. */
+export function paintHero(c: CanvasRenderingContext2D, theme: 'dark' | 'light'): void {
+  paintHeroOffice(c, theme);
+  heroWalkers().forEach((walker, index) => drawChar(c, walker, 1200 + index * 400, false, false));
+}
+
+/** Where the confetti goes up in the welcome office, and how often, in milliseconds. */
+const HERO_ROOM = { x0: 150, x1: 700, top: 120, floor: 330 };
+const HERO_PARTY_EVERY = 11_000;
+/** Project colours and neutrals: this office has no project, and none of these is a provider's. */
+const HERO_CONFETTI = ['#FF6B9A', '#48DBFB', '#7BED9F', '#FFFFFF', '#C4C4C7', '#FF6B9A', '#48DBFB'];
+
+/**
+ * The welcome screen's office, alive: the same five agents, typing, thinking, browsing and
+ * resting as they do on the floor, with their screens and lamps, and every few seconds the whole
+ * office has a little party, confetti and all, to show what shipping a project looks like. It
+ * runs until the returned function is called. With reduced motion the screen paints the still
+ * picture instead and never calls this.
+ */
+export function animateHero(canvas: HTMLCanvasElement, theme: 'dark' | 'light'): () => void {
+  const c = canvas.getContext('2d')!;
+  const walkers = heroWalkers();
+  let confetti: Confetti | null = null;
+  let nextParty = performance.now() + 2500;
+  let before = performance.now();
+  let frame = 0;
+  const loop = (now: number) => {
+    const dt = Math.min(50, now - before);
+    before = now;
+    paintHeroOffice(c, theme);
+    for (const walker of walkers) drawDeskScreen(c, walker, now);
+    walkers.forEach((walker) => drawChar(c, walker, now, false, false));
+    if (now >= nextParty) {
+      nextParty = now + HERO_PARTY_EVERY;
+      confetti = startConfetti(HERO_ROOM, HERO_CONFETTI, Date.now());
+      // Everyone who isn't waiting on someone joins in, one after another.
+      let order = 0;
+      for (const walker of walkers) {
+        if (walker.state !== 'approval') walker.cheerAt = Date.now() + order++ * 120;
+      }
+    }
+    if (confetti) {
+      const wall = Date.now();
+      if (confettiOver(confetti, wall)) confetti = null;
+      else {
+        stepConfetti(confetti, wall, dt);
+        drawConfetti(c, confetti, wall);
+      }
+    }
+    frame = requestAnimationFrame(loop);
+  };
+  frame = requestAnimationFrame(loop);
+  return () => cancelAnimationFrame(frame);
 }
 
 interface Mote {
@@ -687,31 +747,38 @@ export class OfficeScene {
   }
 
   /**
-   * Chooses who walks to the meeting room for a shipped project, once: its agents who aren't
-   * waiting on you, as many as the room holds. They keep their places from frame to frame. With
-   * reduced motion nobody walks, and when the party is over they all go back to their own spots.
+   * Chooses who is at a shipped project's party, once: its agents who aren't waiting on you. The
+   * first few walk to the meeting room, as many as it holds, and the rest cheer at their desks. A
+   * party played again for a project whose people have all moved on, from its trophy, is for
+   * whoever is on the floor. Sorted by when they arrived, so the same few go every time.
+   */
+  private chooseTeam(agents: LiveAgent[], current: { key: string; id: string; replay?: boolean }) {
+    if (this.teamFor === current.key) return;
+    this.teamFor = current.key;
+    const here = agents
+      .filter((agent) => this.cheers(agent))
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    const mine = here.filter((agent) => agent.projectId === current.id);
+    this.team = (mine.length || !current.replay ? mine : here).map((agent) => agent.id);
+  }
+
+  /**
+   * Sends the team to the meeting room, where each has a place that holds from frame to frame.
+   * With reduced motion nobody walks, and when the party is over they all go back to their own
+   * spots.
    */
   private sendToMeeting(agents: LiveAgent[]): void {
     const current = useShipped.getState().current;
-    if (!current || !this.partyUnderWay() || reducedMotion()) {
+    if (!current || !this.partyUnderWay()) {
       this.gathered.clear();
       this.teamFor = '';
+      this.team = [];
       return;
     }
-    if (this.teamFor !== current.key) {
-      this.teamFor = current.key;
-      this.team = agents
-        .filter(
-          (agent) =>
-            agent.projectId === current.id &&
-            !agent.leaving &&
-            agent.desk >= 0 &&
-            agent.state !== 'approval' &&
-            agent.state !== 'error' &&
-            !agent.question,
-        )
-        .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-        .map((agent) => agent.id);
+    this.chooseTeam(agents, current);
+    if (reducedMotion()) {
+      this.gathered.clear();
+      return;
     }
     const spots = meetingSpots(this.floor, this.team.length);
     this.gathered.clear();
@@ -752,10 +819,10 @@ export class OfficeScene {
       // the team in the meeting room, the rest at their desks. With reduced motion there is no
       // confetti in the air, and they hold their pose: see `draw`.
       if (!calm) this.confetti = startConfetti(roomOf(this.floor), this.partyColours, now);
+      this.chooseTeam(agents, current);
       let order = 0;
-      for (const agent of agents) {
-        if (agent.projectId !== current.id || !this.cheers(agent)) continue;
-        const walker = this.walkers.get(agent.id);
+      for (const id of this.team) {
+        const walker = this.walkers.get(id);
         if (walker) walker.cheerAt = now + (calm ? 0 : order++ * 90);
       }
     } else if (phase !== 'party' && this.burstFor) {
@@ -1225,79 +1292,7 @@ export class OfficeScene {
   }
 
   private drawDesk(walker: Walker, t: number): void {
-    const c = this.context;
-    const position = deskCorner(walker);
-    const x = position.x;
-    const y = position.y;
-    const here = STATE_LOCATIONS[walker.state] === 'desk' && !walker.path.length;
-    let glow: string | null = null;
-    if (walker.state === 'editing' && here) {
-      glow = (providers[walker.provider as ProviderName] ?? providers.custom).color;
-      R(c, x + 20, y - 10, 24, 14, glow);
-      for (let line = 0; line < 3; line++) {
-        const width = Math.round(6 + ((t / 50 + line * 7) % 10));
-        R(c, x + 22, y - 8 + ((t / 60 + line * 4) % 11), width, 1, '#1A1A22');
-      }
-    } else if (walker.state === 'error') {
-      R(c, x + 20, y - 10, 24, 14, '#5C606B');
-    } else if (walker.state === 'done' && here) {
-      glow = '#3FB97A';
-      R(c, x + 20, y - 10, 24, 14, glow);
-    } else if (walker.state === 'running' && here) {
-      // Test output scrolling past, mostly green with the odd amber line.
-      R(c, x + 20, y - 10, 24, 14, '#0F1A12');
-      for (let line = 0; line < 4; line++) {
-        const rowY = y - 8 + ((t / 90 + line * 3) % 12);
-        const width = Math.round(4 + ((line * 7 + Math.floor(t / 400)) % 14));
-        R(c, x + 22, rowY, width, 1, line % 3 ? '#3FB97A' : '#F2B33D');
-      }
-      glow = '#3FB97A';
-    } else if (walker.state === 'reading' && here) {
-      // A document.
-      R(c, x + 20, y - 10, 24, 14, '#F4F4F2');
-      for (let line = 0; line < 4; line++)
-        R(c, x + 22, y - 8 + line * 3, line % 2 ? 14 : 18, 1, '#9A9A9E');
-    } else if (walker.state === 'browsing' && here) {
-      // A web page: a bar, a picture and two lines of text.
-      R(c, x + 20, y - 10, 24, 14, '#EAF2FA');
-      R(c, x + 20, y - 10, 24, 3, '#9FB3CC');
-      R(c, x + 22, y - 5, 9, 6, '#5B9BF0');
-      R(c, x + 33, y - 5, 9, 1, '#9A9A9E');
-      R(c, x + 33, y - 2, 7, 1, '#9A9A9E');
-    } else if (walker.working) {
-      R(c, x + 20, y - 10, 24, 14, '#2A3546');
-      R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
-      R(c, x + 22, y - 3, 16, 1, '#9FB3CC');
-    }
-    if (glow) {
-      c.globalAlpha = 0.16;
-      c.fillStyle = glow;
-      ell(c, x + 32, y + 12, 30, 12);
-      c.globalAlpha = 1;
-    }
-    if (walker.state === 'approval') {
-      const lit = Math.floor(t / 400) % 2;
-      R(c, x + 6, y - 2, 8, 10, '#3A2A2A');
-      R(c, x + 7, y - 4, 6, 5, lit ? '#FF4D4F' : '#9E2A2C');
-      if (lit) {
-        c.globalAlpha = 0.18;
-        c.fillStyle = '#FF4D4F';
-        ell(c, x + 10, y, 26, 20);
-        c.globalAlpha = 0.25;
-        ell(c, x + 10, y, 12, 10);
-        c.globalAlpha = 1;
-      }
-    }
-    if (walker.queued?.length) {
-      const lit = Math.floor(t / 600) % 2;
-      R(c, x + 52, y - 2, 8, 8, lit ? '#F2B33D' : '#9E7420');
-      if (lit) {
-        c.globalAlpha = 0.25;
-        c.fillStyle = '#F2B33D';
-        ell(c, x + 56, y + 2, 14, 10);
-        c.globalAlpha = 1;
-      }
-    }
+    drawDeskScreen(this.context, walker, t);
   }
 
   private draw(t: number, dt: number): void {
@@ -1501,3 +1496,83 @@ function drawMabariAt(
 
 /** How long Mabari waves and names the agent after routing a request. */
 const MABARI_PING_MS = 2200;
+
+/**
+ * The screen on an agent's desk and the lamps beside it, for what the agent is doing: its working
+ * glow, scrolling code, test output, a document, a page, or the red lamp of an approval and the
+ * amber one of a waiting instruction. Shared by the floor and the welcome screen's office.
+ */
+function drawDeskScreen(c: CanvasRenderingContext2D, walker: Walker, t: number): void {
+  const position = deskCorner(walker);
+  const x = position.x;
+  const y = position.y;
+  const here = STATE_LOCATIONS[walker.state] === 'desk' && !walker.path.length;
+  let glow: string | null = null;
+  if (walker.state === 'editing' && here) {
+    glow = (providers[walker.provider as ProviderName] ?? providers.custom).color;
+    R(c, x + 20, y - 10, 24, 14, glow);
+    for (let line = 0; line < 3; line++) {
+      const width = Math.round(6 + ((t / 50 + line * 7) % 10));
+      R(c, x + 22, y - 8 + ((t / 60 + line * 4) % 11), width, 1, '#1A1A22');
+    }
+  } else if (walker.state === 'error') {
+    R(c, x + 20, y - 10, 24, 14, '#5C606B');
+  } else if (walker.state === 'done' && here) {
+    glow = '#3FB97A';
+    R(c, x + 20, y - 10, 24, 14, glow);
+  } else if (walker.state === 'running' && here) {
+    // Test output scrolling past, mostly green with the odd amber line.
+    R(c, x + 20, y - 10, 24, 14, '#0F1A12');
+    for (let line = 0; line < 4; line++) {
+      const rowY = y - 8 + ((t / 90 + line * 3) % 12);
+      const width = Math.round(4 + ((line * 7 + Math.floor(t / 400)) % 14));
+      R(c, x + 22, rowY, width, 1, line % 3 ? '#3FB97A' : '#F2B33D');
+    }
+    glow = '#3FB97A';
+  } else if (walker.state === 'reading' && here) {
+    // A document.
+    R(c, x + 20, y - 10, 24, 14, '#F4F4F2');
+    for (let line = 0; line < 4; line++)
+      R(c, x + 22, y - 8 + line * 3, line % 2 ? 14 : 18, 1, '#9A9A9E');
+  } else if (walker.state === 'browsing' && here) {
+    // A web page: a bar, a picture and two lines of text.
+    R(c, x + 20, y - 10, 24, 14, '#EAF2FA');
+    R(c, x + 20, y - 10, 24, 3, '#9FB3CC');
+    R(c, x + 22, y - 5, 9, 6, '#5B9BF0');
+    R(c, x + 33, y - 5, 9, 1, '#9A9A9E');
+    R(c, x + 33, y - 2, 7, 1, '#9A9A9E');
+  } else if (walker.working) {
+    R(c, x + 20, y - 10, 24, 14, '#2A3546');
+    R(c, x + 22, y - 6, 12, 1, '#9FB3CC');
+    R(c, x + 22, y - 3, 16, 1, '#9FB3CC');
+  }
+  if (glow) {
+    c.globalAlpha = 0.16;
+    c.fillStyle = glow;
+    ell(c, x + 32, y + 12, 30, 12);
+    c.globalAlpha = 1;
+  }
+  if (walker.state === 'approval') {
+    const lit = Math.floor(t / 400) % 2;
+    R(c, x + 6, y - 2, 8, 10, '#3A2A2A');
+    R(c, x + 7, y - 4, 6, 5, lit ? '#FF4D4F' : '#9E2A2C');
+    if (lit) {
+      c.globalAlpha = 0.18;
+      c.fillStyle = '#FF4D4F';
+      ell(c, x + 10, y, 26, 20);
+      c.globalAlpha = 0.25;
+      ell(c, x + 10, y, 12, 10);
+      c.globalAlpha = 1;
+    }
+  }
+  if (walker.queued?.length) {
+    const lit = Math.floor(t / 600) % 2;
+    R(c, x + 52, y - 2, 8, 8, lit ? '#F2B33D' : '#9E7420');
+    if (lit) {
+      c.globalAlpha = 0.25;
+      c.fillStyle = '#F2B33D';
+      ell(c, x + 56, y + 2, 14, 10);
+      c.globalAlpha = 1;
+    }
+  }
+}

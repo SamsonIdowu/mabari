@@ -137,6 +137,8 @@ interface Placing {
   rank: number;
   /** Not wanted at all: nothing to say, walking, or in the spotlight. */
   quiet: boolean;
+  /** Well off the screen, so its tag takes no part in keeping tags apart. */
+  offscreen: boolean;
   /** What the bubble says, so quiet bubbles that say the same in a row show once. */
   text: string;
   /** May be cut to one line to make room. A reply is read in full, and an approval is brief. */
@@ -144,6 +146,9 @@ interface Placing {
   tagKey: string;
   bubbleKey: string;
 }
+
+/** How far past the floor's edge, in pixels, an agent is before it counts as off the screen. */
+const OFFSCREEN = 90;
 
 /** A session running as Mabari, the default agent, is "Mabari · Shop", after its folder. */
 const shownName = (agent: Pick<LiveAgent, 'name' | 'defId'>) =>
@@ -207,11 +212,19 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
     const isTalk = walker.bubbleKind === 'talk';
     const isAsk = walker.bubbleKind === 'ask';
     const spotlit = ui.selected === walker.id && !ui.team && ui.spotlight;
+    // An agent well off the screen, as one is when the view is zoomed in on a party or a desk, has
+    // nothing to say: its quiet bubble would only be pushed in at the edge, away from its agent.
+    const offscreen =
+      point.x < -OFFSCREEN ||
+      point.x > width + OFFSCREEN ||
+      point.y < -OFFSCREEN ||
+      point.y > height + OFFSCREEN;
     const quiet = !walker.bubble || (walker.path.length > 0 && !isReply) || (spotlit && !isReply);
     // What needs you and what answers you is never hidden. See bubbles.ts.
     const asking = isAsk || (walker.state === 'approval' && !isTalk);
     const rank = asking ? 3 : isReply || (walker.state === 'error' && !isTalk) ? 2 : isTalk ? 1 : 0;
-    bubble.hidden = quiet;
+    const away = offscreen && rank < PINNED_RANK;
+    bubble.hidden = quiet || away;
     if (bubble.textContent !== walker.bubble) bubble.textContent = walker.bubble;
     const bubbleClass = `bub${isReply ? ' reply' : ''}${isTalk ? ' talk' : ''}${isAsk ? ' ask' : ''}${walker.state === 'approval' && !isTalk ? ' red' : ''}${rank >= PINNED_RANK ? ' pin' : ''}`;
     bubble.className = cutShort.has(bubble) ? `${bubbleClass} one` : bubbleClass;
@@ -228,7 +241,8 @@ function renderTags(layer: HTMLElement, scene: OfficeScene, agents: LiveAgent[])
       bubbleAt: bubblePoint,
       settle: MAX_SETTLE + Math.max(0, usual - bubblePoint.y),
       rank,
-      quiet,
+      quiet: quiet || away,
+      offscreen,
       text: walker.bubble ?? '',
       shortenable: rank < 3 && !isReply,
       tagKey: `${tagHtml}|${chip?.text ?? ''}|${queued}|${tag.className}`,
@@ -305,7 +319,7 @@ function placeOnFloor(
   const shown: { id: string; element: HTMLElement; box: Box; fixed: boolean }[] = [];
   for (const entry of placing) {
     const selected = entry.tag.classList.contains('sel') || entry.tag.classList.contains('attn');
-    if (!tagsHidden || selected) {
+    if (!entry.offscreen && (!tagsHidden || selected)) {
       const size = sizeOf(entry.tag, `${entry.tagKey}|${tiny}`);
       if (size) {
         shown.push({

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { agoText, dateText, minsText } from '../format.ts';
-import { useShipped } from '../office/shipped.ts';
+import { playAgain, useShipped } from '../office/shipped.ts';
 import { drawTrophy, TROPHY } from '../office/trophies.ts';
 import { useTrophy } from '../office/trophyLayer.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
@@ -46,6 +46,10 @@ function TrophyPicture({ id, color }: { id: string; color: string }) {
 function TrophyDialog({ id }: { id: string }) {
   const project = useOfficeStore((state) => state.office?.projects.find((item) => item.id === id));
   const [now] = useState(() => Date.now());
+  // A party never plays over an approval, so while one waits the button says so and stays off.
+  const waiting = useOfficeStore((state) =>
+    (state.office?.agents ?? []).some((agent) => agent.state === 'approval' && agent.approval),
+  );
   const close = () => useTrophy.getState().show(null);
   useEscape(close);
   // A project that was reopened or deleted has no trophy any more.
@@ -106,7 +110,26 @@ function TrophyDialog({ id }: { id: string }) {
             <p className="help">No tasks recorded.</p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        {waiting ? (
+          <p className="help" id="partyWait">
+            An approval is waiting for you, so the party can&apos;t play now. Decide it, then play
+            it.
+          </p>
+        ) : null}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn"
+            disabled={waiting}
+            aria-describedby={waiting ? 'partyWait' : undefined}
+            title="Watch the team celebrate shipping this project, again"
+            onClick={() => {
+              close();
+              playAgain(project);
+            }}
+          >
+            Play the party
+          </button>
           <a className="btn" href="#projects" onClick={close}>
             Open in Projects
           </a>

@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef } from 'react';
 import { exploreDemo } from '../data/demo.ts';
-import { paintHero } from '../office/scene.ts';
+import { animateHero, paintHero } from '../office/scene.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 
 export function Welcome() {
   const hero = useRef<HTMLCanvasElement>(null);
   const theme = useThemeStore((state) => state.theme);
 
+  // The office on this screen is alive: its agents work, and every so often there is a little
+  // party. With reduced motion it is the still picture it always was.
   useEffect(() => {
-    const context = hero.current?.getContext('2d');
-    if (!context) return;
-    paintHero(context, theme);
+    const canvas = hero.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      paintHero(context, theme);
+      return undefined;
+    }
+    return animateHero(canvas, theme);
   }, [theme]);
 
   return (

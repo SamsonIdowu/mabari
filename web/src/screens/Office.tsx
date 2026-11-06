@@ -6,6 +6,8 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, minsText } from '../format.ts';
 import type { LiveAgent, Snapshot } from '../gen/models.ts';
 import { toggleFullscreen } from '../office/fullscreen.ts';
+import { savePicture } from '../office/picture.ts';
+import { useThemeStore } from '../theme/themeStore.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
 import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
@@ -608,6 +610,26 @@ function FloorMessage({ office }: { office: Snapshot }) {
   );
 }
 
+/** Saves what the floor shows now as a picture, with a strip of counts under it. */
+function savePictureOfOffice() {
+  const canvas = document.getElementById('floor');
+  const { office, toast } = useOfficeStore.getState();
+  if (!(canvas instanceof HTMLCanvasElement) || !office) return;
+  const agents = onFloor(office.agents);
+  savePicture(
+    canvas,
+    {
+      agents: agents.length,
+      working: agents.filter((agent) => agent.working).length,
+      shipped: office.projects.filter((project) => project.done).length,
+      at: new Date(),
+    },
+    useThemeStore.getState().theme,
+  )
+    .then((name) => toast(`Saved ${name}.`))
+    .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Try again'));
+}
+
 function CanvasTools() {
   const selected = useOfficeUi((state) => state.selected);
   const follow = useOfficeUi((state) => state.follow);
@@ -690,6 +712,18 @@ function CanvasTools() {
           <circle cx="19" cy="6" r="2" />
           <circle cx="19" cy="18" r="2" />
           <path d="M7 12h5V6h5M12 12v6h5" />
+        </Icon>
+      </button>
+      <button
+        type="button"
+        id="pictureBtn"
+        title="Save a picture of the office to keep or show"
+        aria-label="Save a picture of the office"
+        onClick={savePictureOfOffice}
+      >
+        <Icon>
+          <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+          <circle cx="12" cy="13" r="3.5" />
         </Icon>
       </button>
       <button

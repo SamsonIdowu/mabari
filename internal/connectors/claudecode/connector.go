@@ -1090,7 +1090,7 @@ func (c *Connector) Start() {}
 
 // Stop ends the sessions Mabari runs, because the office they belong to is going. Waiting
 // permission hooks of other sessions fall back to Claude Code's prompt on their own. Call inside Do.
-func (c *Connector) Stop() { c.endAll(nil) }
+func (c *Connector) Stop() { c.endAll() }
 
 // Instruct passes a message on. A session Mabari runs that isn't working gets it at once, starting
 // its process again if it needs one. Otherwise it is queued, and Claude Code reads it at the next

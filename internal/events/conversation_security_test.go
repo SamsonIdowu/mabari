@@ -183,8 +183,8 @@ func replayed(t *testing.T, joined events.Joined) string {
 // handed what the wipe deleted.
 func TestResumingFromBeforeAWipeReplaysNothingDeleted(t *testing.T) {
 	for name, clear := range map[string]func(*events.Engine){
-		"wipe":         func(engine *events.Engine) { engine.Wipe() },
-		"clear office": func(engine *events.Engine) { engine.ClearOffice() },
+		"wipe":       func(engine *events.Engine) { engine.Wipe() },
+		"clear demo": func(engine *events.Engine) { engine.ClearDemo() },
 	} {
 		t.Run(name, func(t *testing.T) {
 			engine := conversationEngine(t)
@@ -235,14 +235,14 @@ func TestAPageConnectedThroughAWipeIsToldAndCarriesOn(t *testing.T) {
 	}
 }
 
-// Ending the demo clears the office and puts real agents back. Their conversations stay with them,
-// and the demo's go.
-func TestClearingTheOfficeKeepsConversationsOfAgentsThatStay(t *testing.T) {
+// Ending the demo takes the demo's agents out. Real agents' conversations stay with them, and the
+// demo's go.
+func TestClearingTheDemoKeepsConversationsOfRealAgents(t *testing.T) {
 	engine := conversationEngine(t)
 	_ = engine.Do(func() {
 		engine.Converse("real", models.ConversationItem{Kind: models.ConversationUser, Text: "keep me"})
-		engine.Converse("demo", models.ConversationItem{Kind: models.ConversationUser, Text: "forget me"})
-		engine.ClearOffice("real")
+		engine.Converse(models.DemoIDPrefix+"one", models.ConversationItem{Kind: models.ConversationUser, Text: "forget me"})
+		engine.ClearDemo()
 	})
 	ctx := context.Background()
 	kept, _, err := engine.Store().Conversation(ctx, "real", 0, 10)
@@ -252,7 +252,7 @@ func TestClearingTheOfficeKeepsConversationsOfAgentsThatStay(t *testing.T) {
 	if len(kept) != 1 || kept[0].Text != "keep me" {
 		t.Fatalf("the real agent's conversation: %+v", kept)
 	}
-	gone, _, err := engine.Store().Conversation(ctx, "demo", 0, 10)
+	gone, _, err := engine.Store().Conversation(ctx, models.DemoIDPrefix+"one", 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

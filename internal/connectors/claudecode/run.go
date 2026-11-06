@@ -844,39 +844,19 @@ func (c *Connector) Resume() {
 	}
 }
 
-// endAll retires every process. Call inside Do.
-func (c *Connector) endAll(keep map[string]bool) {
+// endAll retires every process, as a wipe does. Call inside Do.
+func (c *Connector) endAll() {
 	c.mu.Lock()
 	var ending []*run
-	for id, r := range c.runs {
-		if !keep[id] {
-			ending = append(ending, r)
-		}
+	for _, r := range c.runs {
+		ending = append(ending, r)
 	}
-	for session, id := range c.sessions {
-		if !keep[id] {
-			delete(c.sessions, session)
-		}
-	}
-	for id := range c.tails {
-		if !keep[id] {
-			delete(c.tails, id)
-		}
-	}
+	clear(c.sessions)
+	clear(c.tails)
 	c.mu.Unlock()
 	for _, r := range ending {
 		c.retire(r)
 	}
-}
-
-// OfficeCleared ends the sessions of agents that are leaving with the office, such as when the demo
-// loads: they would carry on working unseen, with nobody to ask. Call inside Do.
-func (c *Connector) OfficeCleared(keep []string) {
-	stays := map[string]bool{}
-	for _, id := range keep {
-		stays[id] = true
-	}
-	c.endAll(stays)
 }
 
 // Shutdown ends every process and waits for them, so none outlives Mabari, and each session is

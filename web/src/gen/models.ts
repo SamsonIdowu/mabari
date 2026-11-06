@@ -487,6 +487,10 @@ export interface Project {
    * The first session to start there takes the oldest, as if it had been sent to it.
    */
   opening: Instruction[];
+  /**
+   * Demo marks a project that came with the demo or was made while it ran.
+   */
+  demo: boolean | null;
 }
 /**
  * ProjectStatus says where a project stands.
@@ -553,6 +557,16 @@ export interface Account {
    */
   missing: string;
 }
+/**
+ * SourceDemo is the Agent.Source of the demo's simulated agents. Their ids start with DemoIDPrefix,
+ * which is what ties everything they leave behind to the demo, and to nothing real.
+ */
+export const SourceDemo = "sim";
+/**
+ * SourceDemo is the Agent.Source of the demo's simulated agents. Their ids start with DemoIDPrefix,
+ * which is what ties everything they leave behind to the demo, and to nothing real.
+ */
+export const DemoIDPrefix = "sim-";
 /**
  * Agent is an agent's identity and settings.
  */

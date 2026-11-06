@@ -434,6 +434,202 @@ func TestTheDemoTurnsItselfOff(t *testing.T) {
 	}
 }
 
+// realOffice is an office with real work in it: an agent named like one of the demo's, sitting at a
+// desk the demo wants, in a project with one of the demo's ids, with history of every kind.
+func realOffice(t *testing.T, engine *events.Engine) *models.LiveAgent {
+	t.Helper()
+	real := &models.LiveAgent{}
+	_ = engine.Do(func() {
+		work := engine.SaveProject(models.Project{ID: "checkout", Name: "My real checkout"})
+		real.Name, real.Source, real.Provider = "Atlas", "codex", models.ProviderOpenAI
+		real.State, real.Desk, real.Project, real.Task = models.StateEditing, 2, &work.ID, "Real work"
+		engine.AddAgent(real)
+		other := &models.LiveAgent{}
+		other.Name, other.Source, other.Desk = "Hazel", "hub", 0
+		engine.AddAgent(other)
+		engine.Converse(real.ID, models.ConversationItem{Kind: models.ConversationUser, Text: "a real message"})
+		engine.AddEvent(real, "edit", "A real step", nil)
+		engine.AddMessage(real, other, "A real hand-off", models.MessageHandoff, 0)
+		engine.Queue(real, "A real queued instruction")
+		engine.RequestApproval(real, models.Approval{Type: models.ApprovalCommand, Title: "Run a real thing",
+			RiskLevel: models.RiskHigh})
+		engine.Log("You", models.LogSession, "A real log row", "Done", "")
+	})
+	return real
+}
+
+// checkRealOffice proves everything realOffice made is still there, from the store as well as the
+// office, so nothing was only kept in memory.
+func checkRealOffice(t *testing.T, engine *events.Engine, id string) {
+	t.Helper()
+	ctx := context.Background()
+	s := engine.Store()
+	snapshot := engine.Snapshot()
+	found := slices.IndexFunc(snapshot.Agents, func(agent models.LiveAgent) bool { return agent.ID == id })
+	if found < 0 {
+		t.Fatalf("the real agent is gone: %+v", snapshot.Agents)
+	}
+	real := snapshot.Agents[found]
+	if real.Name != "Atlas" || real.Desk != 2 || real.Task != "Real work" || real.Project == nil || *real.Project != "checkout" {
+		t.Fatalf("the real agent changed: %+v", real.Agent)
+	}
+	if real.Approval == nil || real.Approval.Title != "Run a real thing" || len(real.Queued) != 1 {
+		t.Fatalf("approval %+v, queued %+v", real.Approval, real.Queued)
+	}
+	if !slices.ContainsFunc(snapshot.Projects, func(project models.Project) bool {
+		return project.ID == "checkout" && project.Name == "My real checkout"
+	}) {
+		t.Fatalf("projects = %+v", snapshot.Projects)
+	}
+	if !slices.ContainsFunc(snapshot.Log, func(entry models.LogEntry) bool { return entry.Message == "A real log row" }) {
+		t.Fatalf("log = %+v", snapshot.Log)
+	}
+	if !slices.ContainsFunc(snapshot.Messages, func(message models.Message) bool { return message.Text == "A real hand-off" }) {
+		t.Fatalf("messages = %+v", snapshot.Messages)
+	}
+	items, _, err := s.Conversation(ctx, id, 0, 10)
+	if err != nil || len(items) == 0 || items[0].Text != "a real message" {
+		t.Fatalf("conversation = %+v, %v", items, err)
+	}
+	found2, err := s.Events(ctx, id, 10, 0)
+	if err != nil || !slices.ContainsFunc(found2, func(event models.Event) bool { return event.Summary == "A real step" }) {
+		t.Fatalf("events = %+v, %v", found2, err)
+	}
+	waiting, err := s.WaitingInstructions(ctx, id)
+	if err != nil || len(waiting) != 1 {
+		t.Fatalf("instructions = %+v, %v", waiting, err)
+	}
+	approvals, err := s.Approvals(ctx, true)
+	if err != nil || !slices.ContainsFunc(approvals, func(approval models.Approval) bool { return approval.Agent == id }) {
+		t.Fatalf("approvals = %+v, %v", approvals, err)
+	}
+}
+
+// The demo's script finds its own agents by name, so a real agent with one of those names is never
+// given its approval, its project or its rate. The two can't be mistaken for each other either.
+func TestTheDemoJoinsARealOfficeWithoutTouchingIt(t *testing.T) {
+	sim, engine, _, _ := setup(t, ":memory:", 1)
+	real := realOffice(t, engine)
+	rate := real.Rate
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	checkRealOffice(t, engine, real.ID)
+	snapshot := engine.Snapshot()
+	if len(snapshot.Agents) != 12 {
+		t.Fatalf("%d agents during the demo", len(snapshot.Agents))
+	}
+	if real.Rate != rate {
+		t.Errorf("the demo changed the real agent's rate to %v", real.Rate)
+	}
+	desks, names := map[int]string{}, map[string]bool{}
+	for _, agent := range snapshot.Agents {
+		if taken, ok := desks[agent.Desk]; ok {
+			t.Errorf("%s and %s share desk %d", agent.Name, taken, agent.Desk)
+		}
+		desks[agent.Desk] = agent.Name
+		if names[strings.ToLower(agent.Name)] {
+			t.Errorf("two agents are called %s", agent.Name)
+		}
+		names[strings.ToLower(agent.Name)] = true
+	}
+	if !names["atlas (demo)"] {
+		t.Errorf("names = %v", names)
+	}
+	demoAtlas := snapshot.Agents[slices.IndexFunc(snapshot.Agents, func(agent models.LiveAgent) bool {
+		return agent.Name == "Atlas (demo)"
+	})]
+	if demoAtlas.Approval == nil || demoAtlas.Project == nil || *demoAtlas.Project != "demo-checkout" {
+		t.Errorf("the demo's Atlas: approval %+v, project %v", demoAtlas.Approval, demoAtlas.Project)
+	}
+}
+
+// Load, load again and stop, by hand, by the timer and across a restart: whatever ends the demo
+// leaves the real office as it was and nothing of the demo's.
+func TestEndingTheDemoLeavesTheRealOfficeWhole(t *testing.T) {
+	check := func(t *testing.T, engine *events.Engine, id string) {
+		t.Helper()
+		checkRealOffice(t, engine, id)
+		ctx := context.Background()
+		snapshot := engine.Snapshot()
+		if snapshot.Demo || len(snapshot.Agents) != 2 {
+			t.Fatalf("demo = %v, agents = %+v", snapshot.Demo, snapshot.Agents)
+		}
+		if len(snapshot.Projects) != 1 {
+			t.Errorf("projects = %+v", snapshot.Projects)
+		}
+		if project := snapshot.Projects[0]; project.Demo {
+			t.Errorf("a real project counts as the demo's: %+v", project)
+		}
+		stored, err := engine.Store().Agents(ctx)
+		if err != nil || len(stored) != 2 {
+			t.Errorf("%d agents stored, %v", len(stored), err)
+		}
+		rows, err := engine.Store().Log(ctx, store.LogQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if strings.Contains(row.Message, "toFixed") || strings.Contains(row.Message, "fixtures") || strings.Contains(row.Message, "changelog") {
+				t.Errorf("the demo's log row stayed: %+v", row)
+			}
+		}
+		for _, message := range snapshot.Messages {
+			if message.Text != "A real hand-off" {
+				t.Errorf("the demo's message stayed: %+v", message)
+			}
+		}
+	}
+	t.Run("stopped", func(t *testing.T) {
+		sim, engine, _, _ := setup(t, ":memory:", 1)
+		real := realOffice(t, engine)
+		for range 2 {
+			if err := sim.LoadDemo(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := engine.Do(sim.StopDemo); err != nil {
+			t.Fatal(err)
+		}
+		check(t, engine, real.ID)
+	})
+	t.Run("timed out", func(t *testing.T) {
+		sim, engine, c, _ := setup(t, ":memory:", 1)
+		real := realOffice(t, engine)
+		sim.SetDemoLength(10 * time.Second)
+		if err := sim.LoadDemo(); err != nil {
+			t.Fatal(err)
+		}
+		advance(t, sim, c, 12)
+		check(t, engine, real.ID)
+	})
+	t.Run("restarted", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "office.db")
+		sim, engine, _, s := setup(t, path, 1)
+		real := realOffice(t, engine)
+		if err := sim.LoadDemo(); err != nil {
+			t.Fatal(err)
+		}
+		id := real.ID
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := store.Open(context.Background(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = reopened.Close() })
+		restarted, err := events.New(context.Background(), reopened, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := New(restarted, nil, 0).Resume(true); err != nil {
+			t.Fatal(err)
+		}
+		check(t, restarted, id)
+	})
+}
+
 func TestStoppedAgentLeavesAfterARestart(t *testing.T) {
 	_, engine, _ := restartedDemo(t, func(sim *Simulator, engine *events.Engine) {
 		sim.StopAgent(engine.AgentByName("Ledger"))

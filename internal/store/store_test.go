@@ -32,7 +32,7 @@ func must(t *testing.T, err error) {
 func TestMigratesFromEmpty(t *testing.T) {
 	version, err := open(t).SchemaVersion(context.Background())
 	must(t, err)
-	if version != 3 {
+	if version != 4 {
 		t.Errorf("version = %d", version)
 	}
 }

@@ -121,6 +121,8 @@ type Project struct {
 	// Opening are prompts waiting for a Claude Code session Mabari opened in the project's folder.
 	// The first session to start there takes the oldest, as if it had been sent to it.
 	Opening []Instruction `json:"opening"`
+	// Demo marks a project that came with the demo or was made while it ran.
+	Demo bool `json:"demo,omitempty"`
 }
 
 // ProjectStatus says where a project stands.
@@ -164,6 +166,13 @@ type Account struct {
 	// Missing names a program the account needs and this computer lacks, such as "codex", or "".
 	Missing string `json:"missing"`
 }
+
+// SourceDemo is the Agent.Source of the demo's simulated agents. Their ids start with DemoIDPrefix,
+// which is what ties everything they leave behind to the demo, and to nothing real.
+const (
+	SourceDemo   = "sim"
+	DemoIDPrefix = "sim-"
+)
 
 // Agent is an agent's identity and settings.
 type Agent struct {
@@ -466,6 +475,8 @@ type LogEntry struct {
 	Message string  `json:"message"`
 	Outcome string  `json:"outcome"`
 	Chip    string  `json:"chip"`
+	// Demo marks a row a demo agent wrote, which goes when the demo ends. Pages never need it.
+	Demo bool `json:"-"`
 }
 
 // AutoApprove says which approvals pass without a click.

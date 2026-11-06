@@ -49,6 +49,14 @@ var demoPace = func() float64 {
 // the first look at the floor, which is approvals and errors, and sooner than anyone has left.
 const DemoQuestionAfter = 30 * time.Second
 
+const (
+	// demoMark follows the name of a demo agent when a real agent already goes by that name, so
+	// "tell Atlas to..." can't reach the wrong one.
+	demoMark = " (demo)"
+	// demoProjectPrefix starts the id of a demo project when a real project already has its id.
+	demoProjectPrefix = "demo-"
+)
+
 // demoAsker is the demo agent that asks the question: a Claude agent, as only Claude Code asks
 // them, and one whose work the question is about.
 const demoAsker = "Sage"

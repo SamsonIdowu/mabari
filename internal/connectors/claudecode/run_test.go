@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
@@ -975,19 +976,72 @@ func TestAWipeEndsSessionsAndNothingIsWrittenAfterIt(t *testing.T) {
 	}
 }
 
-// Loading the demo clears the office. Sessions leaving with it mustn't work on unseen.
-func TestClearingTheOfficeEndsSessionsThatLeaveAndKeepsThoseThatStay(t *testing.T) {
+// The demo joins the office and leaves it. Real sessions, the one Mabari runs and the one reporting
+// through its hooks, stay on the floor and work on throughout, with everything they had.
+func TestTheDemoLeavesRealSessionsAndTheirHistoryAlone(t *testing.T) {
 	b := newBench(t)
-	going := b.start("fake:hang")
-	staying := b.start("fake:hang", func(spec *SessionSpec) { spec.Name = "Pepper" })
-	b.until("work to start", func() bool {
-		return b.read(going.ID).State.Active() && b.read(staying.ID).State.Active()
+	sim := simulator.New(b.engine, nil, 0)
+	running := b.start("fake:hang")
+	b.until("work to start", func() bool { return b.read(running.ID).State.Active() })
+	pid := b.read(running.ID).Session.PID
+	body, _ := json.Marshal(map[string]any{
+		"session_id": "from-a-terminal", "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
 	})
-	goingPID, stayingPID := b.read(going.ID).Session.PID, b.read(staying.ID).Session.PID
-	_ = b.engine.Do(func() { b.c.OfficeCleared([]string{staying.ID}) })
-	b.until("the process to end", func() bool { return processGone(goingPID) })
-	if processGone(stayingPID) {
-		t.Fatal("ended a session that stays")
+	b.c.Handle(context.Background(), body)
+	hooked := agentID("from-a-terminal")
+	said := b.said(running.ID)
+	seen := func() []string {
+		var names []string
+		for _, agent := range b.engine.Snapshot().Agents {
+			if agent.Source != simulator.Source {
+				names = append(names, agent.ID)
+			}
+		}
+		slices.Sort(names)
+		return names
+	}
+	before := seen()
+	if len(before) != 2 {
+		t.Fatalf("agents before the demo = %q", before)
+	}
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	if during := seen(); !slices.Equal(during, before) {
+		t.Fatalf("while the demo runs the real agents are %q, were %q", during, before)
+	}
+	if count := len(b.engine.Snapshot().Agents); count != 12 {
+		t.Fatalf("agents during the demo = %d", count)
+	}
+	if err := b.engine.Do(sim.StopDemo); err != nil {
+		t.Fatal(err)
+	}
+	if after := seen(); !slices.Equal(after, before) || len(b.engine.Snapshot().Agents) != 2 {
+		t.Fatalf("after the demo = %q, were %q", after, before)
+	}
+	if processGone(pid) {
+		t.Fatal("the demo ended a real session")
+	}
+	if saved := b.read(running.ID); !saved.RunsHere() || !saved.State.Active() || saved.Session.PID != pid {
+		t.Fatalf("session after the demo = %+v", saved.Session)
+	}
+	if got := b.said(running.ID); !slices.Equal(got, said) {
+		t.Fatalf("conversation = %q, was %q", got, said)
+	}
+	stored, err := b.engine.Store().Agents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 2 {
+		t.Fatalf("%d agents stored after the demo", len(stored))
+	}
+	if b.read(hooked).Session == nil {
+		t.Fatal("the session reporting through hooks lost its session")
+	}
+	// It is still the same session to its process: a message reaches it, and Mabari's hook answers.
+	b.instruct(running.ID, "while you work")
+	if queued := b.read(running.ID).Queued; len(queued) != 1 {
+		t.Fatalf("queued = %+v", queued)
 	}
 }
 

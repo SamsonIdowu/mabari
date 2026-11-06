@@ -476,21 +476,18 @@ func TestAWipeClearsWatches(t *testing.T) {
 	}
 }
 
-// An agent put back after the office was cleared, as the demo does when it ends, keeps its watch,
-// and one whose agent didn't come back loses it.
+// A real agent keeps its watch when the demo ends, and a demo agent's goes with it.
 func TestAWatchOutlivesTheDemoEndingForARealAgent(t *testing.T) {
 	engine, _, _ := watchOffice(t)
 	kept, demo := member("a1", "Ledger", models.StateEditing), member("a2", "Scout", models.StateEditing)
+	demo.Source = models.SourceDemo
 	_ = engine.Do(func() {
 		engine.AddAgent(kept)
 		engine.AddAgent(demo)
 	})
 	mustWatch(t, engine, WatchRequest{Kind: models.WatchAgent, Target: "a1"})
 	mustWatch(t, engine, WatchRequest{Kind: models.WatchAgent, Target: "a2"})
-	_ = engine.Do(func() {
-		engine.ClearOffice()
-		engine.KeepAgent(kept)
-	})
+	_ = engine.Do(func() { engine.ClearDemo() })
 	watches := engine.Snapshot().Watches
 	if len(watches) != 1 || watches[0].Target != "a1" {
 		t.Errorf("watches = %+v", watches)

@@ -380,9 +380,9 @@ func (s *Store) Approvals(ctx context.Context, pendingOnly bool) ([]models.Appro
 // SaveLog inserts or updates an activity log row.
 func (s *Store) SaveLog(ctx context.Context, e models.LogEntry) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO activity_log
-		(id, at, agent, type, message, outcome, chip) VALUES (?, ?, ?, ?, ?, ?, ?)
+		(id, at, agent, type, message, outcome, chip, demo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET outcome = excluded.outcome, chip = excluded.chip`,
-		e.ID, e.Time, e.Agent, e.Type, e.Message, e.Outcome, e.Chip)
+		e.ID, e.Time, e.Agent, e.Type, e.Message, e.Outcome, e.Chip, e.Demo)
 	return err
 }
 
@@ -601,25 +601,52 @@ func (s *Store) DeleteOlderThan(ctx context.Context, cutoff int64) (events, log 
 	return events, log, s.deleteStateChangesBefore(ctx, cutoff)
 }
 
-// ClearOffice empties agents and everything hanging off them, keeping settings and accounts. The
-// conversations of the agents in keep stay, for agents the caller is about to put back: what else
-// hangs off them is in memory and is saved again, but a conversation only lives here.
-func (s *Store) ClearOffice(ctx context.Context, keep ...string) error {
-	return s.Transaction(ctx, func() error {
-		if err := s.empty(ctx, "session_states", "agents", "events", "messages", "instructions",
-			"approvals", "activity_log", "state_changes", "projects"); err != nil {
-			return err
+// demoOwned is a condition saying a column names one of the demo's agents: by its id, or one of
+// ids. Only placeholders are added, one for each id.
+func demoOwned(column string, ids []string) (string, []any) {
+	clause, args := column+" LIKE ?", []any{models.DemoIDPrefix + "%"}
+	if len(ids) > 0 {
+		clause += " OR " + column + " IN (?" + strings.Repeat(", ?", len(ids)-1) + ")"
+		for _, id := range ids {
+			args = append(args, id)
 		}
-		query, args := "DELETE FROM conversation_items", make([]any, 0, len(keep))
-		if len(keep) > 0 {
-			// Only placeholders are added, one for each id.
-			query += " WHERE agent_id NOT IN (?" + strings.Repeat(", ?", len(keep)-1) + ")" // #nosec G202
-			for _, id := range keep {
-				args = append(args, id)
+	}
+	return "(" + clause + ")", args
+}
+
+// ClearDemo deletes what the demo's agents left behind and the projects named, and nothing else:
+// a real agent's history stays. agents names those still in the office, some of which an earlier
+// version stored under ids without the demo's prefix.
+func (s *Store) ClearDemo(ctx context.Context, agents, projects []string) error {
+	return s.Transaction(ctx, func() error {
+		owned, args := demoOwned("agent_id", agents)
+		for _, table := range []string{"session_states", "events", "instructions", "approvals",
+			"conversation_items", "state_changes"} {
+			// The table names are the fixed list above, and owned is only placeholders.
+			if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE "+owned, args...); err != nil { // #nosec G202
+				return err
 			}
 		}
-		_, err := s.db.ExecContext(ctx, query, args...)
-		return err
+		owned, args = demoOwned("id", agents)
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM agents WHERE "+owned, args...); err != nil { // #nosec G202
+			return err
+		}
+		from, fromArgs := demoOwned("json_extract(data, '$.fromAgent')", agents)
+		to, toArgs := demoOwned("value", agents)
+		query := "DELETE FROM messages WHERE " + from + // #nosec G202
+			" OR EXISTS (SELECT 1 FROM json_each(data, '$.toAgents') WHERE " + to + ")"
+		if _, err := s.db.ExecContext(ctx, query, append(fromArgs, toArgs...)...); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM activity_log WHERE demo = 1"); err != nil {
+			return err
+		}
+		for _, id := range projects {
+			if _, err := s.db.ExecContext(ctx, "DELETE FROM projects WHERE id = ?", id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

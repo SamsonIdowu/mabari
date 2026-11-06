@@ -483,7 +483,11 @@ func (e *Engine) AgentByName(name string) *models.LiveAgent {
 // AddAgent puts a new agent in the office. Call inside Do.
 func (e *Engine) AddAgent(agent *models.LiveAgent) {
 	if agent.ID == "" {
-		agent.ID = newID("agent-")
+		prefix := "agent-"
+		if agent.Source == models.SourceDemo {
+			prefix = models.DemoIDPrefix
+		}
+		agent.ID = newID(prefix)
 	}
 	if agent.CreatedAt == 0 {
 		agent.CreatedAt = e.now().UnixMilli()
@@ -494,33 +498,6 @@ func (e *Engine) AddAgent(agent *models.LiveAgent) {
 
 // Touch marks an agent as changed, after updating its fields. Call inside Do.
 func (e *Engine) Touch(agent *models.LiveAgent) { e.dirty[agent.ID] = struct{}{} }
-
-// KeepAgent puts a real agent back after the office was cleared, as the demo does when it ends,
-// and stores again what was cleared with it: its waiting approval, its instructions and its steps.
-// Call inside Do.
-func (e *Engine) KeepAgent(agent *models.LiveAgent) {
-	e.AddAgent(agent)
-	ctx := context.Background()
-	if agent.Approval != nil {
-		e.record(e.store.SaveApproval(ctx, *agent.Approval))
-	}
-	for _, instruction := range agent.Queued {
-		e.record(e.store.SaveInstruction(ctx, instruction))
-	}
-	for _, instruction := range agent.Asked {
-		e.record(e.store.SaveInstruction(ctx, instruction))
-	}
-	for index := len(agent.Feed) - 1; index >= 0; index-- {
-		event := agent.Feed[index]
-		e.record(e.store.AddEvent(ctx, event))
-		// Event numbers carry on from the kept steps, so new ones never repeat an id.
-		if cut := strings.LastIndex(event.ID, "-"); cut > 0 {
-			if number, err := strconv.Atoi(event.ID[cut+1:]); err == nil {
-				e.eventNext[event.ID[:cut]] = max(e.eventNext[event.ID[:cut]], number+1)
-			}
-		}
-	}
-}
 
 // RemoveAgent takes an agent out of the office. Call inside Do.
 func (e *Engine) RemoveAgent(id string) {
@@ -668,12 +645,23 @@ func (e *Engine) Log(agent string, kind models.LogType, message, outcome, chip s
 		Message: message,
 		Outcome: outcome,
 		Chip:    chip,
+		Demo:    e.demoRow(agent),
 	}
 	e.log = append([]models.LogEntry{entry}, e.log...)
 	e.log = e.log[:min(len(e.log), logLimit)]
 	e.record(e.store.SaveLog(context.Background(), entry))
 	e.broadcast(models.ServerMessage{Type: models.MsgLog, Log: &entry})
 	return entry
+}
+
+// demoRow reports whether a log row under this name is the demo's. A row under You, Everyone or
+// Mabari is the person's or the office's, and stays whatever it was about. Call inside Do.
+func (e *Engine) demoRow(name string) bool {
+	if !e.demo {
+		return false
+	}
+	agent := e.AgentByName(name)
+	return agent != nil && agent.Source == models.SourceDemo
 }
 
 // UpdateLog changes a row's outcome, such as when a queued instruction is delivered. Call inside Do.
@@ -1019,12 +1007,6 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	}
 }
 
-// OfficeWatcher is a connector that needs to know when the office is cleared, because it runs
-// something for agents that are going. keep names the agents that stay. Called inside Do.
-type OfficeWatcher interface {
-	OfficeCleared(keep []string)
-}
-
 // Answerer is a connector whose agents can ask the person questions, and hear back.
 type Answerer interface {
 	// Answer passes checked answers to the agent's waiting session, and reports whether the
@@ -1173,9 +1155,11 @@ func (e *Engine) SaveProject(project models.Project) models.Project {
 		project.Opening = []models.Instruction{}
 	}
 	if existing := e.Project(project.ID); existing != nil {
+		project.Demo = existing.Demo
 		*existing = project
 	} else {
 		copied := project
+		copied.Demo = e.demo
 		e.projects = append(e.projects, &copied)
 	}
 	e.refreshProjects(e.now(), false)
@@ -1295,18 +1279,37 @@ func (e *Engine) StoredAccounts() []models.Account {
 	return accounts
 }
 
-// ClearOffice empties agents, projects and history, keeping settings and accounts. keep names
-// agents the caller is about to put back, whose conversations stay. Call inside Do.
-func (e *Engine) ClearOffice(keep ...string) {
-	for _, connector := range e.connectors {
-		if watcher, ok := connector.(OfficeWatcher); ok {
-			watcher.OfficeCleared(keep)
+// ClearDemo takes the demo's agents out, with everything they left behind and the projects named,
+// and leaves everything real exactly as it was. What remains stops counting as the demo's. Call
+// inside Do.
+func (e *Engine) ClearDemo(projects ...string) {
+	var agents []string
+	e.agents = slices.DeleteFunc(slices.Clone(e.agents), func(agent *models.LiveAgent) bool {
+		if agent.Source != models.SourceDemo {
+			return false
+		}
+		agents = append(agents, agent.ID)
+		delete(e.dirty, agent.ID)
+		delete(e.phases, agent.ID)
+		delete(e.lastItem, agent.ID)
+		return true
+	})
+	e.projects = slices.DeleteFunc(slices.Clone(e.projects), func(project *models.Project) bool {
+		return slices.Contains(projects, project.ID)
+	})
+	ctx := context.Background()
+	e.record(e.store.ClearDemo(ctx, agents, projects))
+	for _, project := range e.projects {
+		if project.Demo {
+			project.Demo = false
+			e.record(e.store.SaveProject(ctx, *project))
 		}
 	}
-	e.record(e.store.ClearOffice(context.Background(), keep...))
-	accounts := e.accounts
-	e.resetMemory()
-	e.accounts = accounts
+	messages, err := e.store.Messages(ctx, messageLimit)
+	e.record(err)
+	entries, err := e.store.Log(ctx, store.LogQuery{Limit: logLimit})
+	e.record(err)
+	e.messages, e.log = messages, entries
 	e.forgetHistory()
 }
 

@@ -24,6 +24,17 @@ func (o *runOffice) hookCall(t *testing.T, run bool, session, event string, inpu
 	if err != nil || token == "" {
 		t.Fatalf("no hook token: %v", err)
 	}
+	mark := ""
+	if run {
+		mark = "1"
+	}
+	return o.signedCall(t, token, mark, mark, session, event, input)
+}
+
+// signedCall sends a hook call signed with this token and run value, carrying the header value
+// sent, so a test can make the two disagree.
+func (o *runOffice) signedCall(t *testing.T, token, signed, sent2 string, session, event string, input map[string]any) chan *httptest.ResponseRecorder {
+	t.Helper()
 	input["session_id"], input["hook_event_name"] = session, event
 	input["cwd"] = o.folder
 	raw, _ := json.Marshal(input)
@@ -31,9 +42,9 @@ func (o *runOffice) hookCall(t *testing.T, run bool, session, event string, inpu
 	request := httptest.NewRequest(http.MethodPost, "http://localhost:4317"+claudecode.HookPath+event, strings.NewReader(string(raw)))
 	request.Header.Set(claudecode.NonceHeader, nonce)
 	request.Header.Set(claudecode.TimeHeader, sent)
-	request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, event, raw))
-	if run {
-		request.Header.Set(claudecode.RunHeader, "1")
+	request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, event, signed, raw))
+	if sent2 != "" {
+		request.Header.Set(claudecode.RunHeader, sent2)
 	}
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
@@ -98,6 +109,33 @@ func TestARiskyActionFromASessionMabariRunsReachesTheApprovalFlow(t *testing.T) 
 	o.decide(t, o.state(agent.ID).Approval.ID, models.DecisionAllowed)
 	if body := reply(t, done).Body.String(); !strings.Contains(body, `"behavior":"allow"`) {
 		t.Fatalf("an allow was answered %q", body)
+	}
+}
+
+// The run header decides how a call is answered, so it is signed: it can't be put on a settings
+// hook's call, or taken off a run's, without breaking the signature.
+func TestTheRunHeaderIsPartOfTheSignature(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	token, err := o.vault.Get(claudecode.TokenName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := func() map[string]any {
+		return map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf build"}}
+	}
+	for name, marks := range map[string][2]string{
+		"added":   {"", "1"},
+		"removed": {"1", ""},
+		"changed": {"1", "2"},
+	} {
+		done := o.signedCall(t, token, marks[0], marks[1], agent.Session.ID, "PermissionRequest", input())
+		if response := reply(t, done); response.Code != http.StatusUnauthorized {
+			t.Errorf("%s: %d %s", name, response.Code, response.Body.String())
+		}
+	}
+	if got := o.state(agent.ID); got.Approval != nil {
+		t.Fatalf("asked: %+v", got.Approval)
 	}
 }
 

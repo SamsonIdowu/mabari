@@ -55,7 +55,8 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce, sent := r.Header.Get(claudecode.NonceHeader), r.Header.Get(claudecode.TimeHeader)
-	want := claudecode.SignRequest(token, nonce, sent, r.PathValue("event"), body)
+	run := r.Header.Get(claudecode.RunHeader)
+	want := claudecode.SignRequest(token, nonce, sent, r.PathValue("event"), run, body)
 	if len(nonce) < 16 || !claudecode.Verify(want, r.Header.Get(claudecode.SignatureHeader)) {
 		writeError(w, http.StatusUnauthorized, "this hook call is not signed with the install's token")
 		return
@@ -70,7 +71,7 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 	// was taken for a settings-file hook, which a live process's session ignores, so nothing was
 	// ever asked and every risky action was denied.
 	handle := a.claude.Connector.Handle
-	if r.Header.Get(claudecode.RunHeader) != "" {
+	if run != "" {
 		handle = a.claude.Connector.HandleRun
 	}
 	reply := handle(r.Context(), body)

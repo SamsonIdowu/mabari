@@ -96,7 +96,7 @@ func callHook(
 	sent := strconv.FormatInt(time.Now().Unix(), 10)
 	request.Header.Set(NonceHeader, nonceText)
 	request.Header.Set(TimeHeader, sent)
-	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, sent, event, body))
+	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, sent, event, run, body))
 	request.Header.Set("Content-Type", "application/json")
 	if run != "" {
 		request.Header.Set(RunHeader, run)

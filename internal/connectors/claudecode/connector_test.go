@@ -376,7 +376,7 @@ func TestHookPassesTheReplyThrough(t *testing.T) {
 		nonce := r.Header.Get(NonceHeader)
 		body, _ := io.ReadAll(r.Body)
 		event := strings.TrimPrefix(r.URL.Path, HookPath)
-		if Verify(SignRequest("secret", nonce, r.Header.Get(TimeHeader), event, body), r.Header.Get(SignatureHeader)) {
+		if Verify(SignRequest("secret", nonce, r.Header.Get(TimeHeader), event, r.Header.Get(RunHeader), body), r.Header.Get(SignatureHeader)) {
 			gotAuth = "signed"
 		}
 		switch event {

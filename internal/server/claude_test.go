@@ -74,7 +74,7 @@ func (o *claudeOffice) hook(t *testing.T, token, event, body string) *httptest.R
 		sent := strconv.FormatInt(time.Now().Unix(), 10)
 		request.Header.Set(claudecode.NonceHeader, nonce)
 		request.Header.Set(claudecode.TimeHeader, sent)
-		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, event, []byte(body)))
+		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, event, "", []byte(body)))
 	}
 	recorder := httptest.NewRecorder()
 	o.handler.ServeHTTP(recorder, request)

@@ -34,9 +34,11 @@ func mac(token string, parts ...[]byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// SignRequest signs one hook call: its event, a fresh nonce, the time it was sent and the body.
-func SignRequest(token, nonce, sent, event string, body []byte) string {
-	return mac(token, []byte("request"), []byte(nonce), []byte(sent), []byte(event), body)
+// SignRequest signs one hook call: its event, a fresh nonce, the time it was sent, the value of its
+// run header and the body. The header decides how the call is answered, so it can't be added to or
+// taken off a signed call.
+func SignRequest(token, nonce, sent, event, run string, body []byte) string {
+	return mac(token, []byte("request"), []byte(nonce), []byte(sent), []byte(event), []byte(run), body)
 }
 
 // SignReply signs the server's reply to the call with that nonce, so it can't be replayed to

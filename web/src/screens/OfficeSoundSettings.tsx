@@ -24,7 +24,7 @@ export function OfficeSoundCard() {
             />
             Play the sound of the office
           </label>
-          <span className="help">
+          <span className="muted" style={{ fontSize: 12.5 }}>
             A soft room tone with the tap of keys, made on this device, no sound files. It gets
             fuller as more agents work, and with none working it is silent. It also plays a chime
             when a project ships. Kept in this browser.
@@ -48,7 +48,7 @@ export function OfficeSoundCard() {
               useOfficeSound.getState().setVolume(Number(event.target.value) / 100)
             }
           />
-          <span className="num help" aria-hidden="true" style={{ minWidth: 36 }}>
+          <span className="num muted" aria-hidden="true" style={{ minWidth: 36 }}>
             {percent}%
           </span>
           <button type="button" className="btn sm" disabled={!on} onClick={playSample}>

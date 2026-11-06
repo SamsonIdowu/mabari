@@ -10,7 +10,7 @@ export const useTrophy = create<{ open: string | null; show: (id: string | null)
 );
 
 /** The smallest a trophy's button gets, whatever the zoom, so a fingertip can hit it. */
-const MIN_PX = 22;
+const MIN_PX = 24;
 
 /**
  * Puts a button over each trophy on the shelf, in the page, so they can be reached by keyboard,

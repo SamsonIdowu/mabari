@@ -72,6 +72,19 @@ test("the office grows only sideways, keeps its agents' size, and scrolls along"
   // Nobody got smaller to make room.
   expect((await ledger.boundingBox())!.height).toBeCloseTo(tagHeight, 0);
   const stage = (await page.locator('.stage').boundingBox())!;
+  // The newcomers walk in through the door at the bottom of the floor, so wait until they have all
+  // reached their desks before measuring where they are.
+  await expect
+    .poll(
+      async () =>
+        Math.max(
+          ...(await page
+            .locator('.tag .nt')
+            .evaluateAll((all) => all.map((tag) => tag.getBoundingClientRect().bottom))),
+        ),
+      { timeout: 25_000 },
+    )
+    .toBeLessThan(stage.y + stage.height + 2);
   for (const tag of await page.locator('.tag .nt').all()) {
     const box = (await tag.boundingBox())!;
     expect(box.y).toBeGreaterThan(stage.y);

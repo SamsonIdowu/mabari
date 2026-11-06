@@ -2,7 +2,7 @@
 /*
  * A place worth opening: the motion language, hover and pressed states, loading skeletons, the
  * agent card, the cast of pixel characters, and the celebration. Flat colour only, no gradients.
- * The motion tokens (--ease, --dur-fast, --dur, --dur-slow) come from tokens.css. Reduced motion
+ * The motion tokens (--ease, --ease-in, --dur-fast, --dur) come from tokens.css. Reduced motion
  * is handled once, in base.css, by switching every animation and transition off.
  */
 
@@ -33,7 +33,13 @@
   }
 }
 section[data-screen]:not([data-screen='office']) {
-  animation: screenin var(--dur-slow) var(--ease);
+  animation: screenin var(--dur) var(--ease);
+}
+/* Visually hidden text sat at the foot of the page with its 1 px box just outside it, which made
+   the whole document 1 px taller than the window. A click while a page slid in could then scroll
+   it a pixel, and everything on it with it. Pulled back inside, it takes no room. */
+.sr {
+  margin: -1px;
 }
 .panel {
   animation: panelin var(--dur) var(--ease);
@@ -319,6 +325,8 @@ section[data-screen]:not([data-screen='office']) {
 /* ---------- office sound ---------- */
 input[type='range'].volume {
   width: 220px;
+  /* A control is at least 24 by 24 px to hit, whatever the browser draws inside it. */
+  height: 24px;
   accent-color: var(--accent);
   cursor: pointer;
 }

@@ -716,13 +716,19 @@ export class OfficeScene {
     const agents = onFloor(office?.agents ?? []);
     const calm = reducedMotion();
     let arrived = true;
+    let there = 0;
     for (const [id, goal] of this.gathered) {
       const walker = this.walkers.get(id);
       if (!walker || walker.path.length || Math.hypot(walker.x - goal.x, walker.y - goal.y) > 6) {
         arrived = false;
-        break;
+      } else {
+        there++;
       }
     }
+    // Tests read how many of the team are in the meeting room, and how many were sent.
+    const team = this.gathered.size ? `${there}/${this.gathered.size}` : '';
+    const canvas = this.context.canvas;
+    if ((canvas.dataset.team ?? '') !== team) canvas.dataset.team = team;
     const approval = agents.some((agent) => agent.state === 'approval' && agent.approval !== null);
     useShipped.getState().tick(now, { arrived, approval, calm });
     const { phase, current } = useShipped.getState();

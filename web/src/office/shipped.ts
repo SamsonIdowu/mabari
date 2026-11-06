@@ -99,6 +99,8 @@ export interface Frame {
  * party. An approval stops it at once. Returns the same state when nothing changed.
  */
 export function step(state: ShippedState, now: number, frame: Frame): ShippedState {
+  // Most frames have nothing to celebrate, and cost nothing.
+  if (state.phase === 'idle' && state.queue.length === 0) return state;
   const fresh = state.queue.filter((item) => now - item.heardAt <= EXPIRES_MS);
   let next = fresh.length === state.queue.length ? state : { ...state, queue: fresh };
   if (frame.approval && next.phase !== 'idle') return stopped(next);

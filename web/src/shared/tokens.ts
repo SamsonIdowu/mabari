@@ -158,16 +158,16 @@ export const projectColors = [
 
 /**
  * The motion language, the same in both themes. Things arriving ease out, fast and then settling;
- * things leaving ease in. `fast` is for hover and press, `dur` for panels, dialogs, toasts and
- * cards, `slow` for a change of screen. All of it is short, and none of it moves layout: only
- * opacity and a few pixels of travel. Reduced motion switches every animation and transition off.
+ * things leaving ease in. `fast` is for hover and press, `dur` for everything that comes and goes:
+ * a change of screen, panels, dialogs, toasts and cards. All of it is short, and none of it moves
+ * layout: only opacity and a few pixels of travel. Reduced motion switches every animation and
+ * transition off.
  */
 export const motion = {
   ease: 'cubic-bezier(.2,.7,.2,1)',
   'ease-in': 'cubic-bezier(.4,0,1,1)',
   'dur-fast': '120ms',
   dur: '200ms',
-  'dur-slow': '320ms',
 } as const;
 
 /** CSS custom property declarations, in token order. */

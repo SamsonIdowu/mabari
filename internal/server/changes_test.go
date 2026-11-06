@@ -20,31 +20,31 @@ import (
 
 // A fake Claude Code: it takes instructions the way the real one queues them, so a test can see
 // what a reviewer was sent.
-type fakeClaude struct {
+type recordingConnector struct {
 	office *office
 	mu     sync.Mutex
 	sent   []string
 }
 
-func (f *fakeClaude) Start() {}
-func (f *fakeClaude) Stop()  {}
-func (f *fakeClaude) Instruct(agent *models.LiveAgent, text string) {
+func (f *recordingConnector) Start() {}
+func (f *recordingConnector) Stop()  {}
+func (f *recordingConnector) Instruct(agent *models.LiveAgent, text string) {
 	f.mu.Lock()
 	f.sent = append(f.sent, text)
 	f.mu.Unlock()
 	f.office.engine.Queue(agent, text)
 }
-func (f *fakeClaude) Decide(*models.LiveAgent, models.Approval) {}
-func (f *fakeClaude) Interrupt(*models.LiveAgent)               {}
-func (f *fakeClaude) Continue(*models.LiveAgent)                {}
-func (f *fakeClaude) StopAgent(*models.LiveAgent)               {}
-func (f *fakeClaude) Retry(*models.LiveAgent)                   {}
-func (f *fakeClaude) AddSubagent(*models.LiveAgent, string, string, string) *models.LiveAgent {
+func (f *recordingConnector) Decide(*models.LiveAgent, models.Approval) {}
+func (f *recordingConnector) Interrupt(*models.LiveAgent)               {}
+func (f *recordingConnector) Continue(*models.LiveAgent)                {}
+func (f *recordingConnector) StopAgent(*models.LiveAgent)               {}
+func (f *recordingConnector) Retry(*models.LiveAgent)                   {}
+func (f *recordingConnector) AddSubagent(*models.LiveAgent, string, string, string) *models.LiveAgent {
 	return nil
 }
-func (f *fakeClaude) Models() []string { return nil }
+func (f *recordingConnector) Models() []string { return nil }
 
-func (f *fakeClaude) last(t *testing.T) string {
+func (f *recordingConnector) last(t *testing.T) string {
 	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -54,7 +54,7 @@ func (f *fakeClaude) last(t *testing.T) string {
 	return f.sent[len(f.sent)-1]
 }
 
-func (f *fakeClaude) count() int {
+func (f *recordingConnector) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.sent)
@@ -116,10 +116,10 @@ func repoWithChanges(t *testing.T) string {
 var fakes sync.Map
 
 // withRealAgent adds an agent that a Claude Code session reports, working in folder.
-func withRealAgent(t *testing.T, office *office, name, folder string, project *string) (*models.LiveAgent, *fakeClaude) {
+func withRealAgent(t *testing.T, office *office, name, folder string, project *string) (*models.LiveAgent, *recordingConnector) {
 	t.Helper()
-	made, loaded := fakes.LoadOrStore(office, &fakeClaude{office: office})
-	fake, _ := made.(*fakeClaude)
+	made, loaded := fakes.LoadOrStore(office, &recordingConnector{office: office})
+	fake, _ := made.(*recordingConnector)
 	if !loaded {
 		// It takes the engine's lock itself, so it isn't called inside Do.
 		office.engine.AddConnector("claude", fake)

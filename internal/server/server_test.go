@@ -617,7 +617,13 @@ func TestWebSocketStreamsInOrderAndResumes(t *testing.T) {
 	if err := office.simulator.Tick(); err != nil {
 		t.Fatal(err)
 	}
-	resumed := dial(t, url+"?boot="+hello.BootID+"&since="+uintText(last))
+	// Loading the demo clears the office, which starts a new boot so nothing deleted can be
+	// replayed. A page learns the new one from the snapshot it reloads on that reset.
+	snapshot := decode[models.Snapshot](t, office.do(t, http.MethodGet, "/api/snapshot", ""))
+	if snapshot.BootID == hello.BootID {
+		t.Fatal("clearing the office should start a new boot")
+	}
+	resumed := dial(t, url+"?boot="+snapshot.BootID+"&since="+uintText(last))
 	if first := receive(t, resumed); first.Type != models.MsgHello {
 		t.Fatalf("first = %+v", first)
 	}

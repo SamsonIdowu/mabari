@@ -1,0 +1,225 @@
+// SPDX-License-Identifier: Apache-2.0
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type RefObject,
+} from 'react';
+import { useAsks } from '../data/chatApi.ts';
+import { emptyThread, useConversations, type Thread } from '../data/conversation.ts';
+import { useOfficeStore } from '../data/officeStore.ts';
+import type { LiveAgent, Project } from '../gen/models.ts';
+import { QuestionCard } from '../screens/QuestionCard.tsx';
+import type { ComposerHandle } from './Composer.tsx';
+import { ApprovalInline, ThreadRow } from './Rows.tsx';
+import { buildRows, doingNow, type Row } from './threadModel.ts';
+
+/** How many rows are drawn at first, and how many more each "Show earlier" adds. */
+const ROWS_SHOWN = 120;
+const ROWS_MORE = 120;
+/** Within this many pixels of the bottom, new text keeps the thread at the bottom. */
+const NEAR_BOTTOM_PX = 80;
+const JUMP_PX = 240;
+
+interface Props {
+  mode: 'agent' | 'project';
+  /** What the thread is called to a screen reader, such as "Messages with Ada". */
+  label: string;
+  agents: LiveAgent[];
+  project?: Project | undefined;
+  composer: RefObject<ComposerHandle | null>;
+  empty: string;
+}
+
+/** Every thread opened since the page loaded, for the agents this one shows. */
+function useThreads(agents: LiveAgent[]): Record<string, Thread> {
+  const all = useConversations((state) => state.threads);
+  const open = useConversations((state) => state.open);
+  const ids = agents.map((agent) => agent.id).join('|');
+  useEffect(() => {
+    for (const id of ids.split('|').filter(Boolean)) void open(id).catch(() => undefined);
+  }, [ids, open]);
+  return all;
+}
+
+/**
+ * What an agent, or a project's agents, have said and done, newest at the bottom. Streaming text
+ * grows in place, a tool call is one calm line, and an approval or question waits at the end
+ * where you answer it. Only the newest rows are drawn until you ask for earlier ones, and the
+ * browser skips the ones off screen, so a thousand messages scroll as one hundred do.
+ */
+export function ThreadView({ mode, label, agents, project, composer, empty }: Props) {
+  const all = useThreads(agents);
+  const older = useConversations((state) => state.older);
+  const asks = useAsks((state) => (project ? state.byProject[project.id] : undefined));
+  const loadAsks = useAsks((state) => state.load);
+  const toast = useOfficeStore((state) => state.toast);
+  const [shown, setShown] = useState(ROWS_SHOWN);
+  const [away, setAway] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const top = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const anchor = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (project) void loadAsks(project.id).catch(() => undefined);
+  }, [project, loadAsks]);
+
+  const threads = useMemo(() => {
+    const mine: Record<string, Thread> = {};
+    for (const agent of agents) mine[agent.id] = all[agent.id] ?? emptyThread;
+    return mine;
+  }, [agents, all]);
+  const loaded = agents.every((agent) => threads[agent.id]?.loaded);
+  const more = agents.some((agent) => threads[agent.id]?.hasMore);
+
+  const rows = useMemo(
+    () =>
+      buildRows({
+        mode,
+        agents,
+        threads,
+        asks: asks ?? [],
+        opening: project?.opening ?? [],
+      }),
+    [mode, agents, threads, asks, project?.opening],
+  );
+  const first = Math.max(0, rows.length - shown);
+  const visible = rows.slice(first);
+  const doing = doingNow(agents, mode);
+
+  const earlier = useCallback(() => {
+    const pane = scroller.current;
+    if (pane) anchor.current = pane.scrollHeight - pane.scrollTop;
+    setShown((now) => now + ROWS_MORE);
+    if (first <= 0) {
+      for (const agent of agents) {
+        if (threads[agent.id]?.hasMore) {
+          void older(agent.id).catch((error: Error) => toast(error.message));
+        }
+      }
+    }
+  }, [agents, first, older, threads, toast]);
+
+  // Reaching the top loads what is above, without a click.
+  const canLoad = first > 0 || more;
+  useEffect(() => {
+    const sentinel = top.current;
+    if (!sentinel || !canLoad || typeof IntersectionObserver === 'undefined') return undefined;
+    const watch = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) earlier();
+      },
+      { root: scroller.current, rootMargin: '120px 0px 0px 0px' },
+    );
+    watch.observe(sentinel);
+    return () => watch.disconnect();
+  }, [canLoad, earlier]);
+
+  // What changes at the bottom: a new row, more text in the last one, an approval or a question.
+  const last = rows.at(-1);
+  const lastText = last && 'item' in last ? last.item.text.length : 0;
+  const waiting = agents.filter((agent) => agent.approval || agent.question).length;
+  const signature = `${rows.length}:${last?.key ?? ''}:${lastText}:${waiting}:${loaded}`;
+  useLayoutEffect(() => {
+    const pane = scroller.current;
+    if (!pane) return;
+    if (anchor.current !== null) {
+      // Rows were added above: keep what was in view where it was.
+      pane.scrollTop = pane.scrollHeight - anchor.current;
+      anchor.current = null;
+      return;
+    }
+    if (stick.current) pane.scrollTop = pane.scrollHeight;
+  }, [signature, visible.length]);
+
+  const onScroll = () => {
+    const pane = scroller.current;
+    if (!pane) return;
+    const gap = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+    stick.current = gap < NEAR_BOTTOM_PX;
+    setAway(gap > JUMP_PX);
+  };
+  const jump = () => {
+    const pane = scroller.current;
+    if (!pane) return;
+    stick.current = true;
+    pane.scrollTop = pane.scrollHeight;
+    setAway(false);
+  };
+
+  const dragged = (event: DragEvent) => event.dataTransfer.types.includes('Files');
+  const showWho = mode === 'project';
+
+  return (
+    <div className="mscrollwrap">
+      <div
+        className="mscroll"
+        ref={scroller}
+        role="log"
+        aria-label={label}
+        aria-live="polite"
+        aria-relevant="additions"
+        tabIndex={0}
+        data-testid="thread"
+        onScroll={onScroll}
+        onDragOver={(event) => {
+          if (dragged(event)) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!dragged(event)) return;
+          event.preventDefault();
+          composer.current?.addFiles(Array.from(event.dataTransfer.files));
+        }}
+      >
+        <div ref={top} className="mtop" aria-hidden="true" />
+        {canLoad ? (
+          <button type="button" className="btn ghost sm mearlier" onClick={earlier}>
+            Show earlier messages
+            {first > 0 ? ` (${first}${more ? '+' : ''} more)` : ''}
+          </button>
+        ) : null}
+        {visible.map((row: Row) => (
+          <ThreadRow key={row.key} row={row} showWho={showWho} />
+        ))}
+        {!loaded && rows.length === 0 ? (
+          <p className="help mempty" role="status">
+            Loading the conversation…
+          </p>
+        ) : null}
+        {loaded && rows.length === 0 ? <p className="help mempty">{empty}</p> : null}
+        {agents.map((agent) =>
+          agent.approval || agent.question ? (
+            <div className="mwaiting" key={agent.id}>
+              <ApprovalInline agent={agent} />
+              <QuestionCard agent={agent} />
+            </div>
+          ) : null,
+        )}
+      </div>
+      {away ? (
+        <button type="button" className="btn sm mjump" onClick={jump}>
+          Jump to latest
+        </button>
+      ) : null}
+      <div
+        className={`mdoing ${doing?.tone ?? 'none'}`}
+        role="status"
+        aria-live={doing?.tone === 'working' ? 'off' : 'polite'}
+        aria-atomic="true"
+        data-testid="doingNow"
+      >
+        {doing ? (
+          <>
+            <i aria-hidden="true" />
+            <span>{doing.text}</span>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}

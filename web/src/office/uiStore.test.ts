@@ -137,7 +137,7 @@ describe('opening an agent', () => {
     openThread(threadKey('Sage', 'Ledger'));
     const ui = useOfficeUi.getState();
     expect([ui.thread, ui.threadProject]).toEqual(['Ledger|Sage', 'all']);
-    expect(window.location.hash).toBe('#conversations');
+    expect(window.location.hash).toBe('#conversations?tab=between');
   });
 
   it('forgets the view after a reset', () => {

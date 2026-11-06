@@ -80,14 +80,18 @@ describe('suggestions', () => {
     { name: 'review', kind: 'command', scope: 'account', description: '' },
     { name: 'tidy', kind: 'skill', scope: 'account', description: 'Tidy up' },
   ];
-  const saved: Saved[] = [{ id: 's1', name: 'Review the diff', text: 'Review the diff\nand list risks', created: 1 }];
+  const saved: Saved[] = [
+    { id: 's1', name: 'Review the diff', text: 'Review the diff\nand list risks', created: 1 },
+  ];
 
   it('lists commands, skills and saved instructions that fit, names that start with it first', () => {
     const all = slashSuggestions(commands, saved, '');
     expect(all.map((entry) => entry.kind)).toEqual(['command', 'command', 'skill', 'saved']);
     const some = slashSuggestions(commands, saved, 'rev');
     expect(some.map((entry) => entry.label)).toEqual(['/review', 'Review the diff']);
-    expect(slashSuggestions(commands, saved, 'ud').map((entry) => entry.label)).toEqual(['/ux-audit']);
+    expect(slashSuggestions(commands, saved, 'ud').map((entry) => entry.label)).toEqual([
+      '/ux-audit',
+    ]);
     expect(slashSuggestions(commands, saved, 'zzz')).toEqual([]);
   });
 
@@ -95,7 +99,10 @@ describe('suggestions', () => {
     const [command] = slashSuggestions(commands, saved, 'ux');
     expect(command).toMatchObject({ insert: '/ux-audit ', detail: 'Audit the UX' });
     const [, , , item] = slashSuggestions(commands, saved, '');
-    expect(item).toMatchObject({ insert: 'Review the diff\nand list risks', detail: 'Review the diff and list risks' });
+    expect(item).toMatchObject({
+      insert: 'Review the diff\nand list risks',
+      detail: 'Review the diff and list risks',
+    });
     // A command with no description still says what it is.
     expect(slashSuggestions(commands, saved, 'review')[0]!.detail).toBe('Command');
   });
@@ -108,9 +115,15 @@ describe('suggestions', () => {
       { id: 'a4', name: 'Moss', state: 'idle', leadId: null, leaving: true },
       { id: 'a5', name: 'Tomi', state: 'idle', leadId: null, leaving: false },
     ] as never[];
-    expect(agentSuggestions(agents, '', 'a1').map((entry) => entry.label)).toEqual(['@Mori', '@Tomi']);
+    expect(agentSuggestions(agents, '', 'a1').map((entry) => entry.label)).toEqual([
+      '@Mori',
+      '@Tomi',
+    ]);
     expect(agentSuggestions(agents, 'mo', 'a1').map((entry) => entry.label)).toEqual(['@Mori']);
-    expect(agentSuggestions(agents, 'o', 'a1').map((entry) => entry.label)).toEqual(['@Mori', '@Tomi']);
+    expect(agentSuggestions(agents, 'o', 'a1').map((entry) => entry.label)).toEqual([
+      '@Mori',
+      '@Tomi',
+    ]);
   });
 });
 
@@ -129,7 +142,12 @@ describe('recalling earlier messages', () => {
   });
 
   it('comes forward again and ends on what was being written', () => {
-    const back = recall(history, recall(history, fresh, 'ArrowUp', 'half a thou')?.state ?? fresh, 'ArrowUp', '');
+    const back = recall(
+      history,
+      recall(history, fresh, 'ArrowUp', 'half a thou')?.state ?? fresh,
+      'ArrowUp',
+      '',
+    );
     // Up never starts over text being written.
     expect(recall(history, fresh, 'ArrowUp', 'half a thou')).toBeNull();
     expect(back).not.toBeNull();
@@ -156,24 +174,50 @@ describe('recalling earlier messages', () => {
 
 describe('what sending will do', () => {
   const agent = (overrides: object = {}) =>
-    ({ name: 'Ada', provider: 'claude', account: 'claude_code', working: false, state: 'idle', approval: null, question: null, session: null, source: 'claude', leadId: null, ...overrides }) as never;
+    ({
+      name: 'Ada',
+      provider: 'claude',
+      account: 'claude_code',
+      working: false,
+      state: 'idle',
+      approval: null,
+      question: null,
+      session: null,
+      source: 'claude',
+      leadId: null,
+      ...overrides,
+    }) as never;
 
   it('says an idle agent takes it at once, and a working Claude agent queues it', () => {
-    expect(deliveryOf(agent())).toMatchObject({ kind: 'now', button: 'Send', note: 'This goes to Ada straight away.' });
-    expect(deliveryOf(agent({ working: true, state: 'editing' }))).toMatchObject({ kind: 'checkpoint', button: 'Queue' });
+    expect(deliveryOf(agent())).toMatchObject({
+      kind: 'now',
+      button: 'Send',
+      note: 'This goes to Ada straight away.',
+    });
+    expect(deliveryOf(agent({ working: true, state: 'editing' }))).toMatchObject({
+      kind: 'checkpoint',
+      button: 'Queue',
+    });
     // Another AI takes a message while it works.
-    expect(deliveryOf(agent({ provider: 'openai', account: 'codex', working: true, state: 'editing' })).kind).toBe('now');
+    expect(
+      deliveryOf(agent({ provider: 'openai', account: 'codex', working: true, state: 'editing' }))
+        .kind,
+    ).toBe('now');
   });
 
   it('says an agent waiting on you queues it, however it is run', () => {
     expect(deliveryOf(agent({ state: 'approval', working: false })).kind).toBe('waits');
     expect(deliveryOf(agent({ question: {} })).kind).toBe('waits');
-    expect(deliveryOf(agent({ provider: 'openai', account: 'codex', approval: {} })).note).toContain('waiting for you');
+    expect(
+      deliveryOf(agent({ provider: 'openai', account: 'codex', approval: {} })).note,
+    ).toContain('waiting for you');
   });
 
   it('says a session open elsewhere waits until it runs, and a hub agent until its app asks', () => {
     expect(deliveryOf(agent({ session: { status: 'elsewhere' } })).kind).toBe('later');
-    expect(deliveryOf(agent({ provider: 'custom', account: 'hub' })).note).toContain('its app asks');
+    expect(deliveryOf(agent({ provider: 'custom', account: 'hub' })).note).toContain(
+      'its app asks',
+    );
   });
 
   it('offers to interrupt and send only to a working session Mabari runs', () => {
@@ -203,7 +247,9 @@ describe('what sending will do', () => {
 
   it('promises a plan only as strongly as it can hold the agent to it', () => {
     expect(planNote(agent({ session: { status: 'running' } }))).toContain('holds it to a plan');
-    expect(planNote(agent({ session: { status: 'running' }, working: true }))).toContain('request, not a lock');
+    expect(planNote(agent({ session: { status: 'running' }, working: true }))).toContain(
+      'request, not a lock',
+    );
     expect(planNote(agent({ source: 'sim' }))).toContain('request, not a lock');
     expect(planNote(null)).toContain('request, not a lock');
   });
@@ -246,7 +292,14 @@ describe('drafts', () => {
   it('read back only what has the right shape', () => {
     expect(parseDrafts('not json')).toEqual({});
     expect(parseDrafts('[1,2]')).toEqual({});
-    expect(parseDrafts(JSON.stringify({ a: { text: 5, plan: 'yes', files: [{ id: 1 }, { id: 'x', name: 'n', path: 'p' }] }, b: 7 }))).toEqual({
+    expect(
+      parseDrafts(
+        JSON.stringify({
+          a: { text: 5, plan: 'yes', files: [{ id: 1 }, { id: 'x', name: 'n', path: 'p' }] },
+          b: 7,
+        }),
+      ),
+    ).toEqual({
       a: { text: '', plan: false, files: [{ id: 'x', name: 'n', path: 'p', size: 0 }] },
     });
     expect(parseDrafts(null)).toEqual({});

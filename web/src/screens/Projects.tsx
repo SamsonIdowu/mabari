@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { chatHash } from '../chat/chatRoute.ts';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import {
@@ -17,7 +18,6 @@ import type { LiveAgent, Project } from '../gen/models.ts';
 import { openAgent, useOfficeUi, type ProjectsTab } from '../office/uiStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
-import { ProjectChat } from './ProjectChat.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
@@ -409,13 +409,12 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
           </button>
         ) : null}
         {done ? null : (
-          <button
-            type="button"
+          <a
             className={canComplete ? 'btn sm' : 'btn sm primary'}
-            onClick={() => useOfficeUi.getState().set({ projectChat: project.id })}
+            href={chatHash.project(project.id)}
           >
             Chat
-          </button>
+          </a>
         )}
         <a
           className="btn sm"
@@ -503,9 +502,15 @@ export function Projects() {
   // Kept in the store, which remembers it across screens and reloads.
   const filter = useOfficeUi((state) => state.projectsTab);
   const setFilter = (projectsTab: Filter) => useOfficeUi.getState().set({ projectsTab });
+  // A project's chat is the Chats screen's project thread. An old link or a saved address that
+  // still opens the drawer is taken there.
   const chatting = useOfficeUi((state) => state.projectChat);
+  useEffect(() => {
+    if (!chatting) return;
+    useOfficeUi.getState().set({ projectChat: null });
+    window.location.replace(chatHash.project(chatting));
+  }, [chatting]);
   if (!office) return null;
-  const chat = office.projects.find((project) => project.id === chatting);
 
   const projects = office.projects;
   const done = projects.filter((project) => !isOpen(project)).length;
@@ -593,13 +598,6 @@ export function Projects() {
           </div>
         )}
       </div>
-      {chat ? (
-        <ProjectChat
-          key={chat.id}
-          project={chat}
-          close={() => useOfficeUi.getState().set({ projectChat: null })}
-        />
-      ) : null}
     </section>
   );
 }

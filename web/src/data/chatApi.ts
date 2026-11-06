@@ -99,8 +99,7 @@ export const chatApi = {
     send<unknown>('DELETE', `/api/saved-instructions/${encodeURIComponent(id)}`),
   hand: (from: string, itemId: string, to: string, note: string) =>
     send<ChatResult>('POST', `/api/agents/${encodeURIComponent(from)}/hand`, { itemId, to, note }),
-  asks: (project: string) =>
-    request<Ask[]>(`/api/projects/${encodeURIComponent(project)}/asks`),
+  asks: (project: string) => request<Ask[]>(`/api/projects/${encodeURIComponent(project)}/asks`),
 };
 
 interface SavedState {
@@ -134,12 +133,12 @@ interface AsksState {
   byProject: Record<string, Ask[]>;
   load: (project: string) => Promise<void>;
   add: (ask: Ask) => void;
-  /** After a wipe or a reset, what was held is gone. */
-  clear: () => void;
+  /** After a wipe or a reset, what was held is read again from the server. */
+  reload: () => void;
 }
 
 /** The messages sent to everyone on each project, so their side by side replies survive a reload. */
-export const useAsks = create<AsksState>((set) => ({
+export const useAsks = create<AsksState>((set, get) => ({
   byProject: {},
   load: async (project) => {
     const asks = await chatApi.asks(project);
@@ -151,5 +150,12 @@ export const useAsks = create<AsksState>((set) => ({
       if (have.some((item) => item.id === ask.id)) return state;
       return { byProject: { ...state.byProject, [ask.projectId]: [...have, ask] } };
     }),
-  clear: () => set({ byProject: {} }),
+  reload: () => {
+    const open = Object.keys(get().byProject);
+    set({ byProject: {} });
+    for (const project of open)
+      void get()
+        .load(project)
+        .catch(() => undefined);
+  },
 }));

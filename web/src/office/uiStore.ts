@@ -166,10 +166,10 @@ export function threadKey(first: string, second: string): string {
   return [first, second].sort().join('|');
 }
 
-/** Opens one conversation on the Conversations page, across every project. */
+/** Opens one conversation between agents on the Conversations page, across every project. */
 export function openThread(key: string): void {
   useOfficeUi.getState().set({ thread: key, threadProject: 'all' });
-  window.location.hash = '#conversations';
+  window.location.hash = '#conversations?tab=between';
 }
 
 const working = (agent: LiveAgent) => agent.working;

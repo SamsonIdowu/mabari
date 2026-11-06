@@ -122,7 +122,8 @@ export function agentSuggestions(
     .filter((agent) => agent.id !== selfId && !agent.leadId && !agent.leaving)
     .filter((agent) => lower(agent.name).includes(wanted))
     .sort((a, b) => {
-      const first = Number(!lower(a.name).startsWith(wanted)) - Number(!lower(b.name).startsWith(wanted));
+      const first =
+        Number(!lower(a.name).startsWith(wanted)) - Number(!lower(b.name).startsWith(wanted));
       return first || a.name.localeCompare(b.name);
     })
     .slice(0, 5)
@@ -165,7 +166,10 @@ export function recall(
   if (state.cursor >= history.length - 1) {
     return { text: state.draft, state: { cursor: null, draft: '' } };
   }
-  return { text: history[state.cursor + 1]!, state: { cursor: state.cursor + 1, draft: state.draft } };
+  return {
+    text: history[state.cursor + 1]!,
+    state: { cursor: state.cursor + 1, draft: state.draft },
+  };
 }
 
 /** An earlier message in the list, once: the newest copy of each, at most `limit`, oldest first. */
@@ -197,7 +201,10 @@ const busyNow = (agent: Pick<LiveAgent, 'working' | 'state'>) =>
 
 /** What sending to this agent will do, in the words the box uses, so nobody has to guess. */
 export function deliveryOf(
-  agent: Pick<LiveAgent, 'name' | 'provider' | 'account' | 'working' | 'state' | 'approval' | 'question' | 'session'>,
+  agent: Pick<
+    LiveAgent,
+    'name' | 'provider' | 'account' | 'working' | 'state' | 'approval' | 'question' | 'session'
+  >,
 ): Delivery {
   const name = agent.name;
   if (agent.approval || agent.question || agent.state === 'approval') {
@@ -233,7 +240,10 @@ export function deliveryOf(
 
 /** Whether the box can interrupt this agent and send at once, which only a session Mabari runs allows. */
 export function canSendNow(
-  agent: Pick<LiveAgent, 'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'>,
+  agent: Pick<
+    LiveAgent,
+    'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'
+  >,
 ): boolean {
   return (
     agent.source === 'claude' &&
@@ -248,12 +258,23 @@ export function canSendNow(
 
 /** Whether the model can be switched with the next message, and if not, why. */
 export function modelSwitch(
-  agent: Pick<LiveAgent, 'name' | 'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'>,
+  agent: Pick<
+    LiveAgent,
+    'name' | 'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'
+  >,
 ): { can: boolean; reason: string } {
   if (agent.source === 'sim') return { can: true, reason: '' };
-  if (agent.source === 'claude' && agent.session && agent.session.status !== 'elsewhere' && !agent.leadId) {
+  if (
+    agent.source === 'claude' &&
+    agent.session &&
+    agent.session.status !== 'elsewhere' &&
+    !agent.leadId
+  ) {
     if (agent.working || agent.approval || agent.question || agent.state === 'approval') {
-      return { can: false, reason: `${agent.name} is working. Change its model once it has finished.` };
+      return {
+        can: false,
+        reason: `${agent.name} is working. Change its model once it has finished.`,
+      };
     }
     return { can: true, reason: '' };
   }
@@ -262,7 +283,10 @@ export function modelSwitch(
 
 /** What the Plan first switch promises, which depends on whether the session can be held to it. */
 export function planNote(
-  agent: Pick<LiveAgent, 'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'> | null,
+  agent: Pick<
+    LiveAgent,
+    'source' | 'working' | 'state' | 'approval' | 'question' | 'session' | 'leadId'
+  > | null,
 ): string {
   const held =
     agent !== null &&

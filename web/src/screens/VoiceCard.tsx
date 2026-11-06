@@ -38,6 +38,7 @@ function Card() {
   const engine = useVoice((state) => state.engine);
   const transcribing = useVoice((state) => state.transcribing);
   const send = useVoice((state) => state.send);
+  const into = useVoice((state) => state.into !== null);
   const cancel = useVoice((state) => state.cancel);
   useEscape(cancel);
 
@@ -50,13 +51,15 @@ function Card() {
   const agent = heard?.agent ?? null;
   const instruct = (heard?.mode ?? 'instruct') === 'instruct';
   const name = agent?.name ?? 'the team';
-  const outcome = !instruct
-    ? `Answered from the log. ${name} is not interrupted.`
-    : !agent
-      ? 'Mabari picks the best agent for it.'
-      : agent.provider === 'claude'
-        ? `Will be queued for ${agent.name}'s next checkpoint.`
-        : `Goes straight into ${agent.name}'s session.`;
+  const outcome = into
+    ? 'Goes into the message box, so you can read it before you send it.'
+    : !instruct
+      ? `Answered from the log. ${name} is not interrupted.`
+      : !agent
+        ? 'Mabari picks the best agent for it.'
+        : agent.provider === 'claude'
+          ? `Will be queued for ${agent.name}'s next checkpoint.`
+          : `Goes straight into ${agent.name}'s session.`;
 
   return (
     <div className="voice" role="dialog" aria-label="Voice input">
@@ -101,7 +104,7 @@ function Card() {
             Cancel
           </button>
           <button type="button" className="btn primary" disabled={!text} onClick={send}>
-            Send
+            {into ? 'Use' : 'Send'}
           </button>
         </div>
       ) : (

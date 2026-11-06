@@ -102,7 +102,11 @@ describe('inline', () => {
   });
 
   it('turns a newline into a line break', () => {
-    expect(parseInline('a\nb')).toEqual([{ t: 'text', v: 'a' }, { t: 'br' }, { t: 'text', v: 'b' }]);
+    expect(parseInline('a\nb')).toEqual([
+      { t: 'text', v: 'a' },
+      { t: 'br' },
+      { t: 'text', v: 'b' },
+    ]);
   });
 
   it('links, and only to safe places', () => {
@@ -113,7 +117,9 @@ describe('inline', () => {
     expect(parseInline('[click](javascript:alert(1))')).toEqual([{ t: 'text', v: 'click' }]);
     expect(parseInline('[click](data:text/html;base64,AAAA)')).toEqual([{ t: 'text', v: 'click' }]);
     expect(parseInline('[click](/api/wipe)')).toEqual([{ t: 'text', v: 'click' }]);
-    expect(parseInline('[a](https://x.com/a_(b))')[0]).toMatchObject({ href: 'https://x.com/a_(b)' });
+    expect(parseInline('[a](https://x.com/a_(b))')[0]).toMatchObject({
+      href: 'https://x.com/a_(b)',
+    });
   });
 
   it('never loads an image: it is a link, or its words', () => {
@@ -176,7 +182,8 @@ describe('blocks', () => {
   });
 
   it('takes only a plain word as a fence language', () => {
-    const lang = (info: string) => (parseBlocks(`\`\`\`${info}\nx\n\`\`\``)[0] as { lang: string }).lang;
+    const lang = (info: string) =>
+      (parseBlocks(`\`\`\`${info}\nx\n\`\`\``)[0] as { lang: string }).lang;
     expect(lang('js onload=alert(1)')).toBe('js');
     expect(lang('<img')).toBe('');
     expect(lang('"><script>')).toBe('');
@@ -208,7 +215,10 @@ describe('blocks', () => {
 
   it('reads a quotation', () => {
     expect(parseBlocks('> a\n> b\n\nc')).toEqual([
-      { t: 'quote', c: [{ t: 'p', c: [{ t: 'text', v: 'a' }, { t: 'br' }, { t: 'text', v: 'b' }] }] },
+      {
+        t: 'quote',
+        c: [{ t: 'p', c: [{ t: 'text', v: 'a' }, { t: 'br' }, { t: 'text', v: 'b' }] }],
+      },
       { t: 'p', c: [{ t: 'text', v: 'c' }] },
     ]);
   });
@@ -255,7 +265,29 @@ describe('blocks', () => {
   });
 
   it('never throws, and only ever links safely, whatever it is given', () => {
-    const pieces = ['[', ']', '(', ')', '`', '*', '_', '~', '<', '>', '!', '\\', '\n', '#', '-', '|', ' ', 'a', 'http://x.co', 'javascript:', '```'];
+    const pieces = [
+      '[',
+      ']',
+      '(',
+      ')',
+      '`',
+      '*',
+      '_',
+      '~',
+      '<',
+      '>',
+      '!',
+      '\\',
+      '\n',
+      '#',
+      '-',
+      '|',
+      ' ',
+      'a',
+      'http://x.co',
+      'javascript:',
+      '```',
+    ];
     let seed = 12345;
     const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
     for (let round = 0; round < 400; round++) {
@@ -267,7 +299,10 @@ describe('blocks', () => {
   });
 
   it('reads a long message in a moment', () => {
-    const source = Array.from({ length: 4000 }, (_, i) => `- item **${i}** with \`code\` and [a link](https://example.com/${i})`).join('\n');
+    const source = Array.from(
+      { length: 4000 },
+      (_, i) => `- item **${i}** with \`code\` and [a link](https://example.com/${i})`,
+    ).join('\n');
     const started = performance.now();
     const [list] = parseBlocks(source);
     expect((list as Extract<Block, { t: 'list' }>).items).toHaveLength(4000);

@@ -8,7 +8,7 @@ import { Icon } from '../shell/Icon.tsx';
 import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 
-function Body({ approval }: { approval: Approval }) {
+export function ApprovalBody({ approval }: { approval: Approval }) {
   const { detail, type } = approval;
   if (type === 'plan') {
     return (
@@ -118,7 +118,7 @@ function ApprovalDialog(props: {
             </span>
           </div>
         ) : null}
-        <Body approval={approval} />
+        <ApprovalBody approval={approval} />
         <p className="help">
           {approval.risk} {agent.name} is paused until you choose.
           {autoOn && risky ? ' Auto approve skips risky actions, so this one still needs you.' : ''}

@@ -18,6 +18,7 @@ import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useReturnFocus } from '../shell/useReturnFocus.ts';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
+import { chatHash } from '../chat/chatRoute.ts';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
 import { LatestConversation, SessionSection } from './SessionSection.tsx';
@@ -730,7 +731,14 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
               )}
             </div>
           </div>
-          <span style={{ display: 'flex', gap: 2 }}>
+          <span style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <a
+              className="btn ghost sm"
+              href={chatHash.agent(agent.id)}
+              title={`Talk to ${agent.name} in Chats`}
+            >
+              Open chat
+            </a>
             <button
               type="button"
               className="btn ghost sm"

@@ -17,7 +17,13 @@ interface VoiceStore {
   engine: string;
   /** Local Whisper is turning the recording into text, after release. */
   transcribing: boolean;
-  start: (office: Snapshot) => void;
+  /**
+   * Set when the mic was held in a message box: what is heard goes into that box, to read and send
+   * with its own button, instead of being sent from here.
+   */
+  into: ((text: string) => void) | null;
+  /** `into`, for a message box that wants the words, not for them to be sent. */
+  start: (office: Snapshot, into?: (text: string) => void) => void;
   /** The mic or Space was released. This only ever gets ready: it sends nothing. */
   stop: () => void;
   /** The one way a spoken message leaves: a click on Send, or Enter. */
@@ -43,7 +49,7 @@ export const useVoice = create<VoiceStore>((set, get) => {
   const close = () => {
     const active = listener;
     listener = null;
-    set({ phase: null, text: '', heard: null, transcribing: false });
+    set({ phase: null, text: '', heard: null, transcribing: false, into: null });
     active?.abort();
   };
 
@@ -72,7 +78,8 @@ export const useVoice = create<VoiceStore>((set, get) => {
     heard: null,
     engine: 'browser',
     transcribing: false,
-    start: (office) => {
+    into: null,
+    start: (office, into) => {
       if (get().phase) return;
       if (!office.agents.length) {
         toast('There are no agents to talk to yet.');
@@ -80,7 +87,14 @@ export const useVoice = create<VoiceStore>((set, get) => {
       }
       const engine = office.settings.voiceEngine;
       ended = false;
-      set({ phase: 'listen', text: '', heard: null, engine, transcribing: false });
+      set({
+        phase: 'listen',
+        text: '',
+        heard: null,
+        engine,
+        transcribing: false,
+        into: into ?? null,
+      });
       listener = listen(
         {
           onText: (text) => {
@@ -107,8 +121,13 @@ export const useVoice = create<VoiceStore>((set, get) => {
       settle();
     },
     send: () => {
-      const { phase, text, heard } = get();
+      const { phase, text, heard, into } = get();
       const office = useOfficeStore.getState().office;
+      if (into && phase === 'confirm' && text) {
+        close();
+        into(text);
+        return;
+      }
       if (phase !== 'confirm' || !text || !heard || !office) return;
       close();
       if (heard.agent) useOfficeUi.getState().set({ selected: heard.agent.id, target: 'selected' });

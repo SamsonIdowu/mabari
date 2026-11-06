@@ -66,7 +66,15 @@ export function splitUserText(text: string): UserParts {
 }
 
 export type Row =
-  | { kind: 'user'; key: string; time: number; seq: number; item: ConversationItem; who: Who | null; parts: UserParts }
+  | {
+      kind: 'user';
+      key: string;
+      time: number;
+      seq: number;
+      item: ConversationItem;
+      who: Who | null;
+      parts: UserParts;
+    }
   | { kind: 'assistant'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
   | { kind: 'tool'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
   | { kind: 'notice'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
@@ -137,7 +145,11 @@ function column(ask: Ask, agent: LiveAgent | undefined, who: Who, items: Convers
   else if (replies.length && !streaming && !agent.working) state = 'replied';
   else if (at < 0 || waiting) state = 'waiting';
   else state = 'working';
-  return { column: { who, state, replies, streaming } satisfies RoundColumn, userId: at >= 0 ? items[at]!.id : '', used };
+  return {
+    column: { who, state, replies, streaming } satisfies RoundColumn,
+    userId: at >= 0 ? items[at]!.id : '',
+    used,
+  };
 }
 
 /** The rows of a thread, oldest first, with anything still waiting for delivery at the end. */
@@ -172,7 +184,12 @@ export function buildRows(input: RowInput): Row[] {
       const base = { key: item.id, time: item.time, seq: item.seq, item };
       switch (item.kind) {
         case 'user':
-          rows.push({ ...base, kind: 'user', who: input.mode === 'project' ? who : null, parts: splitUserText(item.text) });
+          rows.push({
+            ...base,
+            kind: 'user',
+            who: input.mode === 'project' ? who : null,
+            parts: splitUserText(item.text),
+          });
           break;
         case 'assistant':
           if (item.text.trim() || item.streaming) rows.push({ ...base, kind: 'assistant', who });
@@ -194,16 +211,27 @@ export function buildRows(input: RowInput): Row[] {
   const pending: Row[] = [];
   for (const instruction of input.opening ?? []) {
     pending.push({
-      kind: 'pending', key: instruction.id, time: instruction.time, seq: 0, instruction,
-      who: null, opening: true, parts: splitUserText(instruction.text),
+      kind: 'pending',
+      key: instruction.id,
+      time: instruction.time,
+      seq: 0,
+      instruction,
+      who: null,
+      opening: true,
+      parts: splitUserText(instruction.text),
     });
   }
   for (const agent of input.agents) {
     for (const instruction of agent.queued ?? []) {
       if (consumedQueue.has(instruction.id)) continue;
       pending.push({
-        kind: 'pending', key: instruction.id, time: instruction.time, seq: 0, instruction,
-        who: input.mode === 'project' ? whoOf(agent) : null, opening: false,
+        kind: 'pending',
+        key: instruction.id,
+        time: instruction.time,
+        seq: 0,
+        instruction,
+        who: input.mode === 'project' ? whoOf(agent) : null,
+        opening: false,
         parts: splitUserText(instruction.text),
       });
     }
@@ -223,7 +251,8 @@ function doingOf(agent: LiveAgent): DoingNow | null {
   if (agent.state === 'approval') return { text: 'Waiting for your approval', tone: 'waiting' };
   if (agent.question) return { text: 'Asking you a question', tone: 'waiting' };
   if (agent.state === 'error') return { text: agent.error || 'Hit an error', tone: 'error' };
-  if (agent.state === 'paused') return { text: 'Interrupted. Waiting for you to continue', tone: 'waiting' };
+  if (agent.state === 'paused')
+    return { text: 'Interrupted. Waiting for you to continue', tone: 'waiting' };
   if (!agent.working) return null;
   const step = agent.feed?.[0]?.summary;
   const label = stateLabel(agent.state);

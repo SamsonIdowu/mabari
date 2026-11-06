@@ -21,7 +21,12 @@ export type Block =
   | { t: 'list'; ordered: boolean; start: number; items: Block[][] }
   | { t: 'quote'; c: Block[] }
   | { t: 'hr' }
-  | { t: 'table'; head: Inline[][]; rows: Inline[][][]; align: ('left' | 'center' | 'right' | '')[] };
+  | {
+      t: 'table';
+      head: Inline[][];
+      rows: Inline[][][];
+      align: ('left' | 'center' | 'right' | '')[];
+    };
 
 const SAFE_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
@@ -33,7 +38,14 @@ const SAFE_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
  */
 export function safeHref(raw: string): string | null {
   const text = raw.trim();
-  if (!text || /[\u0000-\u001f\u007f\s]/u.test(text)) return null;
+  if (
+    !text ||
+    [...text].some(
+      (char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f || /\s/.test(char),
+    )
+  ) {
+    return null;
+  }
   let url: URL;
   try {
     url = new URL(text);
@@ -302,7 +314,12 @@ export function parseBlocks(source: string): Block[] {
         body.push(candidate);
         at++;
       }
-      blocks.push({ t: 'code', lang: languageOf(fence[2] ?? ''), v: body.join('\n'), open: !closed });
+      blocks.push({
+        t: 'code',
+        lang: languageOf(fence[2] ?? ''),
+        v: body.join('\n'),
+        open: !closed,
+      });
       continue;
     }
     const heading = HEADING.exec(line);
@@ -367,10 +384,18 @@ export function parseBlocks(source: string): Block[] {
           break;
         }
         items.push(parseBlocks(own.join('\n')));
-        if (at < lines.length && !lines[at]!.trim() && !(isOrdered ? ORDERED : BULLET).test(lines[at + 1] ?? '')) {
+        if (
+          at < lines.length &&
+          !lines[at]!.trim() &&
+          !(isOrdered ? ORDERED : BULLET).test(lines[at + 1] ?? '')
+        ) {
           break;
         }
-        while (at < lines.length && !lines[at]!.trim() && (isOrdered ? ORDERED : BULLET).test(lines[at + 1] ?? '')) {
+        while (
+          at < lines.length &&
+          !lines[at]!.trim() &&
+          (isOrdered ? ORDERED : BULLET).test(lines[at + 1] ?? '')
+        ) {
           at++;
         }
       }

@@ -40,7 +40,17 @@ const item = (overrides: Partial<ConversationItem>): ConversationItem => ({
 const thread = (...items: ConversationItem[]): Thread => ({ items, hasMore: false, loaded: true });
 
 const queued = (id: string, text: string, time: number): Instruction =>
-  ({ id, text, time, status: 'waiting_for_checkpoint', agentId: 'a', mode: 'instruct', logId: '', reply: '', repliedAt: 0 }) as Instruction;
+  ({
+    id,
+    text,
+    time,
+    status: 'waiting_for_checkpoint',
+    agentId: 'a',
+    mode: 'instruct',
+    logId: '',
+    reply: '',
+    repliedAt: 0,
+  }) as Instruction;
 
 describe('splitUserText', () => {
   it('leaves what a person typed alone', () => {
@@ -77,7 +87,8 @@ describe('splitUserText', () => {
   });
 
   it('notes who a handed over reply came from', () => {
-    const handed = 'Handed over from Rune (Docs site).\n\nIt was answering:\n> fix it\n\nIts reply:\n> done';
+    const handed =
+      'Handed over from Rune (Docs site).\n\nIt was answering:\n> fix it\n\nIts reply:\n> done';
     expect(splitUserText(handed).handedFrom).toBe('Rune');
     expect(splitUserText('Handed over from Rune.\nrest').handedFrom).toBe('Rune');
   });
@@ -106,7 +117,11 @@ describe('an agent thread', () => {
         a: thread(
           item({ kind: 'assistant', text: '  ' }),
           item({ kind: 'assistant', text: '', streaming: true }),
-          item({ kind: 'tool', text: '', tool: { name: 'Read', summary: 'Read a.ts', input: '', output: '', state: 'done' } }),
+          item({
+            kind: 'tool',
+            text: '',
+            tool: { name: 'Read', summary: 'Read a.ts', input: '', output: '', state: 'done' },
+          }),
           item({ kind: 'notice', text: 'Session started.' }),
         ),
       },
@@ -133,18 +148,35 @@ describe('a project thread', () => {
       mode: 'project',
       agents: [atlas, mori],
       threads: {
-        a1: thread(item({ agentId: 'a1', seq: 1, time: 100, kind: 'user', text: 'go' }), item({ agentId: 'a1', seq: 2, time: 300, text: 'atlas says' })),
-        a2: thread(item({ agentId: 'a2', seq: 1, time: 200, kind: 'assistant', text: 'mori says' })),
+        a1: thread(
+          item({ agentId: 'a1', seq: 1, time: 100, kind: 'user', text: 'go' }),
+          item({ agentId: 'a1', seq: 2, time: 300, text: 'atlas says' }),
+        ),
+        a2: thread(
+          item({ agentId: 'a2', seq: 1, time: 200, kind: 'assistant', text: 'mori says' }),
+        ),
       },
     });
-    expect(rows.map((row) => (row.kind === 'user' || row.kind === 'assistant' ? `${row.who?.name}:${row.item.text}` : row.kind))).toEqual([
-      'Atlas:go',
-      'Mori:mori says',
-      'Atlas:atlas says',
-    ]);
+    expect(
+      rows.map((row) =>
+        row.kind === 'user' || row.kind === 'assistant'
+          ? `${row.who?.name}:${row.item.text}`
+          : row.kind,
+      ),
+    ).toEqual(['Atlas:go', 'Mori:mori says', 'Atlas:atlas says']);
   });
 
-  const ask: Ask = { id: 'k1', projectId: 'p', text: 'status in one line?', time: 1000, agents: [{ id: 'a1', name: 'Atlas' }, { id: 'a2', name: 'Mori' }, { id: 'a9', name: 'Left' }] };
+  const ask: Ask = {
+    id: 'k1',
+    projectId: 'p',
+    text: 'status in one line?',
+    time: 1000,
+    agents: [
+      { id: 'a1', name: 'Atlas' },
+      { id: 'a2', name: 'Mori' },
+      { id: 'a9', name: 'Left' },
+    ],
+  };
 
   it('shows a message to everyone once, with each agent’s reply beside the others', () => {
     const threads = {
@@ -152,7 +184,15 @@ describe('a project thread', () => {
         item({ agentId: 'a1', seq: 1, time: 1010, kind: 'user', text: 'status in one line?' }),
         item({ agentId: 'a1', seq: 2, time: 1500, kind: 'assistant', text: 'Atlas: on track' }),
       ),
-      a2: thread(item({ agentId: 'a2', seq: 1, time: 1020, kind: 'user', text: 'status in one line?\n\nAttached files, read them by path:\n- /x/y.txt' })),
+      a2: thread(
+        item({
+          agentId: 'a2',
+          seq: 1,
+          time: 1020,
+          kind: 'user',
+          text: 'status in one line?\n\nAttached files, read them by path:\n- /x/y.txt',
+        }),
+      ),
     };
     const rows = buildRows({ mode: 'project', agents: [atlas, mori], threads, asks: [ask] });
     expect(rows.map((row) => row.kind)).toEqual(['round']);
@@ -168,7 +208,11 @@ describe('a project thread', () => {
   });
 
   it('says an agent is waiting while the message sits in its queue, and shows it once', () => {
-    const waiting = agent({ id: 'a2', name: 'Mori', queued: [queued('q9', 'status in one line?', 1030)] });
+    const waiting = agent({
+      id: 'a2',
+      name: 'Mori',
+      queued: [queued('q9', 'status in one line?', 1030)],
+    });
     const rows = buildRows({
       mode: 'project',
       agents: [atlas, waiting],
@@ -208,19 +252,37 @@ describe('what it is doing now', () => {
   });
 
   it('names the step an agent is on', () => {
-    const working = agent({ state: 'reading', working: true, feed: [{ summary: 'Read src/app.ts' } as never] });
-    expect(doingNow([working], 'agent')).toEqual({ text: 'Reading files: Read src/app.ts', tone: 'working' });
-    expect(doingNow([agent({ state: 'thinking', working: true })], 'agent')).toEqual({ text: 'Thinking', tone: 'working' });
+    const working = agent({
+      state: 'reading',
+      working: true,
+      feed: [{ summary: 'Read src/app.ts' } as never],
+    });
+    expect(doingNow([working], 'agent')).toEqual({
+      text: 'Reading files: Read src/app.ts',
+      tone: 'working',
+    });
+    expect(doingNow([agent({ state: 'thinking', working: true })], 'agent')).toEqual({
+      text: 'Thinking',
+      tone: 'working',
+    });
   });
 
   it('says plainly what waits on you, and shows an error in red', () => {
-    expect(doingNow([agent({ state: 'approval' })], 'agent')).toEqual({ text: 'Waiting for your approval', tone: 'waiting' });
+    expect(doingNow([agent({ state: 'approval' })], 'agent')).toEqual({
+      text: 'Waiting for your approval',
+      tone: 'waiting',
+    });
     expect(doingNow([agent({ question: {} as never })], 'agent')?.tone).toBe('waiting');
-    expect(doingNow([agent({ state: 'error', error: 'It broke' })], 'agent')).toEqual({ text: 'It broke', tone: 'error' });
+    expect(doingNow([agent({ state: 'error', error: 'It broke' })], 'agent')).toEqual({
+      text: 'It broke',
+      tone: 'error',
+    });
   });
 
   it('sums up a project in a few words', () => {
-    const agents = ['A', 'B', 'C', 'D', 'E'].map((name) => agent({ id: name, name, state: 'thinking', working: true }));
+    const agents = ['A', 'B', 'C', 'D', 'E'].map((name) =>
+      agent({ id: name, name, state: 'thinking', working: true }),
+    );
     const line = doingNow([...agents, agent({ id: 'z', name: 'Z' })], 'project');
     expect(line?.text).toBe('A: Thinking · B: Thinking · C: Thinking · and 2 more');
     expect(doingNow([agent()], 'project')).toBeNull();

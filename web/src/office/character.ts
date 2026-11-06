@@ -3,11 +3,40 @@
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { ell, R, rrect } from './background.ts';
 import { STATE_LOCATIONS } from './layout.ts';
+import { finishing, glancing, idleDoing, stretching, waving } from './moments.ts';
 import type { Walker } from './scene.ts';
 
 type Ctx = CanvasRenderingContext2D;
 
-export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: boolean) {
+/** The tick that floats beside an agent whose task just finished: a green badge with a white tick. */
+function drawTick(c: Ctx, x: number, y: number, alpha: number) {
+  c.globalAlpha = alpha;
+  R(c, x, y, 12, 12, '#1F8F5A');
+  R(c, x + 1, y + 1, 10, 10, '#3FB97A');
+  for (const [dx, dy] of [
+    [2, 6],
+    [4, 8],
+    [6, 6],
+    [8, 4],
+  ] as const) {
+    R(c, x + dx, y + dy, 2, 2, '#FFFFFF');
+  }
+  c.globalAlpha = 1;
+}
+
+/**
+ * Draws one agent. `calm` is reduced motion: nothing hops, waves, glances or changes what it is
+ * doing, though what the agent is working on still shows.
+ */
+export function drawChar(
+  c: Ctx,
+  a: Walker,
+  t: number,
+  dim: boolean,
+  selected: boolean,
+  calm = false,
+) {
+  const now = Date.now();
   const x = Math.round(a.x),
     y = Math.round(a.y),
     u = 2,
@@ -29,10 +58,18 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
     : st === 'idle' || st === 'thinking'
       ? Math.round(Math.sin(t / 700 + a.n) * 0.7)
       : 0;
-  if (st === 'done' && !moving) bob -= Math.round(Math.abs(Math.sin(t / 170)) * 7);
+  // A finished task: one small hop, a tick beside the head and a little confetti, then still.
+  const fin = st === 'done' ? finishing(a.doneAt, now, calm) : null;
+  if (fin && !moving) bob -= fin.lift;
+  const waves = waving(a.waveUntil, now, calm);
+  // An agent waiting on you, or stopped by an error, now and then looks round at you.
+  const needsYou = st === 'approval' || st === 'error' || !!a.question;
+  const glance = !moving && glancing(a.n, t, needsYou, calm);
+  const idle = st === 'idle' && !moving ? idleDoing(a.n, t, calm) : null;
+  const stretch = idle !== null && stretching(idle, t);
   let alpha = dim ? 0.2 : 1;
-  if (a.popUntil > Date.now()) {
-    const k = 1 - (a.popUntil - Date.now()) / 1600;
+  if (a.popUntil > now) {
+    const k = 1 - (a.popUntil - now) / 1600;
     alpha *= Math.min(1, k * 1.6);
   }
   c.fillStyle = '#000';
@@ -77,16 +114,29 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
     p(10, 8, 1, 3, shirt);
     p(1, 11 - tf, 1, 1, skin);
     p(10, 10 + tf, 1, 1, skin);
+  } else if (stretch) {
+    // Both arms up over the head.
+    p(0, 1, 1, 7, shirt);
+    p(11, 1, 1, 7, shirt);
+    p(0, 0, 1.2, 1.2, skin);
+    p(11, 0, 1.2, 1.2, skin);
   } else {
     const sw = moving ? leg * 0.5 : 0;
     p(1, 8 + sw, 1, 4, shirt);
-    p(10, 8 - sw, 1, 4, shirt);
     p(1, 12 + sw, 1, 1, skin);
-    p(10, 12 - sw, 1, 1, skin);
+    if (waves) {
+      // A new agent waving hello as it walks in.
+      const wv = Math.sin(t / 130) > 0 ? 0.5 : 0;
+      p(10 + wv, 2, 1, 6, shirt);
+      p(10 + wv, 1, 1.2, 1.2, skin);
+    } else {
+      p(10, 8 - sw, 1, 4, shirt);
+      p(10, 12 - sw, 1, 1, skin);
+    }
   }
   p(3, 1, 6, 7, skin);
   p(3, 7, 6, 1, 'rgba(0,0,0,.12)');
-  if (back) {
+  if (back && !glance) {
     p(2, 0, 8, 6, hair);
     p(2, 6, 1, 1, hair);
     p(9, 6, 1, 1, hair);
@@ -96,15 +146,31 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
     p(9, 2, 1, 3, hair);
     if (dir) p(dir > 0 ? 2 : 9, 2, 1, 4, hair);
     const blink = Math.floor((t + a.n * 700) / 2800) % 14 === 0,
-      ex = dir * 0.6;
-    p(4 + ex, 4, 1, blink ? 0.4 : 1.2, '#1A1410');
-    p(7 + ex, 4, 1, blink ? 0.4 : 1.2, '#1A1410');
+      // Looking round the room, or down at a book or a phone, when resting.
+      ex = dir * 0.6 + (idle === 'look' ? Math.sin(t / 900) * 0.9 : 0),
+      ey = idle === 'book' || idle === 'phone' ? 0.8 : 0;
+    p(4 + ex, 4 + ey, 1, blink ? 0.4 : 1.2, '#1A1410');
+    p(7 + ex, 4 + ey, 1, blink ? 0.4 : 1.2, '#1A1410');
+    if (glance) {
+      p(3.8, 3, 1.6, 0.5, hair);
+      p(6.8, 3, 1.6, 0.5, hair);
+    }
     p(3.5 + ex, 5.7, 1, 0.6, 'rgba(240,120,120,.45)');
     p(7.5 + ex, 5.7, 1, 0.6, 'rgba(240,120,120,.45)');
     if (st === 'done') p(5 + ex, 6, 2, 0.8, '#8A3B2B');
     if (st === 'error') p(5 + ex, 6.5, 2, 0.5, '#4A3B3B');
   }
-  if (st === 'idle' && !moving) {
+  if (idle === 'book') {
+    // An open book held in both hands, a page turning now and then.
+    p(3.5, 9, 5, 3, '#E9D8A6');
+    p(5.9, 9, 0.3, 3, '#C9B27A');
+    p(3, 11.6, 1, 1, skin);
+    p(8, 11.6, 1, 1, skin);
+    if (Math.floor(t / 700) % 4 === 0) p(6.2, 9, 2.3, 3, '#F4F2EE');
+  } else if (idle === 'phone') {
+    p(10, 8.6, 1.4, 2.4, '#16161C');
+    p(10.2, 8.9, 1, 1.6, Math.floor(t / 900) % 2 ? '#9FD0FF' : '#5E7FA6');
+  } else if (idle !== null && !stretch) {
     p(10, 9, 2, 2, '#F4F2EE');
     p(10, 9, 2, 0.5, '#6B4128');
     const sf = (t / 90) % 30;
@@ -143,7 +209,7 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
       if (Math.floor(t / 1700) % 5 === 0 && Math.floor(t / 90) % 2)
         R(c, hx + 2, hy - 10, 2, 8, '#FFE066');
     }
-    if (st === 'done') {
+    if (fin?.confetti) {
       for (let k2 = 0; k2 < 12; k2++) {
         const ph = (t / 1500 + k2 * 0.083) % 1,
           ang = k2 * 0.52;
@@ -156,6 +222,9 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
           ['#F2B33D', '#5B9BF0', '#E8894A', '#3FB97A', '#8E8E93', '#FF6B9A'][k2 % 6]!,
         );
       }
+    }
+    if (fin?.tick) {
+      drawTick(c, hx + 14, oy + 4 - Math.round(fin.tick.rise * 10), fin.tick.alpha);
     }
     if (st === 'spawning') {
       for (let k3 = 0; k3 < 6; k3++) {
@@ -178,8 +247,8 @@ export function drawChar(c: Ctx, a: Walker, t: number, dim: boolean, selected: b
       c.stroke();
     }
   }
-  if (a.popUntil > Date.now()) {
-    const kk = (a.popUntil - Date.now()) / 1600;
+  if (a.popUntil > now) {
+    const kk = (a.popUntil - now) / 1600;
     c.globalAlpha = 0.35 * kk;
     R(c, x - 9, y - 150, 18, 150, '#FFF3B0');
     c.globalAlpha = 1;

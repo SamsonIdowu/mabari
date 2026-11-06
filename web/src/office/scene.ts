@@ -16,6 +16,7 @@ import {
   type View,
 } from './camera.ts';
 import { drawChar } from './character.ts';
+import { WAVE_MS } from './moments.ts';
 import { restingLook, stableHash } from './resting.ts';
 import { drawEnvelopes } from './talk.ts';
 import { drawMascot } from './vee.ts';
@@ -69,6 +70,10 @@ export type Walker = LiveAgent & {
   walk: number;
   spd: number;
   popUntil: number;
+  /** When the agent reached Done, so its tick and hop play once. Unset for one found Done. */
+  doneAt?: number;
+  /** Until when a newly arrived agent waves as it walks in. */
+  waveUntil?: number;
   front?: boolean;
   /** Where it is heading, so it can walk again when the floor changes shape. */
   goal?: Point;
@@ -156,7 +161,10 @@ function makeMotes(): Mote[] {
   }));
 }
 
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// One query object, whose `matches` is always current, rather than a new one every frame.
+let motionQuery: MediaQueryList | null = null;
+const reducedMotion = () =>
+  (motionQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)')).matches;
 
 const sizeOf = (floor: Floor): Size => ({ width: floor.width, height: floor.height });
 
@@ -167,6 +175,13 @@ export class OfficeScene {
   /** Agent definitions resting in the lounge, in seat order. */
   resting: Resting[] = [];
   seating: Seating = seatingFor([], []);
+  /**
+   * Whether the floor has seen the office once. Agents on the floor when it first looks were here
+   * already; only those who arrive after it walk in through the door.
+   */
+  private populated = false;
+  /** How many agents have walked in, to keep those arriving together apart. */
+  private arrivals = 0;
   private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[]; inRooms: boolean; view: number } = {
     agents: [],
     defs: [],
@@ -397,12 +412,24 @@ export class OfficeScene {
       if (!present.has(id)) this.walkers.delete(id);
     }
     const teleport = reducedMotion();
+    // One or two agents arriving walk in through the door and wave. A crowd arriving at once, the
+    // demo or a reconnect, is simply there, as it is after a reload or with reduced motion.
+    const arriving = agents.filter((agent) => !this.walkers.has(agent.id)).length;
+    const walkIn = this.populated && !teleport && arriving > 0 && arriving <= 3;
+    this.populated ||= office !== null;
     agents.forEach((agent, index) => {
       const existing = this.walkers.get(agent.id);
       const target = spotFor(agent, index + 1, this.seating);
       if (!existing) {
         const isNewHelper = this.walkers.size > 0 && agent.leadId !== null;
-        const start = isNewHelper ? deskSeat(agent) : target;
+        const entering = walkIn && !isNewHelper;
+        // Agents arriving together come in side by side, not one on top of another.
+        const door = doorOf(floor);
+        const start = isNewHelper
+          ? deskSeat(agent)
+          : entering
+            ? { x: door.x + ((this.arrivals++ % 3) - 1) * 22, y: door.y }
+            : target;
         this.walkers.set(agent.id, {
           ...agent,
           n: index + 1,
@@ -413,6 +440,7 @@ export class OfficeScene {
           walk: 0,
           spd: 0,
           popUntil: isNewHelper ? Date.now() + 1600 : 0,
+          ...(entering ? { waveUntil: Date.now() + WAVE_MS } : {}),
           goal: target,
         });
         return;
@@ -426,7 +454,10 @@ export class OfficeScene {
           !goal ||
           Math.abs(goal.x - target.x) > 0.5 ||
           Math.abs(goal.y - target.y) > 0.5);
+      // Reaching Done is a moment of its own: the tick and the hop play from now.
+      const finished = existing.state !== agent.state && agent.state === 'done';
       Object.assign(existing, agent, { n: index + 1 });
+      if (finished) existing.doneAt = Date.now();
       if (startedLeaving) existing.path = pathTo(existing, doorOf(floor), floor);
       if (moved) {
         existing.goal = target;
@@ -1063,6 +1094,7 @@ export class OfficeScene {
     this.drawLinks(scoped, theme, t);
     // Everyone is drawn from back to front.
     const restingShown = this.restingShown();
+    const calm = reducedMotion();
     // An agent running Mabari's own agent file is Mabari, so it looks like Mabari.
     const office = useOfficeStore.getState().office;
     const mabariFiles = new Set(
@@ -1079,12 +1111,12 @@ export class OfficeScene {
               dim: !matches(walker, ui),
               ring: ui.selected === walker.id ? walker.hue : '',
             })
-          : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
+          : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id, calm),
     }));
     if (restingShown) {
       for (const { def, walker } of this.resting) {
         const on = ui.selected === restKey(def);
-        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, on) });
+        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, on, calm) });
       }
     }
     figures.sort((a, b) => a.y - b.y);

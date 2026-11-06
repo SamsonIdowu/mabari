@@ -1,0 +1,10 @@
+/* Command many at once: Pause everyone's room in the Agents header, and the quick switcher. */
+
+/*
+ * With the header stacked, its actions may shrink to the line they are on, so they wrap rather than
+ * run off the edge of a narrow window. A fifth action, Pause everyone, no longer fits one line at
+ * 390 px.
+ */
+.ohead.stack .ohact {
+  flex: 0 1 auto;
+}

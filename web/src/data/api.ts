@@ -343,6 +343,28 @@ export interface AccessInfo {
   token?: string;
 }
 
+/**
+ * What Pause everyone or Continue everyone did to one agent. Mirrors internal/server groupResult.
+ * `why` reads after the name, such as "is waiting for your approval", or is empty.
+ */
+export interface GroupResult {
+  id: string;
+  name: string;
+  outcome: 'paused' | 'resumed' | 'asked' | 'waiting' | 'skipped';
+  why: string;
+}
+
+/** The reply to POST /api/agents/interrupt and /continue. Mirrors internal/server groupReply. */
+export interface GroupReply {
+  results: GroupResult[];
+  paused: number;
+  resumed: number;
+  asked: number;
+  waiting: number;
+  skipped: number;
+  summary: string;
+}
+
 /** The reply to POST /api/desks/start. Mirrors internal/server deskStartResult. */
 export interface DeskStartResult {
   notice: string;
@@ -420,6 +442,10 @@ export const api = {
   vee: (text: string, projectId = '') => send<VeeResult>('POST', '/api/vee', { text, projectId }),
   agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
+  /** Pauses the working agents among the ones named. The server decides who can be paused. */
+  pauseEveryone: (ids: string[]) => send<GroupReply>('POST', '/api/agents/interrupt', { ids }),
+  /** Carries on the named agents that are still paused, which are the ones a pause stopped. */
+  continueEveryone: (ids: string[]) => send<GroupReply>('POST', '/api/agents/continue', { ids }),
   createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>

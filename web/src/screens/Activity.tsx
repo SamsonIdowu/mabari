@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, emptyLogText, filterLog, logAgents, logTypes } from '../format.ts';
+import { ExportMenu } from './ExportMenu.tsx';
 import { PageHead } from './parts.tsx';
 
 const TYPE_CHIPS: Record<string, string> = {
@@ -74,6 +75,7 @@ export function Activity() {
               </option>
             ))}
           </select>
+          <ExportMenu filters={{ search, type, agent: shownAgent }} />
         </div>
         <div className="table-wrap">
           <table>

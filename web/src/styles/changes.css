@@ -48,6 +48,10 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
+  /* One row as tall as the body, never as tall as the diffs. An automatic row grew with them, ran
+     out of the dialog, and made the whole page behind it a few thousand pixels long, which a
+     scroll or a focus moved, taking the dialog's top out of view. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
 }
 .chbody > .chempty,
@@ -66,6 +70,10 @@
 
 /* The files */
 .chlist {
+  /* Positioned, so the screen reader only text inside it (position: absolute) belongs to it and is
+     cut off by it. Left to the page, each of those words stood where it fell in the long list, a
+     few thousand pixels down, and made the page behind the dialog that tall to scroll. */
+  position: relative;
   overflow: auto;
   min-height: 0;
   border: 1px solid var(--line);
@@ -143,6 +151,7 @@
 
 /* The diffs */
 .chfiles {
+  position: relative;
   overflow: auto;
   min-height: 0;
   display: flex;
@@ -394,8 +403,9 @@
   flex-basis: 100%;
   margin: 0;
 }
+/* The line is always there, empty or not, so what it says doesn't push the diffs about. */
 .chstatus:empty {
-  display: none;
+  min-height: 1.4em;
 }
 .chalert {
   color: var(--red);

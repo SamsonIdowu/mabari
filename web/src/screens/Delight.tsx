@@ -100,8 +100,8 @@ function TrophyDialog({ id }: { id: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span className="flabel">What got done</span>
           {done.tasks.length ? (
-            done.tasks.map((task) => (
-              <div className="doneitem" key={task}>
+            done.tasks.map((task, index) => (
+              <div className="doneitem" key={`${index}:${task}`}>
                 <Check />
                 <span>{task}</span>
               </div>

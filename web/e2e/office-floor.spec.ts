@@ -473,7 +473,14 @@ for (const [width, height] of SMALL) {
         return { max: main.scrollHeight - main.clientHeight, at: main.scrollTop };
       });
     const reached = await scroll();
-    expect(reached.max).toBeGreaterThan(0);
+    if (height < 600) {
+      // A short window can't hold the header, the banner and a floor of that height at once.
+      expect(reached.max).toBeGreaterThan(0);
+    } else {
+      // A phone's header is a few short rows now, so the header, the banner and a floor taller
+      // than 359 px all fit the screen at once, and nothing needs scrolling to be reached.
+      expect(reached.max).toBeLessThanOrEqual(8);
+    }
 
     // At the bottom, the toolbar is on screen and clickable, and it stays so while the floor
     // updates (the header re-measures itself, which once threw the page back to the top).

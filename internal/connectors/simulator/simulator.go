@@ -1082,8 +1082,8 @@ func (s *Simulator) loadDemo() {
 		spec.shown = s.freeName(spec.name)
 		s.makeAgent(spec)
 	}
-	if rune := s.demoAgent("Rune"); rune != nil {
-		s.runtimeOf(rune).doneUntil = now + 25000
+	if writer := s.demoAgent("Rune"); writer != nil {
+		s.runtimeOf(writer).doneUntil = now + 25000
 	}
 	for _, agent := range s.demoAgents() {
 		agent.Rate = float64(agent.Rate / demoSlowdown)

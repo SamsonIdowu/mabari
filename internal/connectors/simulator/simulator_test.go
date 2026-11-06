@@ -438,24 +438,24 @@ func TestTheDemoTurnsItselfOff(t *testing.T) {
 // desk the demo wants, in a project with one of the demo's ids, with history of every kind.
 func realOffice(t *testing.T, engine *events.Engine) *models.LiveAgent {
 	t.Helper()
-	real := &models.LiveAgent{}
+	mine := &models.LiveAgent{}
 	_ = engine.Do(func() {
 		work := engine.SaveProject(models.Project{ID: "checkout", Name: "My real checkout"})
-		real.Name, real.Source, real.Provider = "Atlas", "codex", models.ProviderOpenAI
-		real.State, real.Desk, real.Project, real.Task = models.StateEditing, 2, &work.ID, "Real work"
-		engine.AddAgent(real)
+		mine.Name, mine.Source, mine.Provider = "Atlas", "codex", models.ProviderOpenAI
+		mine.State, mine.Desk, mine.Project, mine.Task = models.StateEditing, 2, &work.ID, "Real work"
+		engine.AddAgent(mine)
 		other := &models.LiveAgent{}
 		other.Name, other.Source, other.Desk = "Hazel", "hub", 0
 		engine.AddAgent(other)
-		engine.Converse(real.ID, models.ConversationItem{Kind: models.ConversationUser, Text: "a real message"})
-		engine.AddEvent(real, "edit", "A real step", nil)
-		engine.AddMessage(real, other, "A real hand-off", models.MessageHandoff, 0)
-		engine.Queue(real, "A real queued instruction")
-		engine.RequestApproval(real, models.Approval{Type: models.ApprovalCommand, Title: "Run a real thing",
+		engine.Converse(mine.ID, models.ConversationItem{Kind: models.ConversationUser, Text: "a real message"})
+		engine.AddEvent(mine, "edit", "A real step", nil)
+		engine.AddMessage(mine, other, "A real hand-off", models.MessageHandoff, 0)
+		engine.Queue(mine, "A real queued instruction")
+		engine.RequestApproval(mine, models.Approval{Type: models.ApprovalCommand, Title: "Run a real thing",
 			RiskLevel: models.RiskHigh})
 		engine.Log("You", models.LogSession, "A real log row", "Done", "")
 	})
-	return real
+	return mine
 }
 
 // checkRealOffice proves everything realOffice made is still there, from the store as well as the
@@ -469,12 +469,12 @@ func checkRealOffice(t *testing.T, engine *events.Engine, id string) {
 	if found < 0 {
 		t.Fatalf("the real agent is gone: %+v", snapshot.Agents)
 	}
-	real := snapshot.Agents[found]
-	if real.Name != "Atlas" || real.Desk != 2 || real.Task != "Real work" || real.Project == nil || *real.Project != "checkout" {
-		t.Fatalf("the real agent changed: %+v", real.Agent)
+	mine := snapshot.Agents[found]
+	if mine.Name != "Atlas" || mine.Desk != 2 || mine.Task != "Real work" || mine.Project == nil || *mine.Project != "checkout" {
+		t.Fatalf("the real agent changed: %+v", mine.Agent)
 	}
-	if real.Approval == nil || real.Approval.Title != "Run a real thing" || len(real.Queued) != 1 {
-		t.Fatalf("approval %+v, queued %+v", real.Approval, real.Queued)
+	if mine.Approval == nil || mine.Approval.Title != "Run a real thing" || len(mine.Queued) != 1 {
+		t.Fatalf("approval %+v, queued %+v", mine.Approval, mine.Queued)
 	}
 	if !slices.ContainsFunc(snapshot.Projects, func(project models.Project) bool {
 		return project.ID == "checkout" && project.Name == "My real checkout"
@@ -509,18 +509,18 @@ func checkRealOffice(t *testing.T, engine *events.Engine, id string) {
 // given its approval, its project or its rate. The two can't be mistaken for each other either.
 func TestTheDemoJoinsARealOfficeWithoutTouchingIt(t *testing.T) {
 	sim, engine, _, _ := setup(t, ":memory:", 1)
-	real := realOffice(t, engine)
-	rate := real.Rate
+	mine := realOffice(t, engine)
+	rate := mine.Rate
 	if err := sim.LoadDemo(); err != nil {
 		t.Fatal(err)
 	}
-	checkRealOffice(t, engine, real.ID)
+	checkRealOffice(t, engine, mine.ID)
 	snapshot := engine.Snapshot()
 	if len(snapshot.Agents) != 12 {
 		t.Fatalf("%d agents during the demo", len(snapshot.Agents))
 	}
-	if real.Rate != rate {
-		t.Errorf("the demo changed the real agent's rate to %v", real.Rate)
+	if mine.Rate != rate {
+		t.Errorf("the demo changed the real agent's rate to %v", mine.Rate)
 	}
 	desks, names := map[int]string{}, map[string]bool{}
 	for _, agent := range snapshot.Agents {
@@ -582,7 +582,7 @@ func TestEndingTheDemoLeavesTheRealOfficeWhole(t *testing.T) {
 	}
 	t.Run("stopped", func(t *testing.T) {
 		sim, engine, _, _ := setup(t, ":memory:", 1)
-		real := realOffice(t, engine)
+		mine := realOffice(t, engine)
 		for range 2 {
 			if err := sim.LoadDemo(); err != nil {
 				t.Fatal(err)
@@ -591,26 +591,26 @@ func TestEndingTheDemoLeavesTheRealOfficeWhole(t *testing.T) {
 		if err := engine.Do(sim.StopDemo); err != nil {
 			t.Fatal(err)
 		}
-		check(t, engine, real.ID)
+		check(t, engine, mine.ID)
 	})
 	t.Run("timed out", func(t *testing.T) {
 		sim, engine, c, _ := setup(t, ":memory:", 1)
-		real := realOffice(t, engine)
+		mine := realOffice(t, engine)
 		sim.SetDemoLength(10 * time.Second)
 		if err := sim.LoadDemo(); err != nil {
 			t.Fatal(err)
 		}
 		advance(t, sim, c, 12)
-		check(t, engine, real.ID)
+		check(t, engine, mine.ID)
 	})
 	t.Run("restarted", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "office.db")
 		sim, engine, _, s := setup(t, path, 1)
-		real := realOffice(t, engine)
+		mine := realOffice(t, engine)
 		if err := sim.LoadDemo(); err != nil {
 			t.Fatal(err)
 		}
-		id := real.ID
+		id := mine.ID
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}

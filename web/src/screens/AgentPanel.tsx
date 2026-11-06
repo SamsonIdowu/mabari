@@ -45,7 +45,7 @@ function elapsedText(seconds: number): string {
  * one that is quiet counts on here. The demo's agents run on office time, which only it can tell.
  */
 function RunningFor({ agent }: { agent: Pick<LiveAgent, 'elapsed' | 'source'> }) {
-  const [since, setSince] = useState({ seconds: agent.elapsed, at: Date.now() });
+  const [since, setSince] = useState(() => ({ seconds: agent.elapsed, at: Date.now() }));
   const [now, setNow] = useState(Date.now);
   if (since.seconds !== agent.elapsed) setSince({ seconds: agent.elapsed, at: now });
   const ticking = agent.source !== 'sim';

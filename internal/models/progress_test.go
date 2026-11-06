@@ -10,11 +10,11 @@ import (
 // A real agent has been here since it arrived. The demo keeps its own office time.
 func TestElapsedIsRealForRealAgents(t *testing.T) {
 	now := time.UnixMilli(1_000_000_000)
-	real := &LiveAgent{}
-	real.Source, real.CreatedAt = "claude", now.Add(-15*time.Minute).UnixMilli()
-	real.Refresh(now)
-	if real.Elapsed != 15*60 {
-		t.Errorf("real agent: %d", real.Elapsed)
+	agent := &LiveAgent{}
+	agent.Source, agent.CreatedAt = "claude", now.Add(-15*time.Minute).UnixMilli()
+	agent.Refresh(now)
+	if agent.Elapsed != 15*60 {
+		t.Errorf("real agent: %d", agent.Elapsed)
 	}
 	demo := &LiveAgent{}
 	demo.Source, demo.CreatedAt, demo.Elapsed = SourceDemo, now.UnixMilli(), 700

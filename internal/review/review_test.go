@@ -370,7 +370,7 @@ func TestARenameWithEditsShowsItsRealDiff(t *testing.T) {
 	kinds := map[string]int{}
 	for _, hunk := range file.Hunks {
 		for _, line := range hunk.Lines {
-			kinds[string(line.Kind)]++
+			kinds[line.Kind]++
 		}
 	}
 	if kinds["ctx"] != 1 || kinds["add"] != 4 {

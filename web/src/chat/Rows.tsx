@@ -27,18 +27,18 @@ function Dot({ who }: { who: Who }) {
   return <span className="idot" style={{ ['--ac' as string]: who.hue }} aria-hidden="true" />;
 }
 
-/** Who spoke, when, for a reply in a project's thread and anywhere that more than one agent speaks. */
+/** Who spoke and when. A link to their chat in a project's thread, where more than one agent speaks. */
 function Byline({ who, time, showWho }: { who: Who; time: number; showWho: boolean }) {
   return (
     <div className="mby">
+      <Dot who={who} />
       {showWho ? (
-        <>
-          <Dot who={who} />
-          <a className="mwho" href={chatHash.agent(who.id)}>
-            {who.name}
-          </a>
-        </>
-      ) : null}
+        <a className="mwho" href={chatHash.agent(who.id)}>
+          {who.name}
+        </a>
+      ) : (
+        <b className="mwho">{who.name}</b>
+      )}
       <time className="num">{clockText(time)}</time>
     </div>
   );

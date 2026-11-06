@@ -563,11 +563,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           ref={box}
           rows={1}
           value={text}
-          placeholder={
-            agent
-              ? `Tell ${agent.name} what to do. @ adds a file or another agent, / lists commands`
-              : `Tell ${name} what to do. Mabari sends it to whoever can take it`
-          }
+          placeholder={agent ? `Tell ${agent.name} what to do` : `Tell ${name} what to do`}
           aria-autocomplete="list"
           aria-controls={open ? popId : undefined}
           aria-activedescendant={open ? optionId(active) : undefined}
@@ -693,7 +689,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         {delivery
           ? delivery.note
           : `Mabari sends it to whoever on ${name} can take it, and says who answered.`}{' '}
-        {plan ? planNote(agent) : 'Enter sends. Shift and Enter start a new line.'}
+        {plan
+          ? planNote(agent)
+          : 'Enter sends. Type @ for a file or another agent, / for a command.'}
         {waiting ? ' Waiting for files to finish adding.' : ''}
       </p>
       {saved ? (

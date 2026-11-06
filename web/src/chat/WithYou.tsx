@@ -59,7 +59,8 @@ function List({ office, selected }: { office: Snapshot; selected: string }) {
   const entries = useMemo(() => chatEntries(office), [office]);
   const agents = entries.agents.filter((entry) => entryMatches(entry, search));
   const projects = entries.projects.filter((entry) => entryMatches(entry, search));
-  const needs = [...entries.agents, ...entries.projects].filter((entry) => entry.needs).length;
+  // Counted by agent, as the badge and Home count: a project only holds some of the same agents.
+  const needs = entries.agents.filter((entry) => entry.needs).length;
   return (
     <div className="card chlist">
       <div className="cardhd">

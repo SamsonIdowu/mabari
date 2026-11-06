@@ -2,8 +2,10 @@
    prototype's tokens, chips, cards and buttons. Only an approval or an error is red, and a queued
    message is amber: everything else stays quiet. */
 
-.chwrap {
-  grid-template-columns: 330px minmax(0, 1fr);
+@media (min-width: 981px) {
+  .chwrap {
+    grid-template-columns: 330px minmax(0, 1fr);
+  }
 }
 .chwrap > .card {
   display: flex;
@@ -66,9 +68,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.chrow.red .chdet {
-  color: var(--red);
 }
 .chrow.amber .chdet {
   color: var(--amber);
@@ -632,6 +631,7 @@
 }
 .cbox:focus-within {
   border-color: var(--fg2);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .cbox textarea {
   display: block;

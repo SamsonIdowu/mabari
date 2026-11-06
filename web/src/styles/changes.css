@@ -449,3 +449,12 @@
   overflow-wrap: anywhere;
   min-width: 0;
 }
+
+/* Comments on lines that have left the diff, and the second opinions when there is no diff. */
+.chbody > .chopinions {
+  grid-column: 1 / -1;
+}
+.chorphans .chcard {
+  position: static;
+  width: auto;
+}

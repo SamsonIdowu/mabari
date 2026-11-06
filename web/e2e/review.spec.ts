@@ -489,6 +489,72 @@ test('a project card has Changes too, for its folder or its agents', async ({ pa
   await expect(real.getByTestId('changesDemo')).toHaveCount(0);
 });
 
+test('a project whose agents work in different folders asks for one folder, and shows none', async ({
+  page,
+  request,
+}) => {
+  const token = await hubToken(request);
+  const repo = repoWithChanges();
+  const other = mkdtempSync(join(tmpdir(), 'mabari-other-'));
+  made.push(other);
+  await seat(request, token, 'review-worker', 'Worker', repo);
+  await seat(request, token, 'review-other', 'Other', other);
+  const project = (await (
+    await request.post('/api/projects', { data: { name: 'Split shop', color: '#FF6B9A' } })
+  ).json()) as { id: string };
+  for (const name of ['Worker', 'Other']) {
+    const id = await idOf(request, name);
+    const placed = await request.patch(`/api/agents/${id}`, { data: { projectId: project.id } });
+    expect(placed.status(), await placed.text()).toBe(200);
+  }
+  await page.goto('/#projects');
+  await page
+    .locator('article.card', { hasText: 'Split shop' })
+    .getByRole('button', { name: 'Changes' })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Changes in Split shop' });
+  await expect(dialog.getByTestId('changesProblem')).toContainText('work in different folders');
+  await expect(dialog.getByTestId('changesProblem')).toContainText('Attach one folder');
+  await expect(dialog.getByRole('navigation', { name: 'Changed files' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Ask for a second opinion' })).toBeDisabled();
+});
+
+test('a comment on a line the agent has since changed is kept apart, and still goes out', async ({
+  page,
+  request,
+}) => {
+  const repo = repoWithChanges();
+  const token = await hubToken(request);
+  await seat(request, token, 'review-worker', 'Worker', repo);
+  await page.goto('/#home');
+  const dialog = await openChanges(page, request, 'Worker');
+  await comment(dialog, 'TWO', 'Keep the lower case spelling.');
+  await expect(dialog.getByTestId('orphanComments')).toHaveCount(0);
+  // The agent rewrites that very line.
+  write(repo, 'src/app.ts', 'one\nsomething else\nthree\nfour\n');
+  const apart = dialog.getByTestId('orphanComments');
+  await expect(apart).toContainText('Keep the lower case spelling.', { timeout: 15_000 });
+  await expect(apart).toContainText('src/app.ts, line 2');
+  await expect(dialog.getByTestId('reviewCount')).toHaveText('1 comment');
+  // It still goes with the review, as it was written.
+  await dialog.getByRole('button', { name: 'Send comment to Worker' }).click();
+  await expect(
+    dialog.getByRole('status').filter({ hasText: 'Sent your comment to Worker.' }),
+  ).toBeVisible();
+  expect(await collect(request, token, 'review-worker')).toEqual([
+    'Review comment on src/app.ts, line 2 (`TWO`): Keep the lower case spelling.',
+  ]);
+  await expect(apart).toHaveCount(0);
+
+  // One that is taken back before sending isn't sent.
+  await comment(dialog, 'something else', 'Another thought.');
+  write(repo, 'src/app.ts', 'one\nchanged again\nthree\nfour\n');
+  await expect(apart).toContainText('Another thought.', { timeout: 15_000 });
+  await apart.getByRole('button', { name: /^Remove your comment/ }).click();
+  await expect(apart).toHaveCount(0);
+  await expect(dialog.getByTestId('reviewCount')).toHaveCount(0);
+});
+
 test('the keyboard does it all: lines, comments, Escape, and back to where it was', async ({
   page,
   request,

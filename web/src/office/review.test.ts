@@ -6,6 +6,7 @@ import {
   lineKey,
   lineRef,
   opinionView,
+  orphanComments,
   pathText,
   quoted,
   reviewText,
@@ -168,6 +169,41 @@ describe('where a second opinion stands', () => {
   it('says so when the reviewer has left, and when it was sent with no way to follow it', () => {
     expect(opinionView(opinion, []).status).toBe('gone');
     expect(opinionView({ ...opinion, instructionId: '' }, [reviewer({})]).status).toBe('sent');
+  });
+});
+
+describe('comments whose line has left the diff', () => {
+  const changed = {
+    path: 'src/app.ts',
+    oldPath: '',
+    hunks: [
+      {
+        header: '@@ -1,2 +1,2 @@',
+        lines: [
+          { kind: 'del', old: 1, new: 0, text: 'two' },
+          { kind: 'add', old: 0, new: 1, text: 'TWO' },
+          { kind: 'ctx', old: 2, new: 2, text: 'three' },
+        ],
+      },
+    ],
+  } as unknown as ChangedFile;
+
+  it('are the ones with no line in the diff now, and the others stay under their line', () => {
+    const here = comment({ id: 'a', line: 1, text: 'TWO' });
+    const kept = comment({ id: 'b', side: 'old', line: 1, text: 'two' });
+    const moved = comment({ id: 'c', line: 40 });
+    const away = comment({ id: 'd', path: 'src/other.ts', line: 1, text: 'TWO' });
+    // The same number on the other side of the file is another line.
+    const otherSide = comment({ id: 'e', side: 'old', line: 2, text: 'three' });
+    // The line is still there, but holds other words than the ones the comment was about.
+    const reworded = comment({ id: 'f', line: 1, text: 'TWO, as it was' });
+    expect(
+      orphanComments([changed], [here, kept, moved, away, otherSide, reworded]).map(
+        (item) => item.id,
+      ),
+    ).toEqual(['c', 'd', 'e', 'f']);
+    expect(orphanComments([], [here]).map((item) => item.id)).toEqual(['a']);
+    expect(orphanComments([changed], [])).toEqual([]);
   });
 });
 

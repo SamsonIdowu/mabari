@@ -27,6 +27,7 @@ import {
   newCommentId,
   OPINION_WORDS,
   opinionView,
+  orphanComments,
   pathText,
   reviewText,
   statusLabel,
@@ -260,7 +261,10 @@ interface FileProps {
 const FileView = memo(function FileView(props: FileProps) {
   const { file, comments, composing } = props;
   const rows = useMemo(() => rowsOf(file), [file]);
-  const [active, setActive] = useState(0);
+  const [asked, setActive] = useState(0);
+  // The diff changes under the reader as the agent works, so the one tab stop stays on a line
+  // that is still there.
+  const active = Math.min(asked, Math.max(0, rows.filter((row) => row.stop >= 0).length - 1));
   const body = useRef<HTMLTableSectionElement>(null);
   const moveTo = (stop: number) => {
     const buttons = body.current?.querySelectorAll<HTMLButtonElement>('button.chbtn');
@@ -464,6 +468,43 @@ function Opinions({ keyOf, agents }: { keyOf: string; agents: LiveAgent[] }) {
   );
 }
 
+/** Comments on lines that are not in the diff now. They still go with the review. */
+function Orphans(props: { comments: ReviewComment[]; remove: (id: string) => void }) {
+  if (!props.comments.length) return null;
+  return (
+    <section
+      className="chopinions chorphans"
+      aria-label="Comments on lines that are not shown"
+      data-testid="orphanComments"
+    >
+      <h3>Comments on lines that are not shown</h3>
+      <p className="help">
+        The agent has changed these lines since, or the file no longer differs. They still go with
+        the review.
+      </p>
+      {props.comments.map((item) => (
+        <article className="chcard" key={item.id}>
+          <span className="chcomment">
+            <b className="mono">
+              {item.path}, line {item.line}
+            </b>
+            <br />
+            {item.comment}
+          </span>
+          <button
+            type="button"
+            className="linkbtn"
+            aria-label={`Remove your comment on line ${item.line} of ${item.path}`}
+            onClick={() => props.remove(item.id)}
+          >
+            Remove
+          </button>
+        </article>
+      ))}
+    </section>
+  );
+}
+
 function reviewersFor(office: Snapshot, target: ReviewTarget): LiveAgent[] {
   return counted(office.agents).filter(
     (agent) => agent.id !== target.id || target.kind !== 'agent',
@@ -606,9 +647,12 @@ export function ChangesDialog({ target, close }: { target: ReviewTarget; close: 
   const changes = query.data;
   const who = agent?.name ?? (project ? `the ${project.name} team` : 'the agent');
   const title = agent ? `Changes by ${agent.name}` : `Changes in ${project?.name ?? 'the project'}`;
+  const files = useMemo(() => changes?.files ?? [], [changes]);
+  const orphans = useMemo(() => orphanComments(files, comments), [files, comments]);
   const byFile = useMemo(() => {
     const grouped = new Map<string, Map<string, ReviewComment[]>>();
-    for (const item of comments) {
+    // Under their lines, unless the line has gone: those are listed apart.
+    for (const item of comments.filter((one) => !orphans.includes(one))) {
       const forFile = grouped.get(item.path) ?? new Map<string, ReviewComment[]>();
       const forLine = forFile.get(lineKey(item)) ?? [];
       forLine.push(item);
@@ -616,7 +660,7 @@ export function ChangesDialog({ target, close }: { target: ReviewTarget; close: 
       grouped.set(item.path, forFile);
     }
     return grouped;
-  }, [comments]);
+  }, [comments, orphans]);
   const noComments = useMemo(() => new Map<string, ReviewComment[]>(), []);
 
   const open = useCallback((ref: LineRef) => setComposing(ref), []);
@@ -695,7 +739,6 @@ export function ChangesDialog({ target, close }: { target: ReviewTarget; close: 
     }
   };
 
-  const files = changes?.files ?? [];
   const sub = changes ? `${filesText(changes.fileCount)}` : '';
   return (
     <Modal>
@@ -775,7 +818,12 @@ export function ChangesDialog({ target, close }: { target: ReviewTarget; close: 
               {query.isError ? query.error.message : 'Reading the folder…'}
             </p>
           ) : changes.state !== 'ok' || changes.fileCount === 0 ? (
-            <Notice changes={changes} />
+            <>
+              <Notice changes={changes} />
+              {/* What was asked for and what came back stays in view, whatever the folder shows now. */}
+              {office ? <Opinions keyOf={key} agents={office.agents} /> : null}
+              <Orphans comments={comments} remove={remove} />
+            </>
           ) : (
             <>
               <FileList
@@ -792,6 +840,7 @@ export function ChangesDialog({ target, close }: { target: ReviewTarget; close: 
                   </p>
                 ) : null}
                 {office ? <Opinions keyOf={key} agents={office.agents} /> : null}
+                <Orphans comments={orphans} remove={remove} />
                 {files.map((file) => (
                   <FileView
                     key={file.id}

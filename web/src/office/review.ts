@@ -40,6 +40,24 @@ export function lineRef(file: ChangedFile, line: ChangeLine): LineRef | null {
 export const lineKey = (ref: Pick<LineRef, 'path' | 'side' | 'line'>): string =>
   `${ref.path}\u0000${ref.side}\u0000${ref.line}`;
 
+/**
+ * Comments whose line is not in the diff now: the agent has gone on to change it, so that line
+ * number holds other text, or the file is no longer changed. They aren't lost, and still go with
+ * the review, as written, but there is no line to show them under, so they are listed apart.
+ */
+export function orphanComments(files: ChangedFile[], comments: ReviewComment[]): ReviewComment[] {
+  const present = new Map<string, string>();
+  for (const file of files) {
+    for (const hunk of file.hunks) {
+      for (const line of hunk.lines) {
+        const ref = lineRef(file, line);
+        if (ref) present.set(lineKey(ref), ref.text);
+      }
+    }
+  }
+  return comments.filter((item) => present.get(lineKey(item)) !== item.text);
+}
+
 const QUOTE_MAX = 80;
 
 /** A line of code as it is quoted in an instruction: trimmed, cut short, and with no backticks to break the quote. */

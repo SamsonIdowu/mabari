@@ -382,38 +382,66 @@ func (s *Store) SaveLog(ctx context.Context, e models.LogEntry) error {
 	return err
 }
 
-// LogQuery filters the activity log.
+// LogQuery filters the activity log. Search finds a word in the agent, type, message or outcome,
+// as the Activity page's search box does. Agent and Outcome match exactly. Since and Until, when
+// above zero, keep rows from Since up to and including Until, in Unix milliseconds.
 type LogQuery struct {
-	Search string
-	Type   models.LogType
-	Limit  int
+	Search  string
+	Type    models.LogType
+	Agent   string
+	Outcome string
+	Since   int64
+	Until   int64
+	Limit   int
 }
 
-// Log lists activity, newest first.
-func (s *Store) Log(ctx context.Context, q LogQuery) ([]models.LogEntry, error) {
+// where is the query's conditions as SQL, with their arguments.
+func (q LogQuery) where() (string, []any) {
 	var clauses []string
 	var args []any
 	if q.Type != "" {
 		clauses = append(clauses, "type = ?")
 		args = append(args, q.Type)
 	}
+	if q.Agent != "" {
+		clauses = append(clauses, "agent = ?")
+		args = append(args, q.Agent)
+	}
+	if q.Outcome != "" {
+		clauses = append(clauses, "outcome = ?")
+		args = append(args, q.Outcome)
+	}
+	if q.Since > 0 {
+		clauses = append(clauses, "at >= ?")
+		args = append(args, q.Since)
+	}
+	if q.Until > 0 {
+		clauses = append(clauses, "at <= ?")
+		args = append(args, q.Until)
+	}
 	if q.Search != "" {
 		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q.Search)
 		pattern := "%" + escaped + "%"
 		clauses = append(clauses, `(agent LIKE ? ESCAPE '\' OR message LIKE ? ESCAPE '\'
-			OR outcome LIKE ? ESCAPE '\')`)
-		args = append(args, pattern, pattern, pattern)
+			OR outcome LIKE ? ESCAPE '\' OR type LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern, pattern)
 	}
-	query := "SELECT id, at, agent, type, message, outcome, chip FROM activity_log"
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
+	if len(clauses) == 0 {
+		return "", nil
 	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// Log lists activity, newest first.
+func (s *Store) Log(ctx context.Context, q LogQuery) ([]models.LogEntry, error) {
+	where, args := q.where()
 	limit := q.Limit
 	if limit <= 0 {
 		limit = 500
 	}
-	rows, err := s.db.QueryContext(ctx, query+" ORDER BY at DESC, rowid DESC LIMIT ?",
-		append(args, limit)...)
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, at, agent, type, message, outcome, chip FROM activity_log"+where+
+			" ORDER BY at DESC, rowid DESC LIMIT ?", append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -428,6 +456,14 @@ func (s *Store) Log(ctx context.Context, q LogQuery) ([]models.LogEntry, error) 
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// LogCount is how many rows match the query, whatever its Limit.
+func (s *Store) LogCount(ctx context.Context, q LogQuery) (int, error) {
+	where, args := q.where()
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM activity_log"+where, args...).Scan(&count)
+	return count, err
 }
 
 // Meta reads a stored value. Missing keys return "".
@@ -481,19 +517,22 @@ func (s *Store) DeleteOlderThan(ctx context.Context, cutoff int64) (events, log 
 		return 0, 0, err
 	}
 	log, err = result.RowsAffected()
-	return events, log, err
+	if err != nil {
+		return 0, 0, err
+	}
+	return events, log, s.deleteStateChangesBefore(ctx, cutoff)
 }
 
 // ClearOffice empties agents and everything hanging off them, keeping settings and accounts.
 func (s *Store) ClearOffice(ctx context.Context) error {
 	return s.clear(ctx, "session_states", "agents", "events", "messages", "instructions",
-		"approvals", "activity_log", "projects")
+		"approvals", "activity_log", "state_changes", "projects")
 }
 
 // Wipe empties every table.
 func (s *Store) Wipe(ctx context.Context) error {
 	return s.clear(ctx, "session_states", "agents", "events", "messages", "instructions",
-		"approvals", "activity_log", "projects", "accounts", "settings")
+		"approvals", "activity_log", "state_changes", "projects", "accounts", "settings")
 }
 
 func (s *Store) clear(ctx context.Context, tables ...string) error {

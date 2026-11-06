@@ -529,6 +529,20 @@ type goldenFrame struct {
 	Log      int           `json:"log"`
 }
 
+// The port also logs an agent finishing a task, or stopping with an error, which the prototype
+// doesn't, because the "While you were away" recap is built from those rows. The golden test
+// counts the rest. A row is one of those when it is a session whose outcome names it.
+func prototypeLogRows(log []models.LogEntry) int {
+	count := 0
+	for _, row := range log {
+		if row.Type == models.LogSession && (row.Outcome == models.OutcomeFinished || row.Outcome == models.OutcomeError) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
 // The port knowingly differs from the prototype in what agents say to each other, in two ways,
 // and the golden test sets both aside so everything else is still checked against the prototype.
 //
@@ -601,7 +615,7 @@ func TestMatchesThePrototype(t *testing.T) {
 		if got := withoutMinutes(withoutFolders(snapshot.Messages[len(snapshot.Messages)-1].Text)); got != withoutMinutes(frame.LastText) {
 			t.Fatalf("tick %d: last message %q, prototype has %q", tick, got, frame.LastText)
 		}
-		if got := len(snapshot.Log); got != frame.Log {
+		if got := prototypeLogRows(snapshot.Log); got != frame.Log {
 			t.Fatalf("tick %d: %d log rows, prototype has %d", tick, got, frame.Log)
 		}
 	}

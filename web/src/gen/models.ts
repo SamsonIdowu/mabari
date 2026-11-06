@@ -769,6 +769,10 @@ export interface Snapshot {
    * Defs are the agent definitions found in the agent folders on this computer.
    */
   defs: AgentDef[];
+  /**
+   * Watches are the "tell me when it's done" waits, oldest first. See Watch.
+   */
+  watches: Watch[];
 }
 /**
  * DefScope says where an agent definition's file lives.
@@ -889,6 +893,14 @@ export const MsgDefs = "defs"; // The agent definitions changed; Defs is the who
  */
 export const MsgReset = "reset"; // The office was replaced by a wipe or the demo: reload and clear the view.
 /**
+ * MsgWatches carries every watch, after one was set, cleared or fired.
+ */
+export const MsgWatches = "watches";
+/**
+ * MsgWatchFired says a watch has just fired, with what to tell the person.
+ */
+export const MsgWatchFired = "watch.fired";
+/**
  * ServerMessage is one WebSocket message. Type says which of the other fields is set.
  */
 export interface ServerMessage {
@@ -905,6 +917,8 @@ export interface ServerMessage {
   settings: Settings | null;
   defs: AgentDef[] | null;
   text: string | null;
+  watches: Watch[] | null;
+  fired: WatchFired | null;
 }
 /**
  * WhisperStatus is what Settings shows about Local Whisper.
@@ -922,4 +936,87 @@ export interface WhisperStatus {
   done: number /* int64 */;
   total: number /* int64 */;
   error: string;
+}
+
+//////////
+// source: watch.go
+
+/**
+ * WatchKind says what a Watch waits on.
+ */
+export type WatchKind = string;
+/**
+ * WatchAgent waits for one agent to be done.
+ */
+export const WatchAgent: WatchKind = "agent";
+/**
+ * WatchProject waits for every agent on a project to have finished.
+ */
+export const WatchProject: WatchKind = "project";
+/**
+ * WatchOutcome is how the thing a watch waits on ended: done, or stopped by an error. The empty
+ * value means it has not ended.
+ */
+export type WatchOutcome = string;
+/**
+ * Watch outcomes.
+ */
+export const WatchDone: WatchOutcome = "done";
+/**
+ * Watch outcomes.
+ */
+export const WatchFailed: WatchOutcome = "error";
+/**
+ * Watch is "tell me when it's done": a one-shot kept by the server, so it outlives a page reload.
+ * It fires once, when its agent is done or stops with an error, or when every agent on its project
+ * has finished, and then clears itself. It also clears itself when its agent or project is gone.
+ */
+export interface Watch {
+  id: string;
+  kind: WatchKind;
+  /**
+   * Target is the id of the agent or project.
+   */
+  target: string;
+  /**
+   * Name is what it was called when the watch was set, for a line about it once it has gone.
+   */
+  name: string;
+  time: number /* int64 */;
+  /**
+   * Then is an instruction for another agent, sent when the watch fires with the work done. It
+   * is null for a plain watch. Never sent after an error.
+   */
+  then: WatchThen | null;
+}
+/**
+ * WatchThen is the instruction a Watch carries: "when Ledger is done, tell Quill to review it".
+ * It names its agent by id, so if that agent leaves it is never sent to someone else.
+ */
+export interface WatchThen {
+  agentId: string;
+  agentName: string;
+  text: string;
+}
+/**
+ * WatchFired tells the page a watch has just fired, once, with what to say in each place.
+ */
+export interface WatchFired {
+  watch: string;
+  outcome: WatchOutcome;
+  /**
+   * AgentID is the agent to open from a notification: the one watched, or on a project the one
+   * that hit an error. It is empty for a project that finished with no error.
+   */
+  agentId: string;
+  projectId: string;
+  /**
+   * Text is the sentence for the toast and for Home's chat. It may name the task.
+   */
+  text: string;
+  /**
+   * Notice is the short line for a desktop notification. It names the agent or project and
+   * nothing else: no task, command, path or error text.
+   */
+  notice: string;
 }

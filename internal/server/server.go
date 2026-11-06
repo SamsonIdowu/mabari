@@ -101,6 +101,7 @@ func New(options Options) http.Handler {
 	})
 	a.routes(mux)
 	a.projectStartRoutes(mux)
+	a.watchRoutes(mux)
 	a.loginRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)

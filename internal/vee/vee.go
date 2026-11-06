@@ -106,6 +106,8 @@ type Reply struct {
 	Send *Send `json:"-"`
 	// Dispatch is set when the message is a task for the dispatcher, not something Mabari answers.
 	Dispatch bool `json:"-"`
+	// Watch is set when the message asks Mabari to watch an agent or a project. See Watching.
+	Watch *WatchAsk `json:"-"`
 }
 
 // Gesture order matters: "star jump" is a jump, as in the prototype.
@@ -262,6 +264,10 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 // projects, a task for the dispatcher (Dispatch).
 func AnswerIn(text string, in Office, now time.Time) Reply {
 	office := look(in.Agents, now)
+	// "tell me when Ledger is done" is no instruction for anyone, and comes before "tell Ledger to …".
+	if reply, ok := office.watching(text, in); ok {
+		return reply
+	}
 	q := strings.TrimSpace(strings.ToLower(apostrophes.Replace(text)))
 	reply, ok := office.passOn(text, q)
 	project, body, nameLength := namedProject(text, open(in.Projects))

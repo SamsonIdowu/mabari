@@ -74,6 +74,8 @@ type Engine struct {
 	defs []models.AgentDef
 	// accountNotes adds what only the running server knows to each account as the office shows it.
 	accountNotes func(account models.Account, demo bool) models.Account
+	// watches are the "tell me when it's done" waits. See watch.go.
+	watches []models.Watch
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -147,6 +149,9 @@ func (e *Engine) load(ctx context.Context) error {
 		return err
 	}
 	if err := e.loadAgents(ctx); err != nil {
+		return err
+	}
+	if err := e.loadWatches(ctx); err != nil {
 		return err
 	}
 	e.reseat()
@@ -243,6 +248,7 @@ func (e *Engine) Do(work func()) error {
 	defer e.mu.Unlock()
 	work()
 	e.flush()
+	e.settleWatches()
 	err := e.writeErr
 	e.writeErr = nil
 	return err
@@ -1202,6 +1208,7 @@ func (e *Engine) Wipe() {
 	settings.LANAccess = false
 	e.record(e.store.Wipe(context.Background()))
 	e.resetMemory()
+	e.watches = nil
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.firstRun, e.demo = true, false
@@ -1365,6 +1372,7 @@ func (e *Engine) Snapshot() models.Snapshot {
 		Log:        append([]models.LogEntry{}, e.log...),
 		Settings:   e.settings.Clone(),
 		Defs:       append([]models.AgentDef{}, e.defs...),
+		Watches:    append([]models.Watch{}, e.watches...),
 	}
 }
 

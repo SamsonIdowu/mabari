@@ -39,6 +39,9 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 		office := vee.Office{Agents: a.engine.Agents(), Projects: a.engine.Projects(), InView: body.ProjectID, Router: a.router}
 		result.Reply = vee.AnswerIn(text, office, a.engine.Now())
 		switch send := result.Reply.Send; {
+		case result.Reply.Watch != nil:
+			// "tell me when Ledger is done" sets a watch. It is no instruction for any agent.
+			result.Reply = a.watchForVee(*result.Reply.Watch)
 		case result.Reply.Route != nil:
 			route = a.routeForVee(*result.Reply.Route)
 			if route == nil {

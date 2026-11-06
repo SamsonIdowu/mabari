@@ -504,6 +504,8 @@ type Snapshot struct {
 	Settings   Settings    `json:"settings"`
 	// Defs are the agent definitions found in the agent folders on this computer.
 	Defs []AgentDef `json:"defs"`
+	// Watches are the "tell me when it's done" waits, oldest first. See Watch.
+	Watches []Watch `json:"watches"`
 }
 
 // DefScope says where an agent definition's file lives.
@@ -572,6 +574,11 @@ const (
 	MsgToast    = "toast"
 	MsgDefs     = "defs"  // The agent definitions changed; Defs is the whole list.
 	MsgReset    = "reset" // The office was replaced by a wipe or the demo: reload and clear the view.
+
+	// MsgWatches carries every watch, after one was set, cleared or fired.
+	MsgWatches = "watches"
+	// MsgWatchFired says a watch has just fired, with what to tell the person.
+	MsgWatchFired = "watch.fired"
 )
 
 // ServerMessage is one WebSocket message. Type says which of the other fields is set.
@@ -589,6 +596,9 @@ type ServerMessage struct {
 	Settings *Settings  `json:"settings,omitempty"`
 	Defs     []AgentDef `json:"defs,omitempty"`
 	Text     string     `json:"text,omitempty"`
+
+	Watches []Watch     `json:"watches,omitempty"`
+	Fired   *WatchFired `json:"fired,omitempty"`
 }
 
 // WhisperStatus is what Settings shows about Local Whisper.

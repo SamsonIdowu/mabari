@@ -73,6 +73,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/activity", a.activity)
 	mux.HandleFunc("GET /api/activity/export", a.exportActivity)
 	mux.HandleFunc("GET /api/recap", a.recapRoute)
+	mux.HandleFunc("GET /api/timeline", a.timelineRoute)
 
 	mux.HandleFunc("POST /api/dispatch/preview", a.previewDispatch)
 	mux.HandleFunc("POST /api/messages", a.sendMessage)

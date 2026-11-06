@@ -141,17 +141,21 @@ Make it exciting, and keep it working. All of it respects reduced motion, none o
 
 ## Tracker
 
+Status on 2026-11-06. Checked by independent testers in a browser, a code review and the full test suites, against the fake `claude`. The real `claude` has not been run. See `docs/INTEGRATIONS.md`.
+
 | # | Feature | Status |
 |---|---|---|
-| 1 | Alerts outside the page | open |
-| 2 | Tell me when it's done | open |
-| 3 | While you were away | open |
-| 4 | Export the log | open |
-| 5 | Quick switcher | open |
-| 6 | Pause everyone | open |
-| 2b | Then tell the next one | open |
-| 4b | Today's timeline | open |
-| P4 | Mabari runs the session | open |
-| P5 | The conversation | open |
-| P6 | Review the work | open |
-| P7 | A place worth opening | open |
+| 1 | Alerts outside the page | done |
+| 2 | Tell me when it's done | done |
+| 3 | While you were away | done |
+| 4 | Export the log | done |
+| 5 | Quick switcher | done |
+| 6 | Pause everyone | done |
+| 2b | Then tell the next one | done |
+| 4b | Today's timeline | done |
+| P4 | Mabari runs the session | done |
+| P5 | The conversation | done |
+| P6 | Review the work | done |
+| P7 | A place worth opening | done |
+
+Open: threads doubled before the fix stay doubled, and empty bubbles already stored stay, because nothing rewrites old threads. Activity rows written under Mabari, You or Everyone during a demo stay after it ends. Real desktop notifications, voice and the "No answer denies" path have not been tried against a real browser prompt, microphone or `claude`.

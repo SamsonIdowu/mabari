@@ -439,9 +439,10 @@ func (s *Store) Log(ctx context.Context, q LogQuery) ([]models.LogEntry, error) 
 	if limit <= 0 {
 		limit = 500
 	}
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, at, agent, type, message, outcome, chip FROM activity_log"+where+
-			" ORDER BY at DESC, rowid DESC LIMIT ?", append(args, limit)...)
+	// where is only fixed clauses with placeholders, built by LogQuery.where, never the caller's text.
+	query := "SELECT id, at, agent, type, message, outcome, chip FROM activity_log" + where + // #nosec G202
+		" ORDER BY at DESC, rowid DESC LIMIT ?"
+	rows, err := s.db.QueryContext(ctx, query, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}

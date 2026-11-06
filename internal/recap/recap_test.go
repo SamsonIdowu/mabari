@@ -111,7 +111,7 @@ func TestRecapOfAPeriod(t *testing.T) {
 	o := newOffice(t)
 	o.at(-60)
 	atlas := o.add("Atlas", models.StateEditing)
-	rune_ := o.add("Rune", models.StateEditing)
+	runner := o.add("Rune", models.StateEditing)
 	mori := o.add("Mori", models.StateEditing)
 	quill := o.add("Quill", models.StateEditing)
 	sage := o.add("Sage", models.StateEditing)
@@ -136,7 +136,7 @@ func TestRecapOfAPeriod(t *testing.T) {
 	o.at(10)
 	o.set(atlas, models.StateDone)
 	o.at(20)
-	o.set(rune_, models.StateDone)
+	o.set(runner, models.StateDone)
 	o.at(30)
 	o.set(mori, models.StateError)
 	o.at(40)
@@ -162,7 +162,7 @@ func TestRecapOfAPeriod(t *testing.T) {
 	}
 	// Newest first, each linked to its agent.
 	same(t, "finished", texts(got.Finished), []string{"Rune: Task of Rune", "Atlas: Task of Atlas"})
-	if first := got.Finished.Items[0]; first.AgentID != rune_.ID || first.Hue != rune_.Hue || first.Time != o.ms(20) {
+	if first := got.Finished.Items[0]; first.AgentID != runner.ID || first.Hue != runner.Hue || first.Time != o.ms(20) {
 		t.Errorf("first finished = %+v", first)
 	}
 	if got.AutoApproved.Count != 1 {

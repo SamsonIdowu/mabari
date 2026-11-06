@@ -120,7 +120,7 @@ func TestADayOfTransitions(t *testing.T) {
 	o := newOffice(t)
 
 	// Rune was already at work when the day began, and Quill leaves the office mid-morning.
-	rune_ := o.add("Rune", models.StateEditing)
+	runner := o.add("Rune", models.StateEditing)
 	o.at("9:00")
 	atlas := o.add("Atlas", models.StateReading)
 	quill := o.add("Quill", models.StateThinking)
@@ -147,7 +147,7 @@ func TestADayOfTransitions(t *testing.T) {
 	o.at("9:40")
 	o.do(func() { mori.State, mori.Error = models.StateError, "Lost the connection"; o.engine.Touch(mori) })
 	o.at("9:45")
-	o.set(rune_, models.StateIdle)
+	o.set(runner, models.StateIdle)
 	o.at("9:50")
 	o.do(func() { o.engine.Decide(approvalID, models.DecisionAllowed) })
 	o.set(atlas, models.StateEditing)

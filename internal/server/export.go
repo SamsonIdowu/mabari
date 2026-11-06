@@ -76,13 +76,7 @@ func exportRows(ctx context.Context, entries []models.LogEntry) ([]exportRow, er
 // of a field, and also after any separator the person's own settings may split the file on: a
 // comma, a semicolon (the list separator of Excel in many languages), a tab or a pipe, or a line
 // break. So a field such as x;=cmd() is a formula in a spreadsheet that splits on semicolons.
-const (
-	formulaStarts = "=+-@"
-	// cellSeparators are what a cell can begin after, besides the start of its field.
-	cellSeparators = ";,|\t\r\n"
-	// leadingBreaks in front of anything count as a trigger too, as spreadsheets advise.
-	leadingBreaks = "\t\r\n"
-)
+const formulaStarts = "=+-@"
 
 // plainForm folds the look-alikes of the characters this cares about to the ordinary ones, one
 // character for one character, so positions stay the same. It is what Unicode's compatibility

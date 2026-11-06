@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 // Clean tidies a pasted path, as the prototype's cleanPath does: quotes, a file:// prefix and
@@ -232,7 +234,7 @@ func Clone(ctx context.Context, raw, branch, dest string) error {
 	ctx, cancel := context.WithTimeout(ctx, cloneWait)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- checked URL and branch, no shell
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
+	cmd.Env = append(secrets.ChildEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(output)))
 	}

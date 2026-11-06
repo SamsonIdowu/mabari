@@ -201,8 +201,8 @@ func (a *api) accessRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/session", a.sessionStatus)
 	mux.HandleFunc("POST /api/login", a.signIn)
 	mux.HandleFunc("POST /api/logout", a.logout)
-	mux.HandleFunc("GET /api/access", a.accessInfo)
-	mux.HandleFunc("POST /api/access/rotate", a.rotateAccess)
+	mux.HandleFunc("GET /api/access", a.fromPage(a.accessInfo))
+	mux.HandleFunc("POST /api/access/rotate", a.fromPage(a.rotateAccess))
 }
 
 type sessionInfo struct {

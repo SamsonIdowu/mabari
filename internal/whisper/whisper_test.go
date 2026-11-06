@@ -20,7 +20,11 @@ import (
 
 // TestMain lets the test binary stand in for whisper-cli, so no real model is needed.
 func TestMain(m *testing.M) {
-	if mode := os.Getenv("MABARI_FAKE_WHISPER"); mode != "" {
+	if mode := os.Getenv("FAKE_WHISPER"); mode != "" {
+		// whisper-cli is someone else's program, and has no use for Mabari's key.
+		if os.Getenv("MABARI_MASTER_KEY") != "" {
+			os.Exit(3)
+		}
 		os.Exit(fakeWhisper(mode, os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -93,7 +97,8 @@ func ready(t *testing.T, mode string) *Whisper {
 	body := []byte("model weights")
 	w := New(t.TempDir(), testModel(body))
 	w.SetClient(serving(body, http.StatusOK))
-	t.Setenv("MABARI_FAKE_WHISPER", mode)
+	t.Setenv("FAKE_WHISPER", mode)
+	t.Setenv("MABARI_MASTER_KEY", "a-key-whisper-must-not-see")
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

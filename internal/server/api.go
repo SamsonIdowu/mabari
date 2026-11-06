@@ -807,6 +807,7 @@ func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 	var (
 		settings models.Settings
 		problem  string
+		refused  bool
 	)
 	// Read, merge, check and save under one lock, so a change made by another request in between,
 	// such as auto approve being turned off, is never overwritten.
@@ -822,6 +823,12 @@ func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		// Auto approve has its own route, which records the change and asks for an acknowledgement.
 		settings.AutoApprove = current.AutoApprove
+		// Who can reach Mabari is as much the person's call as auto approve is.
+		exposed := settings.LANAccess != current.LANAccess || settings.RequireLogin != current.RequireLogin
+		if exposed && !a.isFromPage(r) {
+			refused = true
+			return
+		}
 		if problem = validSettings(settings); problem == "" {
 			// A model no account offers is never kept, so the pages show what is used.
 			var changes []string
@@ -837,6 +844,10 @@ func (a *api) updateSettings(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		internalError(w, err)
+		return
+	}
+	if refused {
+		writeError(w, http.StatusForbidden, notFromPage)
 		return
 	}
 	if problem != "" {

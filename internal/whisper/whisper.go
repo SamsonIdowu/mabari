@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 // Model is the file Mabari downloads. Medium matches the "about 1.5 GB" in Settings and handles
@@ -288,6 +289,7 @@ func (w *Whisper) Transcribe(ctx context.Context, audio []byte, lang string) (st
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(ctx, binary, // #nosec G204 -- the user's whisper-cli, fixed arguments
 		"-m", w.modelPath(), "-f", file.Name(), "-l", Language(lang), "-t", threads, "-nt", "-np")
+	cmd.Env = secrets.ChildEnv(os.Environ())
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

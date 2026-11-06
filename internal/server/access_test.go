@@ -333,3 +333,46 @@ func TestAWebSocketClosesAfterANewKey(t *testing.T) {
 		}
 	}
 }
+
+// A command an agent runs has no Origin. It must not be able to open Mabari to the network, drop
+// the sign in, or read or replace the key, while everyday settings still save.
+func TestOnlyThePageCanChangeWhoReachesMabari(t *testing.T) {
+	o := newAccessOffice(t, false)
+	plain := func(method, path, body string, headers map[string]string) int {
+		request := httptest.NewRequest(method, "http://"+local+path, strings.NewReader(body))
+		request.RemoteAddr = here
+		request.Host = local
+		for name, value := range headers {
+			request.Header.Set(name, value)
+		}
+		recorder := httptest.NewRecorder()
+		o.handler.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+	for _, body := range []string{`{"lanAccess":true}`, `{"requireLogin":true}`} {
+		if code := plain(http.MethodPatch, "/api/settings", body, nil); code != http.StatusForbidden {
+			t.Errorf("%s with no Origin = %d", body, code)
+		}
+	}
+	if code := plain(http.MethodPatch, "/api/settings", `{"lanAccess":true}`,
+		map[string]string{"Origin": "http://evil.example"}); code != http.StatusForbidden {
+		t.Errorf("another origin = %d", code)
+	}
+	if o.access.requireLogin.Load() {
+		t.Error("a refused change took effect")
+	}
+	if code := plain(http.MethodGet, "/api/access", "", nil); code != http.StatusForbidden {
+		t.Errorf("reading the key with no Origin = %d", code)
+	}
+	if code := plain(http.MethodPost, "/api/access/rotate", "", nil); code != http.StatusForbidden {
+		t.Errorf("rotating the key with no Origin = %d", code)
+	}
+	// What the page sends: a same-origin read has no Origin, only this.
+	if code := plain(http.MethodGet, "/api/access", "",
+		map[string]string{"Sec-Fetch-Site": "same-origin"}); code != http.StatusOK {
+		t.Errorf("the page reading the key = %d", code)
+	}
+	if code := plain(http.MethodPatch, "/api/settings", `{"retentionDays":30}`, nil); code != http.StatusOK {
+		t.Errorf("an everyday setting = %d", code)
+	}
+}

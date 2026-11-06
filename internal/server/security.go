@@ -39,7 +39,8 @@ func isOwnOrigin(origin, host string, anyHost bool) bool {
 }
 
 // fromPage lets through only a request from Mabari's own page, for what must follow a person's
-// click: turning on auto approve, trusting a folder, wiping, deciding an approval. localOnly lets a
+// click: turning on auto approve, trusting a folder, wiping, deciding an approval, opening Mabari
+// to the network, and reading or changing its access key. localOnly lets a
 // request with no Origin pass, which is what curl sends, so without this a command an agent was
 // allowed to run could approve its own next step. Browsers always send Origin on a POST, and a page
 // can't choose it. The mabari command doesn't use these routes.
@@ -49,13 +50,24 @@ func isOwnOrigin(origin, host string, anyHost bool) bool {
 // docs/INTEGRATIONS.md.
 func (a *api) fromPage(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if origin == "" || !isOwnOrigin(origin, r.Host, a.anyHost()) {
-			writeError(w, http.StatusForbidden, "This can only be done from Mabari's own page.")
+		if !a.isFromPage(r) {
+			writeError(w, http.StatusForbidden, notFromPage)
 			return
 		}
 		next(w, r)
 	}
+}
+
+const notFromPage = "This can only be done from Mabari's own page."
+
+// isFromPage says whether a request came from Mabari's own page. A browser leaves Origin off a
+// same-origin GET, so a read is known by Sec-Fetch-Site instead, which it also sets by itself.
+func (a *api) isFromPage(r *http.Request) bool {
+	if origin := r.Header.Get("Origin"); origin != "" {
+		return isOwnOrigin(origin, r.Host, a.anyHost())
+	}
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		r.Header.Get("Sec-Fetch-Site") == "same-origin"
 }
 
 // localOnly refuses anything that didn't come from this computer. It runs on every request,

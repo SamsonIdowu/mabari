@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
-import { wipe } from './support/page.ts';
+import { fromPage, wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
   await wipe(request);
-  await request.patch('/api/settings', { data: { requireLogin: false } });
+  await request.patch('/api/settings', {
+    data: { requireLogin: false },
+    headers: fromPage,
+  });
 });
 
 let knownKey = '';
@@ -12,14 +15,14 @@ let knownKey = '';
 // If a test stops half way with the shared computer setting on, sign in and turn it off, so the
 // other tests aren't asked for the key.
 test.afterEach(async ({ request }) => {
-  let headers = {};
+  let headers: Record<string, string> = fromPage;
   if (knownKey) {
     const signedIn = (await (
       await request.post('/api/login', { data: { key: knownKey } })
     ).json()) as {
       token?: string;
     };
-    if (signedIn.token) headers = { Authorization: `Bearer ${signedIn.token}` };
+    if (signedIn.token) headers = { ...fromPage, Authorization: `Bearer ${signedIn.token}` };
   }
   await request.patch('/api/settings', { data: { requireLogin: false }, headers });
   knownKey = '';

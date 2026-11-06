@@ -59,7 +59,9 @@ func environment() []string {
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
 		upper := strings.ToUpper(name)
-		if strings.HasPrefix(upper, "GIT_") || upper == "PAGER" || upper == "LC_ALL" {
+		// A repository's own config can run programs, and they have no use for Mabari's keys.
+		if strings.HasPrefix(upper, "GIT_") || strings.HasPrefix(upper, "MABARI_") ||
+			upper == "PAGER" || upper == "LC_ALL" {
 			continue
 		}
 		env = append(env, entry)

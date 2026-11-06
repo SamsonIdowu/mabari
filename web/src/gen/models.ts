@@ -2,6 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //////////
+// source: card.go
+
+/**
+ * AgentCard is what the card over an agent's name tag shows. Every number is worked out here, so
+ * the page only formats them.
+ */
+export interface AgentCard {
+  agentId: string;
+  name: string;
+  /**
+   * Role says what the agent is for, in a few words.
+   */
+  role: string;
+  /**
+   * FinishedToday is how many tasks it finished since local midnight, and WorkedSeconds how long
+   * it worked in that time.
+   */
+  finishedToday: number /* int */;
+  workedSeconds: number /* int64 */;
+  /**
+   * Cost is the estimated spend so far. CostKnown is false when nothing is counted for this
+   * agent, such as a hub app that reports no tokens, and the card then shows a dash and not
+   * "$0.00". CostBasis is "estimate" for an API price estimate, or "plan" when the agent runs
+   * on a subscription that isn't billed per token, so the number is only for comparing agents.
+   */
+  cost: number /* float64 */;
+  costKnown: boolean;
+  costBasis: string;
+}
+
+//////////
 // source: desks.go
 
 /**
@@ -32,6 +63,41 @@ export interface Estimate {
    * FinishAt is a Unix time in milliseconds.
    */
   finishAt: number /* int64 */;
+}
+
+//////////
+// source: ledger.go
+
+/**
+ * Ledger is one agent's day: how many tasks it finished and how long it worked since local
+ * midnight. Every connector's agents go through the same engine, so the engine keeps it from the
+ * states it sees, and the numbers mean the same for a demo agent, a Claude Code session and a hub
+ * app. It is stored with the agent's session, so a restart doesn't lose the day.
+ */
+export interface Ledger {
+  /**
+   * Day is the local date the counts are for, such as "2026-11-06". A new day starts them again.
+   */
+  day: string;
+  /**
+   * Finished is how many times the agent reached Done on Day.
+   */
+  finished: number /* int */;
+  /**
+   * WorkedMs is how long it was working on Day, as of Mark.
+   */
+  workedMs: number /* int64 */;
+  /**
+   * Mark is when the ledger was last brought up to date, in Unix milliseconds. Zero means the
+   * agent has not been seen yet.
+   */
+  mark: number /* int64 */;
+  /**
+   * State and Working are what the agent was doing at Mark. Time since then counts as work
+   * while Working is true.
+   */
+  state: AgentState;
+  working: boolean;
 }
 
 //////////
@@ -401,6 +467,10 @@ export interface SessionState {
    * each with the agent's reply once it gives one. At most AskedKept.
    */
   asked: Instruction[];
+  /**
+   * Ledger is what the agent did today, kept by the engine for the agent's card.
+   */
+  ledger: Ledger;
 }
 /**
  * AskedKept is how many instructions and replies an agent keeps for its panel.

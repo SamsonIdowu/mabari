@@ -4,7 +4,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -13,11 +12,9 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 	"github.com/SamsonIdowu/mabari/internal/workspace"
 )
-
-// metaTrusted lists the folders the person has said they trust, by full path.
-const metaTrusted = "claude_trusted_folders"
 
 // whereTerminal is the choice to run a Claude Code session in a terminal instead of in Mabari.
 const whereTerminal = "terminal"
@@ -45,25 +42,24 @@ type folderTrust struct {
 	Found  []string `json:"found"`
 }
 
-func (a *api) trustedFolders() []string {
-	raw, err := a.engine.Store().Meta(context.Background(), metaTrusted)
-	var folders []string
-	if err != nil || json.Unmarshal([]byte(raw), &folders) != nil {
-		return nil
+func (a *api) trustedFolders() claudecode.Trusted {
+	raw, err := a.engine.Store().Meta(context.Background(), store.MetaTrusted)
+	if err != nil {
+		return claudecode.Trusted{}
 	}
-	return folders
+	return claudecode.ReadTrusted(raw)
 }
 
-// needsTrust says what a folder brings when a session there would run it without the person ever
-// having agreed, or nil when there is nothing to agree to. A terminal asks before it runs any of
-// this, and a session with no terminal never can, so Mabari asks instead. See FolderConfig.
+// needsTrust says what a folder brings when a session there would run something the person never
+// agreed to, or nil when there is nothing to agree to. A terminal asks before it runs any of this,
+// and a session with no terminal never can, so Mabari asks instead. See FolderConfig.
 func (a *api) needsTrust(folder string) *folderTrust {
 	path, err := workspace.Expand(folder)
 	if err != nil {
 		return nil
 	}
 	found := claudecode.FolderConfig(path)
-	if len(found) == 0 || slices.Contains(a.trustedFolders(), path) {
+	if len(a.trustedFolders().Unseen(path, found)) == 0 {
 		return nil
 	}
 	return &folderTrust{Folder: path, Found: found}
@@ -79,11 +75,14 @@ func writeTrustNeeded(w http.ResponseWriter, trust *folderTrust) {
 }
 
 // trustFolder is POST /api/folders/trust, the person's click to trust a folder. Nothing but this
-// route adds to the list, and Mabari's own replies never reach it.
+// route adds to the list, and Mabari's own replies never reach it. It records what the folder
+// brings, so a later start can tell when it brings more. Found is what the page showed the person,
+// which is what they agreed to, even if more arrived while they read it.
 func (a *api) trustFolder(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Path    string `json:"path"`
-		Confirm bool   `json:"confirm"`
+		Path    string   `json:"path"`
+		Confirm bool     `json:"confirm"`
+		Found   []string `json:"found"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -97,10 +96,15 @@ func (a *api) trustFolder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	found := body.Found
+	if found == nil {
+		found = claudecode.FolderConfig(path)
+	}
 	if err := a.engine.Do(func() {
-		folders := a.trustedFolders()
-		if !slices.Contains(folders, path) {
-			a.engine.SetMeta(metaTrusted, mustJSON(append(folders, path)))
+		trusted := a.trustedFolders()
+		if agreed, known := trusted[path]; !known || !slices.Equal(agreed, found) {
+			trusted[path] = found
+			a.engine.SetMeta(store.MetaTrusted, mustJSON(trusted))
 			a.engine.Log("You", models.LogSession, "Trusted the folder "+path, "Trusted", "")
 		}
 	}); err != nil {
@@ -168,6 +172,11 @@ func (a *api) resumeSession(w http.ResponseWriter, r *http.Request) {
 		problem = a.claude.Connector.ResumeSession(agent)
 	}); err != nil {
 		internalError(w, err)
+		return
+	}
+	var changed claudecode.FolderChanged
+	if errors.As(problem, &changed) {
+		writeTrustNeeded(w, &folderTrust{Folder: changed.Folder, Found: changed.Found})
 		return
 	}
 	switch {

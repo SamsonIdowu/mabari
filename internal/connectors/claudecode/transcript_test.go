@@ -221,6 +221,7 @@ func TestAFolderThatBringsItsOwnCodeIsFound(t *testing.T) {
 	for _, path := range []string{
 		".claude/settings.json", ".claude/settings.local.json", ".mcp.json",
 		".claude/skills/deploy/SKILL.md", ".claude/commands/go.md", ".claude/hooks/check.sh",
+		".claude/agents/reviewer.md",
 	} {
 		if found := FolderConfig(folderWith(t, path)); len(found) != 1 {
 			t.Errorf("%s: found %q", path, found)
@@ -232,12 +233,39 @@ func TestAFolderThatBringsNothingIsFine(t *testing.T) {
 	for name, folder := range map[string]string{
 		"empty":        t.TempDir(),
 		"code":         folderWith(t, "src/app.ts", "README.md"),
-		"agents only":  folderWith(t, ".claude/agents/reviewer.md"),
 		"empty skills": folderWith(t, ".claude/skills/"),
+		"empty agents": folderWith(t, ".claude/agents/"),
 	} {
 		if found := FolderConfig(folder); len(found) != 0 {
 			t.Errorf("%s: found %q", name, found)
 		}
+	}
+}
+
+// What was agreed to is what was there at the click, and a list saved by an earlier version says
+// nothing about that, so its folders are asked about again.
+func TestWhatWasAgreedToIsWhatWasThere(t *testing.T) {
+	folder := filepath.Clean(t.TempDir())
+	mcp, hooks := filepath.Join(folder, ".mcp.json"), filepath.Join(folder, ".claude", "hooks")+"/"
+	trusted := ReadTrusted(`{"` + folder + `":["` + mcp + `"]}`)
+	if unseen := trusted.Unseen(folder, []string{mcp}); len(unseen) != 0 {
+		t.Errorf("unseen = %q", unseen)
+	}
+	if unseen := trusted.Unseen(folder, []string{mcp, hooks}); len(unseen) != 1 || unseen[0] != hooks {
+		t.Errorf("unseen = %q", unseen)
+	}
+	if unseen := trusted.Unseen(folder+"/other", []string{mcp}); len(unseen) != 1 {
+		t.Errorf("another folder: unseen = %q", unseen)
+	}
+	earlier := ReadTrusted(`["` + folder + `"]`)
+	if _, known := earlier[folder]; !known {
+		t.Fatalf("earlier = %v", earlier)
+	}
+	if unseen := earlier.Unseen(folder, []string{mcp}); len(unseen) != 1 {
+		t.Errorf("an earlier version's folder: unseen = %q", unseen)
+	}
+	if got := ReadTrusted("not json"); len(got) != 0 {
+		t.Errorf("not json = %v", got)
 	}
 }
 

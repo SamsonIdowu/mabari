@@ -329,6 +329,84 @@ func TestAFolderThatBringsCodeNeedsAClickFirst(t *testing.T) {
 	}
 }
 
+// What the click covered is what the folder brought then. Bringing more, from a pull or a branch,
+// needs another one, whichever way a session would start.
+func TestAFolderThatBringsMoreNeedsAnotherClick(t *testing.T) {
+	o := newRunOffice(t)
+	first := filepath.Join(o.folder, ".mcp.json")
+	if err := os.WriteFile(first, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trust := func(found ...string) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"path": o.folder, "confirm": true, "found": found})
+		if response := o.do(t, http.MethodPost, "/api/folders/trust", string(body)); response.Code != http.StatusOK {
+			t.Fatalf("trust: %d %s", response.Code, response.Body.String())
+		}
+	}
+	trust(first)
+	response := o.do(t, http.MethodPost, "/api/agents", o.agentBody(""))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("start: %d %s", response.Code, response.Body.String())
+	}
+	id := decode[models.LiveAgent](t, response).ID
+	o.until(t, "the first turn", func() bool { return o.state(id).State == models.StateDone })
+	if response := o.do(t, http.MethodPost, "/api/agents/"+id+"/session/release", `{}`); response.Code != http.StatusOK {
+		t.Fatalf("release: %d %s", response.Code, response.Body.String())
+	}
+	o.until(t, "the process to end", func() bool { return o.state(id).Session.PID == 0 })
+	gained := filepath.Join(o.folder, ".claude", "agents", "reviewer.md")
+	if err := os.MkdirAll(filepath.Dir(gained), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gained, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(o.logs)
+	started := len(entries)
+	send := `{"agentId":"` + id + `","text":"carry on"}`
+	response = o.do(t, http.MethodPost, "/api/chat/send", send)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"trust"`) {
+		t.Fatalf("send: %d %s", response.Code, response.Body.String())
+	}
+	refused := decode[struct {
+		Trust folderTrust `json:"trust"`
+	}](t, response)
+	if refused.Trust.Folder != o.folder || len(refused.Trust.Found) != 2 {
+		t.Fatalf("refused = %+v", refused)
+	}
+	// A new agent in the same folder is held back too.
+	if response := o.do(t, http.MethodPost, "/api/agents", o.agentBody(`"desk":3`)); response.Code != http.StatusConflict {
+		t.Fatalf("start: %d %s", response.Code, response.Body.String())
+	}
+	if entries, _ := os.ReadDir(o.logs); len(entries) != started {
+		t.Fatalf("%d runs, was %d", len(entries), started)
+	}
+	trust(refused.Trust.Found...)
+	if response := o.do(t, http.MethodPost, "/api/chat/send", send); response.Code != http.StatusOK {
+		t.Fatalf("send after the click: %d %s", response.Code, response.Body.String())
+	}
+	o.until(t, "the session to run again", func() bool { return o.said(t, id, "Done: carry on") })
+}
+
+// A session picked up again is a new process, so it needs the same click.
+func TestResumingInAFolderThatBringsCodeAsksFirst(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/agents", o.agentBody(""))
+	id := decode[models.LiveAgent](t, response).ID
+	o.until(t, "the first turn", func() bool { return o.state(id).State == models.StateDone })
+	o.do(t, http.MethodPost, "/api/agents/"+id+"/session/release", `{}`)
+	o.until(t, "the process to end", func() bool { return o.state(id).Session.PID == 0 })
+	if err := os.WriteFile(filepath.Join(o.folder, ".mcp.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = o.engine.Do(func() { o.engine.Queue(o.engine.Agent(id), "carry on") })
+	response = o.do(t, http.MethodPost, "/api/agents/"+id+"/session/resume", `{}`)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"trust"`) {
+		t.Fatalf("resume: %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestTheTerminalStaysAChoice(t *testing.T) {
 	o := newRunOffice(t)
 	response := o.do(t, http.MethodPost, "/api/agents", o.agentBody(`"where":"terminal"`))

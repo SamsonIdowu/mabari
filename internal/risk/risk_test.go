@@ -5,6 +5,7 @@ package risk
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -307,5 +308,29 @@ func TestDotDotIsNeverTrusted(t *testing.T) {
 func TestOtherToolsAreRisky(t *testing.T) {
 	if got := Classify(Action{Kind: KindOther}).Level; got != models.RiskHigh {
 		t.Errorf("got %s", got)
+	}
+}
+
+// What a folder brings runs without anyone asking, so changing any of it needs a person, in the
+// working folder like anywhere else. The lists are what FolderConfig reads, so the two can't drift.
+func TestWhatAFolderBringsIsSensitive(t *testing.T) {
+	root := t.TempDir()
+	names := append(append([]string{}, FolderConfigFiles...), FolderConfigDirs...)
+	if !slices.Contains(names, ".mcp.json") || !slices.Contains(names, ".claude/agents") {
+		t.Fatalf("names = %q", names)
+	}
+	for _, name := range names {
+		for _, path := range []string{name, filepath.Join(root, name), "packages/web/" + name, name + "/inside"} {
+			if verdict := Classify(Action{Kind: KindEdit, Path: path, Folder: root}); verdict.Level != models.RiskHigh {
+				t.Errorf("editing %q = %s", path, verdict.Level)
+			}
+			if verdict := Classify(Action{Kind: KindRead, Path: path, Folder: root}); verdict.Level != models.RiskHigh {
+				t.Errorf("reading %q = %s", path, verdict.Level)
+			}
+		}
+	}
+	// A name that only looks like one stays an ordinary file.
+	if verdict := Classify(Action{Kind: KindEdit, Path: "docs/mcp.json", Folder: root}); verdict.Level != models.RiskLow {
+		t.Errorf("docs/mcp.json = %s", verdict.Level)
 	}
 }

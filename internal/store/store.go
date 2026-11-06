@@ -32,6 +32,8 @@ const (
 	// MetaWatches holds the "tell me when it's done" watches, as JSON. They are few, and each is
 	// read and written whole, so they need no table of their own.
 	MetaWatches = "watches"
+	// MetaTrusted holds the folders the person has said they trust, with what each brought then.
+	MetaTrusted = "claude_trusted_folders"
 )
 
 // Store is the database. One connection means one writer, so writes never contend.

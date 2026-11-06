@@ -36,7 +36,8 @@ import (
 //     fails, times out or can't reach Mabari denies the action. Waiting is safe.
 //   - Allow rules skip that prompt, so Mabari's PreToolUse hook answers "ask" for what its own risk
 //     rules call risky, and ask outranks allow. See Connector.gate.
-//   - -p skips the trust dialog, so repository hooks would run unseen. See FolderConfig.
+//   - -p skips the trust dialog, so repository hooks would run unseen. See FolderConfig. Every
+//     start checks what the folder brings against what the person agreed to.
 //   - No flag here grants anything. --bare is never passed: it turns off the hooks passed with
 //     --settings, and with them every approval.
 
@@ -305,6 +306,9 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	program := c.program()
 	if program == "" {
 		return nil, ErrNoClaude
+	}
+	if err := c.folderProblem(agent); err != nil {
+		return nil, err
 	}
 	settings, err := c.Hook.SessionSettings()
 	if err != nil {

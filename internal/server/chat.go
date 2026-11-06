@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -166,6 +167,7 @@ func (a *api) chatToAgent(w http.ResponseWriter, body chatBody) {
 	var result chatResult
 	var status int
 	var problem string
+	var trust *folderTrust
 	if err := a.engine.Do(func() {
 		agent := a.engine.Agent(body.AgentID)
 		switch {
@@ -175,6 +177,15 @@ func (a *api) chatToAgent(w http.ResponseWriter, body chatBody) {
 		case agent.Leaving:
 			status, problem = http.StatusConflict, agent.Name+" is leaving the office."
 			return
+		}
+		// A session that needs a new process can't have one in a folder that brings more than the
+		// person agreed to, so they are asked now, while the message can simply be sent again.
+		if a.claude != nil && agent.Source == claudecode.Source {
+			var changed claudecode.FolderChanged
+			if errors.As(a.claude.Connector.CanCarryOn(agent), &changed) {
+				trust = &folderTrust{Folder: changed.Folder, Found: changed.Found}
+				return
+			}
 		}
 		sent := a.compose(chatBody{
 			Text: body.Text, Attachments: body.Attachments, Mentions: body.Mentions,
@@ -186,6 +197,10 @@ func (a *api) chatToAgent(w http.ResponseWriter, body chatBody) {
 		result, status, problem = a.sendTo(agent, sent.text, body)
 	}); err != nil {
 		internalError(w, err)
+		return
+	}
+	if trust != nil {
+		writeTrustNeeded(w, trust)
 		return
 	}
 	if problem != "" {

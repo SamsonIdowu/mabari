@@ -35,6 +35,8 @@ describe('a folder that brings its own code', () => {
     expect(calls).toHaveLength(3);
     expect(calls[1]).toContain('POST /api/folders/trust');
     expect(calls[1]).toContain('"confirm":true');
+    // What the person was shown is what they agreed to.
+    expect(calls[1]).toContain('"found":["/code/shop/.mcp.json"]');
     expect(calls[2]).toBe(calls[0]);
   });
 

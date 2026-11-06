@@ -120,12 +120,33 @@ var sedPrint = regexp.MustCompile(`^[0-9]+(,[0-9]+)?p$`)
 // number is a count such as -5.
 var number = regexp.MustCompile(`^-[0-9]+$`)
 
+// FolderConfigFiles and FolderConfigDirs are what a folder can bring that Claude Code runs without
+// anyone asking, relative to the folder. A `-p` session shows no trust dialog, so this is what the
+// person has to agree to, and what an agent must not change without a click. These lists are the
+// one source: the sensitive pattern below and claudecode.FolderConfig both read them, so the two
+// can't drift.
+var (
+	FolderConfigFiles = []string{".claude/settings.json", ".claude/settings.local.json", ".mcp.json"}
+	FolderConfigDirs  = []string{".claude/skills", ".claude/commands", ".claude/hooks", ".claude/agents"}
+)
+
+// sensitiveNames are patterns for other paths that hold secrets or run by themselves.
+const sensitiveNames = `\.env[^/]*|\.git|\.github|\.husky|\.vscode|\.ssh|\.aws|\.gnupg|\.claude|\.codex|` +
+	`\.npmrc|\.netrc|\.kube|credentials[^/]*|secrets?[^/]*|id_rsa[^/]*|id_ed25519[^/]*|` +
+	`[^/]*\.pem|[^/]*\.key`
+
 // sensitive paths always need a person, even inside the working folder. Workflow and editor
-// folders count, because what is in them runs without anyone asking.
-var sensitive = regexp.MustCompile(
-	`(?i)(^|/)(\.env[^/]*|\.git|\.github|\.husky|\.vscode|\.ssh|\.aws|\.gnupg|\.claude|\.codex|` +
-		`\.npmrc|\.netrc|\.kube|credentials[^/]*|secrets?[^/]*|id_rsa[^/]*|id_ed25519[^/]*|` +
-		`[^/]*\.pem|[^/]*\.key)(/|$)`)
+// folders count, because what is in them runs without anyone asking, and so does everything a
+// folder can bring.
+var sensitive = regexp.MustCompile(`(?i)(^|/)(` + sensitivePattern() + `)(/|$)`)
+
+func sensitivePattern() string {
+	names := []string{sensitiveNames}
+	for _, name := range slices.Concat(FolderConfigFiles, FolderConfigDirs) {
+		names = append(names, regexp.QuoteMeta(name))
+	}
+	return strings.Join(names, "|")
+}
 
 // reasons explain well-known dangerous words. They only choose the wording: anything not on
 // the low risk list is risky whether or not it appears here.

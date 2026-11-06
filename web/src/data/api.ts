@@ -111,7 +111,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       await request('/api/folders/trust', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: body.trust.folder, confirm: true }),
+        body: JSON.stringify({ path: body.trust.folder, confirm: true, found: body.trust.found }),
       });
       return request<T>(path, init);
     }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 // These tests run real child processes through the connector. The child is fakeclaude, built here
@@ -663,6 +664,67 @@ func TestInterruptNeverSettlesAnApproval(t *testing.T) {
 	saved := b.read(agent.ID)
 	if saved.Approval == nil || saved.State != models.StateApproval {
 		t.Fatalf("state %s, approval %+v", saved.State, saved.Approval)
+	}
+	if got := b.actions(); got != 0 {
+		t.Fatalf("%d actions ran", got)
+	}
+}
+
+// A folder can bring more after the click, from a pull or a branch. A running process already has
+// what it has, but no new one starts until the person has seen the rest.
+func TestAFolderThatGainedConfigStartsNoProcess(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	_ = b.engine.Do(func() {
+		if err := b.c.ReleaseSession(b.engine.Agent(agent.ID)); err != nil {
+			t.Error(err)
+		}
+	})
+	b.until("the process to end", func() bool { return b.read(agent.ID).Session.PID == 0 })
+	gained := filepath.Join(b.folder, ".mcp.json")
+	if err := os.WriteFile(gained, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	_ = b.engine.Do(func() { err = b.c.deliverNow(b.engine.Agent(agent.ID), "fake:bash rm -rf build") })
+	var changed FolderChanged
+	if !errors.As(err, &changed) || !strings.Contains(err.Error(), gained) || changed.Folder != b.folder {
+		t.Fatalf("deliverNow = %v", err)
+	}
+	if runs := b.argsOf(agent.Session.ID); len(runs) != 1 {
+		t.Fatalf("runs = %q", runs)
+	}
+	// Once the person has agreed to it, the session carries on.
+	_ = b.engine.Do(func() {
+		b.engine.SetMeta(store.MetaTrusted, `{"`+b.folder+`":["`+gained+`"]}`)
+		err = b.c.deliverNow(b.engine.Agent(agent.ID), "hello again")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.until("a new process", func() bool { return len(b.argsOf(agent.Session.ID)) == 2 })
+}
+
+// A message for a session that can't start waits, and the person is told why.
+func TestAMessageToAFolderThatGainedConfigWaits(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
+	b.until("the process to end", func() bool { return b.read(agent.ID).Session.PID == 0 })
+	if err := os.MkdirAll(filepath.Join(b.folder, ".claude", "hooks"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b.folder, ".claude", "hooks", "run.sh"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = b.engine.Do(func() { b.c.Instruct(b.engine.Agent(agent.ID), "fake:bash rm -rf build") })
+	if saved := b.read(agent.ID); len(saved.Queued) != 1 {
+		t.Fatalf("queued = %+v", saved.Queued)
+	}
+	if runs := b.argsOf(agent.Session.ID); len(runs) != 1 {
+		t.Fatalf("runs = %q", runs)
 	}
 	if got := b.actions(); got != 0 {
 		t.Fatalf("%d actions ran", got)

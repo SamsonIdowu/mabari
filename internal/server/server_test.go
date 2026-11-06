@@ -1066,3 +1066,17 @@ func TestCreateSubagentFromTheDialog(t *testing.T) {
 		t.Errorf("lead = %v", juniper.Lead)
 	}
 }
+
+// Completing a project with nothing in it says why it can't, not that work is in progress.
+func TestCompletingAProjectNothingHasRunIn(t *testing.T) {
+	o := newOffice(t)
+	created := o.do(t, http.MethodPost, "/api/projects", `{"name":"Empty","color":"#FF6B9A"}`)
+	if created.Code != http.StatusCreated && created.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", created.Code, created.Body.String())
+	}
+	project := decode[models.Project](t, created)
+	response := o.do(t, http.MethodPost, "/api/projects/"+project.ID+"/complete", "")
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "Nothing has run in this project yet") {
+		t.Fatalf("complete: %d %s", response.Code, response.Body.String())
+	}
+}

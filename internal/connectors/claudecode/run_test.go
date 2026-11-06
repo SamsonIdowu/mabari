@@ -1138,6 +1138,66 @@ func TestTheDemoLeavesRealSessionsAndTheirHistoryAlone(t *testing.T) {
 	}
 }
 
+// A denied call says Denied in the stored conversation, the one a reload reads, and reading its
+// result again from the transcript doesn't turn it into a failure.
+func TestADenialStaysADenial(t *testing.T) {
+	b := newBench(t)
+	b.attach()
+	agent := b.start("fake:bash rm -rf build")
+	b.decide(agent.ID, models.DecisionDenied)
+	b.until("the denial", func() bool { return slices.Contains(b.said(agent.ID), "tool: Bash denied") })
+	b.untilState(agent.ID, models.StateDone)
+	var call models.ConversationItem
+	for _, item := range b.conversation(agent.ID) {
+		if item.Tool != nil {
+			call = item
+		}
+	}
+	block := contentBlock{ToolUseID: call.ID, IsError: true, Content: json.RawMessage(`"It was denied"`)}
+	if got := withResult(call, block, false); got.Tool.State != models.ToolDenied {
+		t.Fatalf("after reading the result again: %+v", got.Tool)
+	}
+}
+
+// A session given "No project" stays out of a project in the same folder. One started elsewhere
+// joins it, as it always has, and now says so.
+func TestJoiningAProjectByItsFolder(t *testing.T) {
+	b := newBench(t)
+	chosen := b.start("first")
+	b.untilState(chosen.ID, models.StateDone)
+	_ = b.engine.Do(func() {
+		b.engine.SaveProject(models.Project{ID: "shop", Name: "Shop", Repository: &models.Repository{Path: b.folder}})
+	})
+	b.instruct(chosen.ID, "second")
+	b.until("the reply", func() bool { return slices.Contains(b.said(chosen.ID), "assistant: Done: second") })
+	b.untilState(chosen.ID, models.StateDone)
+	if project := b.read(chosen.ID).Project; project != nil {
+		t.Fatalf("a session set to no project joined %q", *project)
+	}
+	elsewhere := func(event string) {
+		body, _ := json.Marshal(map[string]any{
+			"session_id": "from-a-terminal", "cwd": "/somewhere/else", "hook_event_name": event, "tool_name": "Read",
+		})
+		b.c.Handle(context.Background(), body)
+	}
+	elsewhere("PreToolUse")
+	id := agentID("from-a-terminal")
+	_ = b.engine.Do(func() {
+		agent := b.engine.Agent(id)
+		agent.Folder = b.folder
+	})
+	elsewhere("PostToolUse")
+	saved := b.read(id)
+	if saved.Project == nil || *saved.Project != "shop" {
+		t.Fatalf("project = %v", saved.Project)
+	}
+	if log := b.engine.Snapshot().Log; !slices.ContainsFunc(log, func(entry models.LogEntry) bool {
+		return strings.Contains(entry.Message, "joined Shop, because it works in that project's folder")
+	}) {
+		t.Fatalf("log = %+v", log)
+	}
+}
+
 func TestReleasingASessionKeepsItResumable(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("first")

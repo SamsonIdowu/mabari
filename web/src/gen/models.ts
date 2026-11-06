@@ -494,6 +494,10 @@ export interface Project {
    */
   opening: Instruction[];
   /**
+   * Planned is how many of the agents in the project's plan haven't arrived yet.
+   */
+  planned: number /* int */ | null;
+  /**
    * Demo marks a project that came with the demo or was made while it ran.
    */
   demo: boolean | null;

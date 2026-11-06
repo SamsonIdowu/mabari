@@ -392,7 +392,7 @@ function Brief() {
         <p className="help">
           Runs on {label}
           {plan.account === 'claude_code'
-            ? '. Mabari runs the lead here, in the project\'s folder, with no terminal.'
+            ? ". Mabari runs the lead here, in the project's folder, with no terminal."
             : '.'}{' '}
           Say “use Codex” or “use Claude” to switch.
         </p>
@@ -421,6 +421,12 @@ function Brief() {
             work at the same time, so the longest task sets the pace.
           </span>
         </div>
+        {mode === 'go' ? (
+          <p className="help" data-testid="startNote">
+            Nothing has started yet. Check the team, then press Start project. Once you do, the team
+            starts right away, with no plan to approve first.
+          </p>
+        ) : null}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
             type="button"
@@ -639,7 +645,7 @@ function Brief() {
                     type="button"
                     className={mode === 'go' ? 'on' : ''}
                     aria-pressed={mode === 'go'}
-                    title="The team starts as soon as the project is created"
+                    title="No plan to approve: the team starts as soon as you press Start project"
                     onClick={() => setMode('go')}
                   >
                     Start right away

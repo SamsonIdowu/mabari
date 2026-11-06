@@ -498,6 +498,12 @@ func (e *Engine) AddAgent(agent *models.LiveAgent) {
 	}
 	e.agents = append(e.agents, agent)
 	e.Touch(agent)
+	if agent.Project != nil {
+		if project := e.Project(*agent.Project); project != nil && project.Planned > 0 {
+			project.Planned--
+			e.record(e.store.SaveProject(context.Background(), *project))
+		}
+	}
 }
 
 // Touch marks an agent as changed, after updating its fields. Call inside Do.

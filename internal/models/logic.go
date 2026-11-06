@@ -455,8 +455,9 @@ func ProjectState(p *Project, agents []*LiveAgent) (ProjectStatus, float64) {
 		}
 	}
 	progress := 0.0
-	if counted > 0 {
-		progress = total / float64(counted)
+	// Agents in the plan that haven't arrived yet have done none of their share.
+	if expected := counted + p.Planned; expected > 0 {
+		progress = total / float64(expected)
 	}
 	switch {
 	case needs:

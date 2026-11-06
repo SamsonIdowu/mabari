@@ -456,10 +456,14 @@ func (c *Connector) recognise(agent *models.LiveAgent, in input) {
 	if agent.Lead != nil {
 		return
 	}
-	if agent.Project == nil {
+	// "No project" on a session started here was the person's choice.
+	if agent.Project == nil && !agent.RunsHere() {
 		if project := c.projectFor(agent.Folder); project != "" {
 			agent.Project = &project
 			c.engine.Touch(agent)
+			said := agent.Name + " joined " + c.engine.Project(project).Name + ", because it works in that project's folder."
+			c.engine.Log(agent.Name, models.LogSession, said, "Joined", "")
+			c.engine.Toast(said)
 		}
 	}
 	if !agent.Workflow || in.AgentID != "" || in.AgentType == "" {

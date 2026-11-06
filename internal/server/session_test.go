@@ -649,3 +649,33 @@ func TestAnAttachmentIsReadableByTheSessionItWasSentTo(t *testing.T) {
 		t.Errorf("another file: %s", got)
 	}
 }
+
+// The lead finishing alone is not the whole project: the agents still to come hold it down, and
+// each one that arrives takes its share up.
+func TestAProjectDoesNotReadAsDoneWithAgentsStillToCome(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"go","folder":"`+o.folder+`","brief":"Sell beans"}`)
+	result := decode[struct {
+		LeadID  string         `json:"leadId"`
+		Project models.Project `json:"project"`
+	}](t, response)
+	if response.Code != http.StatusCreated || result.Project.Planned < 2 {
+		t.Fatalf("start = %d %+v", response.Code, result)
+	}
+	members := result.Project.Planned - 1
+	o.until(t, "the lead to finish", func() bool { return o.state(result.LeadID).State == models.StateDone })
+	project := func() models.Project {
+		var found models.Project
+		_ = o.engine.Do(func() {
+			if saved := o.engine.Project(result.Project.ID); saved != nil {
+				found = *saved
+			}
+		})
+		return found
+	}
+	o.until(t, "the percentage", func() bool { return project().Status == models.ProjectReady })
+	if got := project(); got.Planned != members || got.Progress > 1.0/float64(members+1)+0.01 {
+		t.Fatalf("project = planned %d, progress %v", got.Planned, got.Progress)
+	}
+}

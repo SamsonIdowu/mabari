@@ -121,6 +121,8 @@ type Project struct {
 	// Opening are prompts waiting for a Claude Code session Mabari opened in the project's folder.
 	// The first session to start there takes the oldest, as if it had been sent to it.
 	Opening []Instruction `json:"opening"`
+	// Planned is how many of the agents in the project's plan haven't arrived yet.
+	Planned int `json:"planned,omitempty"`
 	// Demo marks a project that came with the demo or was made while it ran.
 	Demo bool `json:"demo,omitempty"`
 }

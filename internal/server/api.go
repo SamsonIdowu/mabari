@@ -662,16 +662,23 @@ func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var agent *models.LiveAgent
+	var created models.LiveAgent
 	var problem string
-	err = a.engine.Do(func() { agent, problem = a.startAgent(body) })
+	// The agent is copied inside Do: a session's process starts reporting at once, and changes the
+	// agent itself while the reply is being written.
+	err = a.engine.Do(func() {
+		var agent *models.LiveAgent
+		if agent, problem = a.startAgent(body); agent != nil {
+			created = *agent
+		}
+	})
 	switch {
 	case err != nil:
 		internalError(w, err)
 	case problem != "":
 		writeError(w, http.StatusConflict, problem)
 	default:
-		writeJSON(w, http.StatusCreated, agent)
+		writeJSON(w, http.StatusCreated, created)
 	}
 }
 

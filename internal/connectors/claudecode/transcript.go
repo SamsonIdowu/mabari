@@ -36,6 +36,9 @@ type tail struct {
 	again  bool
 	// tools are the calls waiting for their results.
 	tools map[string]models.ConversationItem
+	// ownStart means the transcript starts with what Mabari's own process wrote, and offset began
+	// after it. Nothing before that point is ever read.
+	ownStart bool
 }
 
 // transcriptLine is the part of one transcript entry that matters here.
@@ -73,6 +76,87 @@ func (c *Connector) transcriptFile(raw string) (string, bool) {
 	return resolved, true
 }
 
+// sessionTranscript finds the transcript Claude Code keeps for a session, in the folder it made for
+// the directory the session ran in. Sessions Mabari runs have their first turn before any hook is
+// sure to have named the file, so it is looked for by the session's id.
+func (c *Connector) sessionTranscript(session string) (string, bool) {
+	if c.ConfigDir == "" {
+		return "", false
+	}
+	root := filepath.Join(c.ConfigDir, "projects")
+	folders, err := os.ReadDir(root)
+	if err != nil {
+		return "", false
+	}
+	name := sessionChars.ReplaceAllString(session, "") + ".jsonl"
+	for _, folder := range folders {
+		candidate := filepath.Join(root, folder.Name(), name)
+		if _, err := os.Lstat(candidate); err != nil {
+			continue
+		}
+		if path, ok := c.transcriptFile(candidate); ok {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// countTranscript marks the end of the session's transcript as heard. Everything Mabari's process
+// wrote came down its stream too, and is already in the conversation, however the words repeat, so
+// what tells a copy from something new is where it sits in the file. Call inside Do.
+func (c *Connector) countTranscript(agent *models.LiveAgent) {
+	if agent.Session == nil {
+		return
+	}
+	path, ok := c.sessionTranscript(agent.Session.ID)
+	if !ok {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	session := *agent.Session
+	end := info.Size()
+	session.TranscriptEnd = &end
+	agent.Session = &session
+	c.engine.Touch(agent)
+}
+
+// catchUp reads what was added to a session's transcript since Mabari's process last ended, before
+// a new process takes it on: with no hooks in Claude Code's settings, nothing else ever would. A
+// process still on its way out hasn't been counted, so its session is left unread. Call inside Do.
+func (c *Connector) catchUp(agent *models.LiveAgent) {
+	if agent.Session == nil || agent.Session.TranscriptEnd == nil {
+		return
+	}
+	path, ok := c.sessionTranscript(agent.Session.ID)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.leavingNow(agent.ID) {
+		return
+	}
+	state := c.tails[agent.ID]
+	if state == nil {
+		state = &tail{
+			path: path, offset: *agent.Session.TranscriptEnd, ownStart: true,
+			tools: map[string]models.ConversationItem{},
+		}
+		c.tails[agent.ID] = state
+	}
+	if state.busy {
+		return
+	}
+	c.mu.Unlock()
+	defer c.mu.Lock()
+	for lines := nextLines(state); len(lines) > 0; lines = nextLines(state) {
+		c.applyTranscript(agent.ID, state, lines)
+	}
+}
+
 // follow reads what is new in a session's transcript, off the hook's path so it never delays Claude
 // Code. A read already going reads again when it ends.
 func (c *Connector) follow(agentID, raw string) {
@@ -80,10 +164,19 @@ func (c *Connector) follow(agentID, raw string) {
 	if !ok {
 		return
 	}
+	var heard *int64
+	_ = c.engine.Do(func() {
+		if agent := c.engine.Agent(agentID); agent != nil && agent.Session != nil {
+			heard = agent.Session.TranscriptEnd
+		}
+	})
 	c.mu.Lock()
 	state := c.tails[agentID]
 	if state == nil || state.path != path {
 		state = &tail{path: path, tools: map[string]models.ConversationItem{}}
+		if heard != nil {
+			state.offset, state.ownStart = *heard, true
+		}
 		c.tails[agentID] = state
 	}
 	if state.busy {
@@ -122,9 +215,13 @@ func nextLines(state *tail) [][]byte {
 	if err != nil {
 		return nil
 	}
-	// A transcript cleaned up and written again starts over.
+	// A transcript cleaned up and written again starts over, except that what Mabari's process wrote
+	// is never read: all that's known of a shorter file is that nothing has been added to it.
 	if info.Size() < state.offset {
 		state.offset = 0
+		if state.ownStart {
+			state.offset = info.Size()
+		}
 	}
 	skipFirst := false
 	if state.offset == 0 && info.Size() > transcriptBack {

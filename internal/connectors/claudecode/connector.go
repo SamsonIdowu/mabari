@@ -133,6 +133,8 @@ type Connector struct {
 	sessions map[string]string
 	// tails are how far each followed session's transcript has been read, by agent.
 	tails map[string]*tail
+	// noPlace are the agents holding a message only because every place for a process was taken.
+	noPlace map[string]bool
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -156,6 +158,7 @@ func New(engine *events.Engine) *Connector {
 		leaving:  map[*run]struct{}{},
 		sessions: map[string]string{},
 		tails:    map[string]*tail{},
+		noPlace:  map[string]bool{},
 	}
 }
 
@@ -203,11 +206,13 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	c.lastEvent = time.Now()
 	stopped := c.stopped[in.SessionID]
 	_, live := c.runs[c.sessions[in.SessionID]]
+	leaving := c.leavingNow(c.sessions[in.SessionID])
 	c.mu.Unlock()
 	// With Claude Code attached, a session Mabari runs fires settings.json's hooks as well as its
-	// own, so that copy is ignored. A process Mabari no longer speaks for gets no answer, which
-	// denies what it asks. Both hooks firing would ask the person twice.
-	if fromRun != live {
+	// own, so that copy is ignored, as it is from a process on its way out, which hasn't been
+	// carried on anywhere. A process Mabari no longer speaks for gets no answer, which denies what
+	// it asks. Both hooks firing would ask the person twice.
+	if fromRun != live || (!fromRun && leaving) {
 		return nil
 	}
 	if stopped {
@@ -1124,6 +1129,7 @@ func (c *Connector) instructRun(agent *models.LiveAgent, text string) {
 	if err := c.deliverNow(agent, text); err != nil {
 		c.engine.Queue(agent, text)
 		c.engine.Toast(err.Error())
+		c.waitForPlace(agent, err)
 	}
 }
 

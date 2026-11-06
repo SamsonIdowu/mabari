@@ -221,6 +221,12 @@ export interface AgentSession {
    * PID is the running process, or zero. It lets a restart after a crash end what was left.
    */
   pid: number /* int */;
+  /**
+   * TranscriptEnd is how many bytes of the session's transcript were there when Mabari's process
+   * last ended, or null if Mabari has never counted. Mabari heard all of that as it happened, so
+   * only what comes after it was written elsewhere, as by someone carrying on in a terminal.
+   */
+  transcriptEnd: number /* int64 */ | null;
 }
 
 //////////

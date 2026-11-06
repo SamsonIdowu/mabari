@@ -155,6 +155,10 @@ type AgentSession struct {
 	Resume string `json:"resume"`
 	// PID is the running process, or zero. It lets a restart after a crash end what was left.
 	PID int `json:"pid"`
+	// TranscriptEnd is how many bytes of the session's transcript were there when Mabari's process
+	// last ended, or null if Mabari has never counted. Mabari heard all of that as it happened, so
+	// only what comes after it was written elsewhere, as by someone carrying on in a terminal.
+	TranscriptEnd *int64 `json:"transcriptEnd,omitempty"`
 }
 
 // RunsHere reports whether Mabari runs this agent's session, as opposed to following one started

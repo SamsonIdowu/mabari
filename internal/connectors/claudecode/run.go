@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"regexp"
@@ -310,6 +311,9 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resume {
+		c.catchUp(agent)
+	}
 	session := *agent.Session
 	budget := 0.0
 	if agent.DailyCostCap != nil {
@@ -359,6 +363,8 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	c.mu.Lock()
 	c.runs[agent.ID] = r
 	c.sessions[session.ID] = agent.ID
+	// From here the stream speaks for it, and a read still going has nothing to add.
+	delete(c.tails, agent.ID)
 	c.mu.Unlock()
 	session.Status, session.PID = models.SessionRunning, cmd.Process.Pid
 	session.Resume = launch.ContinueCommand(workFolder(agent), session.ID)
@@ -397,12 +403,12 @@ func (c *Connector) exited(r *run) {
 		}
 		delete(c.leaving, r)
 		c.mu.Unlock()
-		// One retired by Mabari has been dealt with, and a newer process may have taken over.
-		if !current {
-			return
-		}
 		agent := c.engine.Agent(r.agentID)
-		if agent == nil || agent.Session == nil {
+		if agent != nil {
+			c.countTranscript(agent)
+		}
+		// One retired by Mabari has been dealt with, and a newer process may have taken over.
+		if !current || agent == nil || agent.Session == nil {
 			return
 		}
 		c.closeLive(r, agent)
@@ -424,6 +430,7 @@ func (c *Connector) exited(r *run) {
 			}
 			c.fail(agent, why)
 		}
+		c.offerPlace()
 	})
 }
 
@@ -449,6 +456,16 @@ func (c *Connector) runAgent(r *run) *models.LiveAgent {
 		return nil
 	}
 	return c.engine.Agent(r.agentID)
+}
+
+// leavingNow reports whether a process of this agent's is on its way out. Hold c.mu.
+func (c *Connector) leavingNow(agentID string) bool {
+	for r := range c.leaving {
+		if r.agentID == agentID {
+			return true
+		}
+	}
+	return false
 }
 
 // retire ends a process that no longer speaks for its agent. Call inside Do.
@@ -578,6 +595,7 @@ func (c *Connector) turnFinished(agent *models.LiveAgent, full string) {
 	case agent.Session != nil && agent.Session.Mode == runModePlan:
 		c.askAboutPlan(agent, full)
 	}
+	c.offerPlace()
 }
 
 // deliverQueued sends everything waiting as one message. Call inside Do.
@@ -585,6 +603,7 @@ func (c *Connector) deliverQueued(agent *models.LiveAgent) {
 	r, err := c.liveRun(agent)
 	if err != nil {
 		c.engine.Toast(err.Error())
+		c.waitForPlace(agent, err)
 		return
 	}
 	var lines []string
@@ -678,6 +697,39 @@ func (c *Connector) afterPlan(agent *models.LiveAgent) {
 		agent.State = models.StateIdle
 		c.engine.Touch(agent)
 		c.engine.Toast(err.Error())
+		c.waitForPlace(agent, err)
+	}
+}
+
+// waitForPlace remembers an agent left holding a message because all the places were taken by busy
+// sessions. Nothing else would send it: the agent isn't working, so it has no next step. Call
+// inside Do.
+func (c *Connector) waitForPlace(agent *models.LiveAgent, err error) {
+	var full CapError
+	if errors.As(err, &full) {
+		c.mu.Lock()
+		c.noPlace[agent.ID] = true
+		c.mu.Unlock()
+	}
+}
+
+// offerPlace sends what was held back, now that a session has finished and a place can come free.
+// Call inside Do.
+func (c *Connector) offerPlace() {
+	c.mu.Lock()
+	waiting := slices.Sorted(maps.Keys(c.noPlace))
+	clear(c.noPlace)
+	c.mu.Unlock()
+	for _, id := range waiting {
+		agent := c.engine.Agent(id)
+		if agent == nil || !agent.RunsHere() || busy(agent) || agent.State == models.StatePaused || len(agent.Queued) == 0 {
+			continue
+		}
+		if _, err := c.liveRun(agent); err != nil {
+			c.waitForPlace(agent, err)
+			continue
+		}
+		c.deliverQueued(agent)
 	}
 }
 
@@ -828,10 +880,17 @@ func (c *Connector) Resume() {
 			c.engine.Touch(agent)
 			continue
 		}
-		if !agent.RunsHere() {
+		runsHere := agent.RunsHere()
+		if runsHere {
+			endLeftover(agent.Session.PID, agent.Session.ID)
+		}
+		// Mabari didn't see a running process end, and an earlier version never counted at all.
+		if agent.Session.Status == models.SessionRunning || (agent.Session.Started && agent.Session.TranscriptEnd == nil) {
+			c.countTranscript(agent)
+		}
+		if !runsHere {
 			continue
 		}
-		endLeftover(agent.Session.PID, agent.Session.ID)
 		c.mu.Lock()
 		c.sessions[agent.Session.ID] = agent.ID
 		c.mu.Unlock()
@@ -853,6 +912,7 @@ func (c *Connector) endAll() {
 	}
 	clear(c.sessions)
 	clear(c.tails)
+	clear(c.noPlace)
 	c.mu.Unlock()
 	for _, r := range ending {
 		c.retire(r)

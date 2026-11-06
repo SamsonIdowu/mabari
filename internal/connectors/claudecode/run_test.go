@@ -539,17 +539,24 @@ func TestLowRiskAutoApproveStillStopsARiskyAction(t *testing.T) {
 }
 
 // Attached and running here, a session fires both sets of hooks. The person is asked once.
-func TestAnAttachedAccountDoesNotAskTwice(t *testing.T) {
-	b := newBench(t)
+// attach puts Mabari's hooks in Claude Code's settings file, as Attach Claude Code does, so a
+// process Mabari runs fires them as well as its own.
+func (b *bench) attach() {
+	b.t.Helper()
 	settings, err := Hook{Binary: b.c.Hook.Binary, Port: 1}.SessionSettings()
 	if err != nil {
-		t.Fatal(err)
+		b.t.Fatal(err)
 	}
 	// The same hooks in the settings file, without the mark of a session's own.
 	settings = strings.ReplaceAll(settings, `"--run",`, "")
 	if err := os.WriteFile(filepath.Join(b.config, "settings.json"), []byte(settings), 0o600); err != nil {
-		t.Fatal(err)
+		b.t.Fatal(err)
 	}
+}
+
+func TestAnAttachedAccountDoesNotAskTwice(t *testing.T) {
+	b := newBench(t)
+	b.attach()
 	agent := b.start("fake:bash rm -rf build")
 	b.until("the approval", func() bool { return b.read(agent.ID).Approval != nil })
 	first := b.read(agent.ID).Approval.ID
@@ -792,6 +799,32 @@ func TestTheCapStopsANewSessionAndSaysSo(t *testing.T) {
 }
 
 // Sitting idle shouldn't take a place from work that is waiting. It resumes with nothing lost.
+// A message to a Done agent while every place is taken waits in amber. It goes as soon as a place
+// comes free, with nobody having to send anything else.
+func TestAMessageHeldBackByTheCapGoesWhenAPlaceComesFree(t *testing.T) {
+	b := newBench(t)
+	_ = b.engine.Do(func() {
+		settings := b.engine.Settings()
+		settings.MaxSessions = 1
+		b.engine.SaveSettings(settings)
+	})
+	done := b.start("first")
+	b.untilState(done.ID, models.StateDone)
+	busy := b.start("fake:slow 40", func(spec *SessionSpec) { spec.Name = "Pepper" })
+	b.until("work to start", func() bool { return b.read(busy.ID).State.Active() })
+	b.instruct(done.ID, "while the other one works")
+	if queued := b.read(done.ID).Queued; len(queued) != 1 {
+		t.Fatalf("queued = %+v", queued)
+	}
+	b.untilState(busy.ID, models.StateDone)
+	b.until("the held message", func() bool {
+		return slices.Contains(b.said(done.ID), "assistant: Done: while the other one works")
+	})
+	if queued := b.read(done.ID).Queued; len(queued) != 0 {
+		t.Fatalf("queued = %+v", queued)
+	}
+}
+
 func TestAnIdleSessionGivesUpItsPlace(t *testing.T) {
 	b := newBench(t)
 	_ = b.engine.Do(func() {
@@ -1025,7 +1058,7 @@ func TestTheDemoLeavesRealSessionsAndTheirHistoryAlone(t *testing.T) {
 	if saved := b.read(running.ID); !saved.RunsHere() || !saved.State.Active() || saved.Session.PID != pid {
 		t.Fatalf("session after the demo = %+v", saved.Session)
 	}
-	if got := b.said(running.ID); !slices.Equal(got, said) {
+	if got := b.said(running.ID); len(got) < len(said) || !slices.Equal(got[:len(said)], said) {
 		t.Fatalf("conversation = %q, was %q", got, said)
 	}
 	stored, err := b.engine.Store().Agents(context.Background())

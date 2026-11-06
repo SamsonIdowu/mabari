@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHEER_MS,
+  cheering,
   finishing,
   GLANCE_EVERY_MS,
   GLANCE_MS,
@@ -9,6 +10,10 @@ import {
   hop,
   IDLE_SPELL_MS,
   idleDoing,
+  JUMP_MS,
+  JUMP_PX,
+  jump,
+  PARTY_MS,
   STRETCH_MS,
   stretching,
   TICK_MS,
@@ -127,5 +132,43 @@ describe('what a resting agent does', () => {
     expect(stretching('stretch', STRETCH_MS + 1)).toBe(false);
     expect(stretching('stretch', IDLE_SPELL_MS + 100)).toBe(true);
     expect(stretching('coffee', 100)).toBe(false);
+  });
+});
+
+describe('cheering at a party', () => {
+  const at = 10_000;
+
+  it('starts at its moment, jumps clear of the floor again and again, and ends with the party', () => {
+    expect(cheering(undefined, at, false)).toBeNull();
+    expect(cheering(at, at - 1, false)).toBeNull();
+    expect(cheering(at, at, false)).toEqual({ lift: 0 });
+    const lifts = Array.from(
+      { length: 1200 },
+      (_, step) => cheering(at, at + step * 5, false)!.lift,
+    );
+    expect(Math.max(...lifts)).toBe(JUMP_PX);
+    // It lands between jumps: more than one jump in a few seconds, each off the floor and back.
+    const jumps = lifts.filter((lift, index) => lift > 0 && (lifts[index - 1] ?? 0) === 0).length;
+    expect(jumps).toBeGreaterThanOrEqual(8);
+    expect(cheering(at, at + PARTY_MS - 1, false)).not.toBeNull();
+    expect(cheering(at, at + PARTY_MS, false)).toBeNull();
+  });
+
+  it('jumps higher than a finished task hops, and keeps to a clean arc', () => {
+    expect(JUMP_PX).toBeGreaterThan(5);
+    expect(jump(0)).toBe(0);
+    expect(jump(JUMP_MS / 2)).toBe(JUMP_PX);
+    expect(jump(JUMP_MS)).toBe(0);
+  });
+
+  it('holds the pose, still, on the floor with reduced motion, for as long as the party lasts', () => {
+    for (let step = 0; step < 100; step++) {
+      expect(cheering(at, at + step * 60, true)).toEqual({ lift: 0 });
+    }
+    expect(cheering(at, at + PARTY_MS, true)).toBeNull();
+  });
+
+  it('is a party of several seconds', () => {
+    expect(PARTY_MS).toBeGreaterThanOrEqual(5000);
   });
 });

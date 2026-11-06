@@ -62,7 +62,45 @@ export function placeTrophies(overlay: HTMLElement, scene: OfficeScene): void {
       button.setAttribute('aria-label', `${label}. Open its summary.`);
     }
   }
-  for (const button of [...layer.children]) {
-    if (!seen.has((button as HTMLElement).dataset.project ?? '')) button.remove();
+  for (const button of [...layer.querySelectorAll<HTMLElement>(':scope > .trophy')]) {
+    if (!seen.has(button.dataset.project ?? '')) button.remove();
   }
+  placeMore(layer, scene);
+}
+
+/**
+ * The "+N" tile in the display's last place, when there are more trophies than it holds. It is a
+ * link to the Projects page, where every completed project is, and it names how many are not
+ * shown. Like the trophy buttons it is in the page so the keyboard and a screen reader reach it.
+ */
+function placeMore(layer: HTMLElement, scene: OfficeScene): void {
+  const more = scene.trophies.more;
+  let button = layer.querySelector<HTMLAnchorElement>(':scope > .trophymore');
+  if (!more) {
+    button?.remove();
+    return;
+  }
+  if (!button) {
+    button = document.createElement('a');
+    button.className = 'trophymore';
+    button.href = '#projects';
+    layer.appendChild(button);
+  }
+  const from = scene.screenOf({ x: more.x, y: more.y });
+  const to = scene.screenOf({ x: more.x + TROPHY.width, y: more.y + TROPHY.height });
+  const width = Math.max(MIN_PX, to.x - from.x);
+  const height = Math.max(MIN_PX, to.y - from.y);
+  const left = Math.round((from.x + to.x) / 2 - width / 2);
+  const top = Math.round((from.y + to.y) / 2 - height / 2);
+  const place = `${left}|${top}|${Math.round(width)}|${Math.round(height)}|${more.hidden}`;
+  if (button.dataset.place === place) return;
+  button.dataset.place = place;
+  button.style.left = `${left}px`;
+  button.style.top = `${top}px`;
+  button.style.width = `${Math.round(width)}px`;
+  button.style.height = `${Math.round(height)}px`;
+  button.textContent = `+${more.hidden}`;
+  const label = `${more.hidden} more shipped project${more.hidden === 1 ? '' : 's'}`;
+  button.title = `${label}. Open the Projects page.`;
+  button.setAttribute('aria-label', `${label}. Open the Projects page.`);
 }

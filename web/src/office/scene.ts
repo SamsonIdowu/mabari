@@ -6,6 +6,8 @@ import { useThemeStore } from '../theme/themeStore.ts';
 import { blk, buildBg, ell, loungeProps, PAL, R, RACKS, rrect, WORK_RACKS } from './background.ts';
 import {
   clampView,
+  FRAME_SLACK,
+  frameView,
   homeView,
   teamView,
   toScreen,
@@ -17,17 +19,19 @@ import {
 } from './camera.ts';
 import { drawChar } from './character.ts';
 import {
-  BURST_MS,
-  burst,
-  LANDING,
   confettiColours,
-  drawPieces,
+  confettiOver,
+  drawConfetti,
   meetingCentre,
+  meetingFrame,
   meetingSpots,
-  stepPieces,
-  type Piece,
+  roomOf,
+  startConfetti,
+  stepConfetti,
+  stillConfetti,
+  type Confetti,
 } from './celebration.ts';
-import { WAVE_MS } from './moments.ts';
+import { cheering, WAVE_MS } from './moments.ts';
 import { restingLook, stableHash } from './resting.ts';
 import { drawEnvelopes } from './talk.ts';
 import { drawMascot } from './vee.ts';
@@ -184,6 +188,13 @@ const reducedMotion = () =>
 
 const sizeOf = (floor: Floor): Size => ({ width: floor.width, height: floor.height });
 
+/**
+ * What a party's camera keeps clear, in screen pixels: at the top the wall bar and the "Shipped"
+ * banner under it, at the bottom the toolbar and the readout.
+ */
+const PARTY_CLEAR_TOP = 156;
+const PARTY_CLEAR_BOTTOM = 78;
+
 /** Draws the floor every frame. It lives outside React, which would be far too slow for this. */
 export class OfficeScene {
   hoverDesk: number | null = null;
@@ -213,16 +224,18 @@ export class OfficeScene {
   };
   /** Where each agent sent to the meeting room for a shipped project stands there. */
   private readonly gathered = new Map<string, Point>();
-  /** The confetti in the air, and when it went up. */
-  private pieces: Piece[] = [];
-  private burstAt = 0;
-  /** Which party the confetti went up for, so each party has one burst. */
+  /** The confetti of the party under way, or null when there is none or it has gone. */
+  private confetti: Confetti | null = null;
+  /** The colours of the party under way, for the still confetti reduced motion shows. */
+  private partyColours: string[] = [];
+  /** Which party the confetti went up for, so each party has one. */
   private burstFor = '';
   /** Where the view was before it moved to the meeting room, to put it back. */
-  private panBefore: { x: number; y: number } | null = null;
-  private panAt: number | null = null;
-  /** The trophies on the shelf, for the page to put buttons over, and the glint on the newest. */
-  trophies: Pick<Shelf, 'spots' | 'hidden'> = { spots: [], hidden: 0 };
+  private viewBefore: { zoom: number; pan: { x: number; y: number } } | null = null;
+  /** Where the view was put to frame the room, to tell whether anyone has moved it since. */
+  private viewAt: { zoom: number; pan: { x: number; y: number } } | null = null;
+  /** The trophies on the display, for the page to put buttons over, and the glint on the newest. */
+  trophies: Pick<Shelf, 'spots' | 'hidden' | 'more'> = { spots: [], hidden: 0, more: null };
   private shelf: { projects: unknown; key: string; theme: string; picture: Shelf | null } = {
     projects: null,
     key: '',
@@ -369,7 +382,7 @@ export class OfficeScene {
     if (this.shelf.projects !== projects || this.shelf.key !== key || this.shelf.theme !== theme) {
       const picture = buildShelf(this.floor, projects, theme);
       this.shelf = { projects, key, theme, picture };
-      this.trophies = { spots: picture.spots, hidden: picture.hidden };
+      this.trophies = { spots: picture.spots, hidden: picture.hidden, more: picture.more };
     }
     if (!this.shelf.picture?.spots.length) return;
     this.context.drawImage(this.shelf.picture.canvas, 0, 0);
@@ -734,42 +747,90 @@ export class OfficeScene {
     const { phase, current } = useShipped.getState();
     if (phase === 'party' && current && this.burstFor !== current.key) {
       this.burstFor = current.key;
-      this.burstAt = now;
-      if (!calm) {
-        this.pieces = burst(meetingCentre(this.floor), confettiColours(current.color));
-        let order = 0;
-        for (const id of this.gathered.keys()) {
-          const walker = this.walkers.get(id);
-          if (walker) walker.cheerAt = now + order++ * 90;
-        }
+      this.partyColours = confettiColours(current.color);
+      // The confetti goes up, once, and everyone on the project who isn't waiting on you cheers:
+      // the team in the meeting room, the rest at their desks. With reduced motion there is no
+      // confetti in the air, and they hold their pose: see `draw`.
+      if (!calm) this.confetti = startConfetti(roomOf(this.floor), this.partyColours, now);
+      let order = 0;
+      for (const agent of agents) {
+        if (agent.projectId !== current.id || !this.cheers(agent)) continue;
+        const walker = this.walkers.get(agent.id);
+        if (walker) walker.cheerAt = now + (calm ? 0 : order++ * 90);
       }
+    } else if (phase !== 'party' && this.burstFor) {
+      // Over, or stopped by an approval: not a piece of it is left, and everyone is back at work.
+      this.burstFor = '';
+      this.confetti = null;
+      for (const walker of this.walkers.values()) delete walker.cheerAt;
     }
     this.moveViewForParty(phase);
   }
 
+  /** Whether an agent joins the party: not one waiting on you, or on its way out. */
+  private cheers(agent: LiveAgent): boolean {
+    return (
+      !agent.leaving &&
+      agent.desk >= 0 &&
+      agent.state !== 'approval' &&
+      agent.state !== 'error' &&
+      !agent.question
+    );
+  }
+
+  /**
+   * The camera for a party. While the team walks to the meeting room the view follows only as far
+   * as bringing the room on screen. When they are all there it pushes in on the room, with the
+   * name tags, the banner and the confetti all clear of the bars over the floor, and when the party
+   * is over it goes back to where it was, unless someone has moved it since. Never with reduced
+   * motion, which has no camera moves, nor while following an agent or inside a team's office.
+   */
   private moveViewForParty(phase: 'idle' | 'gather' | 'party'): void {
     const ui = useOfficeUi.getState();
     if (phase === 'gather' && !this.focused) {
       this.focused = true;
       if (reducedMotion() || ui.follow || ui.team) return;
+      this.viewBefore = { zoom: ui.zoom, pan: { ...ui.pan } };
       const centre = meetingCentre(this.floor);
       const point = this.screenOf(centre);
       const { width, height } = this.size;
       const inView = point.x > 80 && point.x < width - 80 && point.y > 60 && point.y < height - 60;
-      if (inView) return;
-      this.panBefore = { ...ui.pan };
-      this.centreAt(centre.x / this.floor.width);
-    } else if (phase === 'party' && this.panBefore && this.panAt === null) {
-      // The view has had the whole walk to arrive, so this is where the party's view rests.
-      this.panAt = ui.pan.x;
+      if (!inView) this.centreAt(centre.x / this.floor.width);
+    } else if (phase === 'party' && this.viewBefore && !this.viewAt) {
+      // Everyone is there: push in on the room, and note where the view came to rest.
+      const frame = frameView(meetingFrame(this.floor), this.size, sizeOf(this.floor), {
+        top: PARTY_CLEAR_TOP,
+        bottom: PARTY_CLEAR_BOTTOM,
+      });
+      const home = homeView(this.size, sizeOf(this.floor));
+      const rested = clampView(
+        { cx: home.x + frame.pan.x, cy: home.y + frame.pan.y, s: frame.zoom },
+        sizeOf(this.floor),
+        this.visible(),
+        FRAME_SLACK,
+      );
+      const pan = { x: rested.cx - home.x, y: rested.cy - home.y };
+      this.viewAt = { zoom: frame.zoom, pan };
+      ui.set({ zoom: frame.zoom, pan, follow: false, team: null });
     } else if (phase === 'idle' && this.focused) {
       // Back where it was, unless someone has moved the view since.
-      if (this.panBefore && this.panAt !== null && Math.abs(ui.pan.x - this.panAt) < 2) {
-        ui.set({ pan: this.panBefore });
+      const at = this.viewAt;
+      if (
+        this.viewBefore &&
+        at &&
+        ui.zoom === at.zoom &&
+        Math.abs(ui.pan.x - at.pan.x) < 4 &&
+        Math.abs(ui.pan.y - at.pan.y) < 4
+      ) {
+        ui.set({ zoom: this.viewBefore.zoom, pan: this.viewBefore.pan });
+      }
+      // Stopped on the way, by an approval: the view only moved along, and goes back along.
+      if (this.viewBefore && !at && ui.zoom === this.viewBefore.zoom) {
+        ui.set({ pan: this.viewBefore.pan });
       }
       this.focused = false;
-      this.panBefore = null;
-      this.panAt = null;
+      this.viewBefore = null;
+      this.viewAt = null;
     }
   }
 
@@ -933,6 +994,15 @@ export class OfficeScene {
     // Tests read where a shipped project's celebration is: "", "gather" or "party".
     const shipped = useShipped.getState().phase === 'idle' ? '' : useShipped.getState().phase;
     if ((canvas.dataset.shipped ?? '') !== shipped) canvas.dataset.shipped = shipped;
+    // While a party is on, tests read where the meeting room is on the canvas, in pixels.
+    let room = '';
+    if (shipped && this.floor.rooms.includes('meeting')) {
+      const frame = meetingFrame(this.floor);
+      const from = this.screenOf({ x: frame.x0, y: frame.y0 });
+      const to = this.screenOf({ x: frame.x1, y: frame.y1 });
+      room = [from.x, from.y, to.x, to.y].map(Math.round).join(',');
+    }
+    if ((canvas.dataset.room ?? '') !== room) canvas.dataset.room = room;
     const tile = deskTile(this.floor.free);
     const free = `${tile.x * 32 + 34},${tile.y * 32 + 20}`;
     if (canvas.dataset.freeDesk !== free) canvas.dataset.freeDesk = free;
@@ -1247,7 +1317,13 @@ export class OfficeScene {
       this.world = world;
     }
 
-    const target = clampView(this.viewTarget(), world, this.visible());
+    // While a party frames the meeting room at the office's end, the view may run a little past it.
+    const target = clampView(
+      this.viewTarget(),
+      world,
+      this.visible(),
+      this.viewAt ? FRAME_SLACK : 0,
+    );
     if (!ui.team && !ui.follow) {
       const home = homeView(this.size, world);
       const pan = { x: target.cx - home.x, y: target.cy - home.y };
@@ -1317,15 +1393,32 @@ export class OfficeScene {
     };
     drawEnvelopes(c, messages, where, Date.now(), reducedMotion());
     this.drawMabariDesk(theme, t);
-    if (this.pieces.length) {
-      const age = Date.now() - this.burstAt;
-      if (age > BURST_MS) this.pieces = [];
-      else {
-        stepPieces(this.pieces, dt, meetingCentre(this.floor).y + LANDING);
-        drawPieces(c, this.pieces, age);
+    this.drawParty(dt, calm);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /**
+   * The party's confetti, over everything on the floor but the overlays: going up and floating
+   * down, then gone. With reduced motion it is a still: pieces lying round each of the cheering
+   * team, the same every frame, for as long as the party lasts.
+   */
+  private drawParty(dt: number, calm: boolean): void {
+    const c = this.context;
+    const now = Date.now();
+    if (this.confetti) {
+      if (confettiOver(this.confetti, now)) {
+        this.confetti = null;
+      } else {
+        stepConfetti(this.confetti, now, dt);
+        drawConfetti(c, this.confetti, now);
       }
     }
-    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (!calm || !this.burstFor) return;
+    for (const walker of this.walkers.values()) {
+      if (cheering(walker.cheerAt, now, true)) {
+        stillConfetti(c, { x: walker.x, y: walker.y }, this.partyColours, walker.n);
+      }
+    }
   }
 
   /**
@@ -1342,12 +1435,14 @@ export class OfficeScene {
       .getState()
       .office?.log.find((row) => row.agent === 'Mabari' && row.outcome.startsWith('Routed to '));
     const ping = !!routed && Date.now() - routed.time < MABARI_PING_MS;
+    // At a shipped project's party Mabari waves and smiles, at its desk.
+    const party = useShipped.getState().phase === 'party';
     const visiting = m.visiting && !m.path.length ? this.walkers.get(m.visiting) : undefined;
     const walking = m.path.length > 0;
     drawMabariAt(c, m.x, m.y, 1.15, t, theme, {
-      pose: ping || visiting ? (ping || t % 4000 < 900 ? 'wave' : 'ask') : 'idle',
+      pose: ping || visiting ? (ping || t % 4000 < 900 ? 'wave' : 'ask') : party ? 'wave' : 'idle',
       turn: walking ? m.dir * 0.7 : visiting ? -0.5 : 0,
-      happy: ping,
+      happy: ping || party,
       dim: false,
       ring: '',
     });

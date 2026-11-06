@@ -127,6 +127,17 @@ function TrophyDialog({ id }: { id: string }) {
 function ShippedBanner() {
   const phase = useShipped((state) => state.phase);
   const current = useShipped((state) => state.current);
+  // What it took, from the server's own numbers: agents, time and cost, on a line under the name.
+  const done = useOfficeStore(
+    (state) => state.office?.projects.find((item) => item.id === current?.id)?.done,
+  );
+  const stats = done
+    ? [
+        `${done.agents} agent${done.agents === 1 ? '' : 's'}`,
+        minsText(done.mins * 60),
+        '$' + done.cost.toFixed(2),
+      ].join(' · ')
+    : '';
   return (
     <div className="shippedwrap" role="status">
       {phase === 'party' && current ? (
@@ -134,6 +145,7 @@ function ShippedBanner() {
           <i aria-hidden="true" />
           <b>Shipped</b>
           <span>{current.name}</span>
+          {stats ? <small>{stats}</small> : null}
         </div>
       ) : null}
     </div>

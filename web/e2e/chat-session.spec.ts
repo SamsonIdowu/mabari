@@ -4,12 +4,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { FakeOffice } from './support/fakeOffice.ts';
 
 // The conversation, against a real session that Mabari runs with the fake `claude`: text that
-// streams, the message box's "@", "/", files, plan first, model and send-now choices. It has its own
-// server, because the shared one cannot start sessions. The real claude is never run: FakeOffice
-// proves `claude` is the fake before it starts anything. An approval in the thread is covered in
-// chat.spec.ts, against the demo's. A real session's own hook calls can't be used for one yet:
-// server/claude.go hands every hook call to Connector.Handle and reads X-Mabari-Run nowhere, so a
-// session's PermissionRequest is never put to the person, and its tool is denied.
+// streams, an approval answered in the thread, the message box's "@", "/", files, plan first, model
+// and send-now choices. It has its own server, because the shared one cannot start sessions. The
+// real claude is never run: FakeOffice proves `claude` is the fake before it starts anything.
 
 const office = new FakeOffice();
 
@@ -80,6 +77,45 @@ test('text streams into the thread as it is written, and a reload shows all of i
     .last();
   await expect.poll(async () => (await again.textContent())?.split('word').length).toBe(41);
   await expect(page.getByTestId('chatYou').first()).toContainText('say hello');
+});
+
+test('a risky action waits in the thread for a click, and nothing happens until there is one', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  // Hazel is a name this connector once handed out. A name someone chose stays theirs.
+  await office.startAgent('Hazel');
+  const done = office.actions();
+  const { thread, box } = await openChat(page, 'Hazel');
+  await expect(thread.getByTestId('chatAgent').last()).toContainText('Done: say hello');
+  await say(page, box, 'fake:bash rm -rf build');
+  const card = thread.getByTestId('chatApproval');
+  await expect(card).toContainText('rm -rf build');
+  await expect(card.getByText('Approval needed')).toBeVisible();
+  // It waits. Nothing ran, and typing more does not answer it.
+  await page.waitForTimeout(800);
+  expect(office.actions()).toBe(done);
+  await expect(card).toBeVisible();
+  await say(page, box, 'allow it');
+  await page.waitForTimeout(500);
+  await expect(card).toBeVisible();
+  expect(office.actions()).toBe(done);
+  await card.getByRole('button', { name: 'Deny' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(thread.getByTestId('chatTool').last()).toContainText('Denied');
+  expect(office.actions()).toBe(done);
+
+  await say(page, box, 'fake:bash rm -rf dist');
+  await thread.getByTestId('chatApproval').getByRole('button', { name: 'Allow once' }).click();
+  await expect(thread.getByTestId('chatTool').last()).toContainText('Done');
+  expect(office.actions()).toBe(done + 1);
+  // A tool call is one line that opens to what went in and what came out.
+  const line = thread.getByTestId('chatTool').last().getByRole('button');
+  await expect(line).toHaveAttribute('aria-expanded', 'false');
+  await line.click();
+  await expect(line).toHaveAttribute('aria-expanded', 'true');
+  await expect(thread.getByLabel('Tool input').last()).toContainText('rm -rf dist');
+  expect((await office.agent('Hazel')).name).toBe('Hazel');
 });
 
 test('"@" completes a file or an agent, "/" lists commands and skills, and an unknown name goes through', async ({
@@ -226,6 +262,7 @@ test('files go with a message by picker, paste and drop, and the agent is given 
 test('plan first holds the session to a plan until you approve it', async ({ page }) => {
   test.setTimeout(90_000);
   const agent = await office.startAgent('Plover');
+  const done = office.actions();
   const { thread, box } = await openChat(page, 'Plover');
   await expect(thread.getByTestId('chatAgent').last()).toContainText('Done: say hello');
   const plan = page.getByRole('button', { name: 'Plan first' });
@@ -242,7 +279,7 @@ test('plan first holds the session to a plan until you approve it', async ({ pag
   expect(lines).toHaveLength(2);
   expect(lines[1]).toContain('plan');
   expect(lines[0]).not.toContain('plan');
-  expect(office.actions()).toBe(0);
+  expect(office.actions()).toBe(done);
   await card.getByRole('button', { name: 'Allow once' }).click();
   await expect(thread.getByTestId('chatAgent').last()).toContainText('Done: The plan is approved');
   expect(agent.name).toBe('Plover');

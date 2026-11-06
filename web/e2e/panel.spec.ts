@@ -134,7 +134,8 @@ test('Interrupt pauses an agent and Continue resumes exactly where it was', asyn
   await panel.getByRole('button', { name: 'Interrupt' }).click();
   await expect(panel).toContainText('Interrupted, waiting for your instruction');
   await expect(panel.getByRole('button', { name: 'Interrupt' })).toHaveCount(0);
-  const resume = panel.getByRole('button', { name: 'Continue' });
+  // The panel also has Continue in terminal, so the one that resumes the agent is the exact one.
+  const resume = panel.getByRole('button', { name: 'Continue', exact: true });
   await expect(resume).toHaveClass(/primary/);
   await resume.click();
   await expect(page.getByText('Ledger is back to work.')).toBeVisible();

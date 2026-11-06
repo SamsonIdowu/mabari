@@ -179,7 +179,8 @@ test('with no terminal, a session starts, streams, stops for a click and survive
 
   // A risky action stops for a click, and nothing happens until there is one.
   await instruct(page, 'fake:bash rm -rf build');
-  await page.getByRole('button', { name: 'Review' }).click();
+  // The approvals board has an item named after the same word, so the banner's button is the exact one.
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
   const card = page.getByRole('dialog');
   await expect(card).toContainText('rm -rf build');
   expect(actions()).toBe(0);
@@ -188,7 +189,8 @@ test('with no terminal, a session starts, streams, stops for a click and survive
   expect(actions()).toBe(0);
 
   await instruct(page, 'fake:bash rm -rf dist');
-  await page.getByRole('button', { name: 'Review' }).click();
+  // The approvals board has an item named after the same word, so the banner's button is the exact one.
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Allow once' }).click();
   await expect(thread.getByTestId('threadTool').last()).toContainText('Done');
   expect(actions()).toBe(1);

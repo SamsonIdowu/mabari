@@ -391,8 +391,10 @@ func (c *Connector) watch(r *run, stdout *os.File) {
 		<-read
 	}
 	_ = stdout.Close()
-	close(r.exited)
+	// In this order, so whoever waits for a process to end finds the office up to date, and Shutdown
+	// can't return, and the database close, before the session is saved as resumable.
 	c.exited(r)
+	close(r.exited)
 }
 
 // exited updates the office after a process has gone. Its agent keeps its place, and the session

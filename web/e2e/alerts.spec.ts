@@ -161,14 +161,18 @@ test.describe('the switch for desktop notifications', () => {
     await page.goto('/#preferences');
     const notify = page.getByLabel(SWITCH);
     await notify.click();
-    await expect(page.locator('#notifyHelp')).toContainText('blocked notifications for Mabari');
+    // Settings leaves out its helper text, so the reason is something it keeps, and it is seen.
+    const why = page.locator('#notifyHelp');
+    await expect(why).toBeVisible();
+    await expect(why).toContainText('blocked notifications for Mabari');
     await expect(notify).not.toBeChecked();
     expect(await stub.asked()).toBe(1);
     // It doesn't ask again once the browser has said no.
     await notify.click();
     await expect(notify).not.toBeChecked();
     expect(await stub.asked()).toBe(1);
-    await expect(page.locator('#notifyHelp')).toContainText('site settings');
+    await expect(why).toBeVisible();
+    await expect(why).toContainText('site settings');
   });
 
   test("stays off, without asking, on an address that isn't a secure context", async ({ page }) => {
@@ -177,6 +181,7 @@ test.describe('the switch for desktop notifications', () => {
     const notify = page.getByLabel(SWITCH);
     await notify.click();
     await expect(notify).not.toBeChecked();
+    await expect(page.locator('#notifyHelp')).toBeVisible();
     await expect(page.locator('#notifyHelp')).toContainText('secure address');
     expect(await stub.asked()).toBe(0);
   });

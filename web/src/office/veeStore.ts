@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import { api, type VeeReply } from '../data/api.ts';
+import { recapSince, useAway } from '../data/away.ts';
 import { addToastFilter, useOfficeStore } from '../data/officeStore.ts';
 import { mabariCreate, mabariImprove } from './builderStore.tsx';
 import { slug } from './defs.ts';
@@ -242,7 +243,8 @@ export const useVee = create<VeeStore>((set, get) => ({
   hear: async (text, project) => {
     set({ heard: text, state: 'think' });
     try {
-      const result = await api.vee(text, project ?? get().project);
+      const since = recapSince(useAway.getState().absence, Date.now());
+      const result = await api.vee(text, project ?? get().project, since);
       ackAt = Date.now();
       get().say(builderReply(result.reply));
       if (result.message) showResult(result.message, text);

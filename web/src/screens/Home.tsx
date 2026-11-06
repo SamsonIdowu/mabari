@@ -13,6 +13,7 @@ import { useVee } from '../office/veeStore.ts';
 import { whereWorking } from '../office/where.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { ApprovalCard } from './Approvals.tsx';
+import { AwayCard, RecapBody } from './AwayCard.tsx';
 import { ConnectPrompt } from './ConnectPrompt.tsx';
 import { HomeDock } from './HomeDock.tsx';
 
@@ -257,6 +258,13 @@ function Said({ reply }: { reply: VeeReply }) {
       );
     case 'replies':
       return <Replies reply={reply} />;
+    case 'recap':
+      return (
+        <>
+          <p>{reply.text}</p>
+          {reply.recap ? <RecapBody recap={reply.recap} /> : null}
+        </>
+      );
     case 'relayed': {
       const { agentId } = reply;
       return (
@@ -455,6 +463,7 @@ function HomeScreen({ office }: { office: Snapshot }) {
           <Summary office={office} />
           <ConnectPrompt office={office} />
         </div>
+        <AwayCard />
         <div className="h2stage">
           <canvas
             id="veeHome"

@@ -68,7 +68,9 @@ export function claudeHook(
   const process = spawn(binary, ['hook', '--port', apiPort, event], { env: mabariEnv() });
   let printed = '';
   process.stdout.on('data', (chunk: Buffer) => (printed += chunk.toString()));
-  process.stdin.end(JSON.stringify({ session_id: sessionId(session), cwd, hook_event_name: event, ...extra }));
+  process.stdin.end(
+    JSON.stringify({ session_id: sessionId(session), cwd, hook_event_name: event, ...extra }),
+  );
   return { process, printed: new Promise((done) => process.on('close', () => done(printed))) };
 }
 

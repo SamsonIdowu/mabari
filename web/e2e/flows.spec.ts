@@ -223,11 +223,13 @@ test('an approval card closes when its approval is settled elsewhere', async ({
   await page.locator('.bitem').click();
   const card = page.getByRole('dialog');
   await expect(card).toBeVisible();
-  await request.post('/api/auto-approve', { headers: fromPage,
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
     data: { on: true, scope: 'all', acknowledged: true },
   });
   await expect(card).toBeHidden();
-  await request.post('/api/auto-approve', { headers: fromPage,
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
     data: { on: false, scope: 'all', acknowledged: false },
   });
 });

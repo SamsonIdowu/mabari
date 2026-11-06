@@ -91,9 +91,13 @@ test('the approval bell pops up, minimises, and opens again for a new approval',
   await expect(board).toContainText('Needs approval');
   await board.getByRole('button', { name: 'Minimise' }).click();
   // Settling it leaves the grey bell.
-  await request.post('/api/auto-approve', { headers: fromPage, data: { on: true, scope: 'all', acknowledged: true } });
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
+    data: { on: true, scope: 'all', acknowledged: true },
+  });
   await expect(page.getByRole('button', { name: 'Nothing needs approval' })).toBeVisible();
-  await request.post('/api/auto-approve', { headers: fromPage,
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
     data: { on: false, scope: 'all', acknowledged: false },
   });
 });

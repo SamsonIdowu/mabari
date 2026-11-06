@@ -237,7 +237,8 @@ test.describe('shipping a project', () => {
             id: string;
           }[];
           for (const approval of waiting) {
-            await request.post(`/api/approvals/${approval.id}/decision`, { headers: fromPage,
+            await request.post(`/api/approvals/${approval.id}/decision`, {
+              headers: fromPage,
               data: { decision: 'denied' },
             });
           }

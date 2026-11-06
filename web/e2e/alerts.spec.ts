@@ -83,9 +83,9 @@ test('the tab title leads with the count and the icon gets a red dot, on every s
     expect(faviconText(await favicon(page))).toContain('id="alert-dot"');
   }
 
-  // Deciding the approval takes one off. The error is still red, so the dot stays. (The test
-  // allows it: a Claude Code session that was denied stays "waiting" until its next step.)
-  const decided = await request.post(`/api/approvals/${await pendingApproval(request)}/decision`, { headers: fromPage,
+  // Deciding the approval takes one off. The error is still red, so the dot stays.
+  const decided = await request.post(`/api/approvals/${await pendingApproval(request)}/decision`, {
+    headers: fromPage,
     data: { decision: 'allowed' },
   });
   expect(decided.ok()).toBe(true);
@@ -254,7 +254,8 @@ test('a notification shows only while the page is hidden, once for each, and a c
   await page.waitForTimeout(500);
   expect(await stub.seen()).toHaveLength(2);
 
-  const decided = await request.post(`/api/approvals/${approvalId}/decision`, { headers: fromPage,
+  const decided = await request.post(`/api/approvals/${approvalId}/decision`, {
+    headers: fromPage,
     data: { decision: 'denied' },
   });
   expect(decided.ok()).toBe(true);
@@ -274,7 +275,10 @@ test('the demo office shows the count and the dot from the first look', async ({
   const [approval] = (await (await request.get('/api/approvals?pending=1')).json()) as {
     id: string;
   }[];
-  await request.post(`/api/approvals/${approval!.id}/decision`, { headers: fromPage, data: { decision: 'allowed' } });
+  await request.post(`/api/approvals/${approval!.id}/decision`, {
+    headers: fromPage,
+    data: { decision: 'allowed' },
+  });
   await expect(page).toHaveTitle('(1) Agents · Mabari');
   const snapshot = (await (await request.get('/api/snapshot')).json()) as {
     agents: { id: string; name: string }[];

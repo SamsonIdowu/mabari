@@ -11,8 +11,12 @@ test.beforeEach(async ({ request }) => {
 /** The demo office, with something auto approve decided, so there is a line for the recap to tell. */
 async function demoWithAnAutoApproval(request: APIRequestContext) {
   await request.post('/api/demo/load');
-  await request.post('/api/auto-approve', { headers: fromPage, data: { on: true, scope: 'all', acknowledged: true } });
-  await request.post('/api/auto-approve', { headers: fromPage,
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
+    data: { on: true, scope: 'all', acknowledged: true },
+  });
+  await request.post('/api/auto-approve', {
+    headers: fromPage,
     data: { on: false, scope: 'all', acknowledged: true },
   });
 }
@@ -154,10 +158,12 @@ test.describe('while you were away', () => {
     await expect(page.locator('#homeSum')).toContainText('working');
     await expect(card(page)).toHaveCount(0);
     // Something happens while nobody is there: auto approve settles an approval.
-    await request.post('/api/auto-approve', { headers: fromPage,
+    await request.post('/api/auto-approve', {
+      headers: fromPage,
       data: { on: true, scope: 'all', acknowledged: true },
     });
-    await request.post('/api/auto-approve', { headers: fromPage,
+    await request.post('/api/auto-approve', {
+      headers: fromPage,
       data: { on: false, scope: 'all', acknowledged: true },
     });
     // Twenty minutes go by, and then the mouse moves.

@@ -24,6 +24,7 @@
 //	fake:slow <words>       streams that many words, slowly
 //	fake:hang               works until interrupted
 //	fake:big <bytes>        says that many bytes in one message
+//	fake:silent             sends a message with no text in it
 //	fake:secret             says a secret split across two deltas
 //	fake:error <text>       ends the turn with an error result
 //	fake:crash              dies mid-turn
@@ -564,6 +565,8 @@ func (f *fake) turn(text string) {
 		case <-time.After(10 * time.Minute):
 		}
 		return
+	case "fake:silent":
+		f.stream("msg_"+newUUID(), nil, "", 0)
 	case "fake:big":
 		size, _ := strconv.Atoi(rest)
 		last = strings.Repeat("x", size)

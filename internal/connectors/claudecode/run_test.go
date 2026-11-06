@@ -1441,6 +1441,18 @@ func TestReleasingASessionKeepsItResumable(t *testing.T) {
 	}
 }
 
+// A message that never says anything leaves nothing behind.
+func TestAMessageWithNoTextLeavesNoBubble(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:silent")
+	b.untilState(agent.ID, models.StateDone)
+	for _, item := range b.conversation(agent.ID) {
+		if item.Kind == models.ConversationAssistant {
+			t.Fatalf("a bubble with nothing in it: %q", b.said(agent.ID))
+		}
+	}
+}
+
 // Opened in a terminal afterwards, it reports through settings hooks, and Mabari only follows.
 func TestASessionCarriedOnInATerminalIsFollowed(t *testing.T) {
 	b := newBench(t)

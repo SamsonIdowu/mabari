@@ -153,7 +153,8 @@ type streamEvent struct {
 	} `json:"delta"`
 }
 
-// liveText is an assistant message's text as it arrives.
+// liveText is an assistant message's text as it arrives. It reaches the conversation with its first
+// words and not before, so a message that never says anything leaves no empty bubble.
 type liveText struct {
 	id   string
 	time int64
@@ -283,13 +284,6 @@ func (c *Connector) handleEvent(r *run, event *streamEvent) {
 		live := &liveText{id: "item-" + newSessionID(), time: time.Now().UnixMilli()}
 		r.live[event.Index] = live
 		r.order = append(r.order, live)
-		_ = c.engine.Do(func() {
-			if agent := c.runAgent(r); agent != nil {
-				c.engine.Converse(agent.ID, models.ConversationItem{
-					ID: live.id, Time: live.time, Kind: models.ConversationAssistant, Streaming: true,
-				})
-			}
-		})
 	case "content_block_delta":
 		live := r.live[event.Index]
 		if live == nil || event.Delta.Type != "text_delta" {
@@ -322,7 +316,7 @@ func (c *Connector) flushLive(r *run, live *liveText, final bool) {
 	}
 	clean := redact.Text(text)
 	live.flushed = time.Now()
-	if clean == live.sent {
+	if clean == live.sent || strings.TrimSpace(clean) == "" {
 		return
 	}
 	_ = c.engine.Do(func() {
@@ -330,10 +324,10 @@ func (c *Connector) flushLive(r *run, live *liveText, final bool) {
 		if agent == nil {
 			return
 		}
-		if strings.HasPrefix(clean, live.sent) {
+		if live.sent != "" && strings.HasPrefix(clean, live.sent) {
 			c.engine.ConverseDelta(agent.ID, live.id, clean[len(live.sent):])
 		} else {
-			// Masking changed what was already shown, so the whole text goes again.
+			// Its first words, or masking changed what was shown, so the whole text goes.
 			c.engine.Converse(agent.ID, models.ConversationItem{
 				ID: live.id, Time: live.time, Kind: models.ConversationAssistant, Text: clean, Streaming: true,
 			})
@@ -384,9 +378,12 @@ func (c *Connector) handleAssistant(r *run, line streamLine) {
 				if parent == "" {
 					if live := r.takeLive(); live != nil {
 						item.ID, item.Time = live.id, live.time
+						if strings.TrimSpace(item.Text) == "" {
+							item.Text = live.raw.String()
+						}
 					}
 				}
-				if strings.TrimSpace(block.Text) != "" || item.ID != "" {
+				if strings.TrimSpace(item.Text) != "" {
 					c.engine.Converse(agent.ID, item)
 				}
 			case "tool_use":
@@ -465,9 +462,11 @@ func (c *Connector) handleResult(r *run, line streamLine) {
 // closeLive finishes streamed text whose finished message never came, as after an interrupt.
 func (c *Connector) closeLive(r *run, agent *models.LiveAgent) {
 	for live := r.takeLive(); live != nil; live = r.takeLive() {
-		c.engine.Converse(agent.ID, models.ConversationItem{
-			ID: live.id, Time: live.time, Kind: models.ConversationAssistant, Text: live.raw.String(),
-		})
+		if text := live.raw.String(); strings.TrimSpace(text) != "" {
+			c.engine.Converse(agent.ID, models.ConversationItem{
+				ID: live.id, Time: live.time, Kind: models.ConversationAssistant, Text: text,
+			})
+		}
 	}
 	clear(r.live)
 }

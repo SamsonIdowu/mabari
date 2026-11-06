@@ -823,3 +823,49 @@ func TestASessionRunningAsMabariGetsTheMap(t *testing.T) {
 		t.Errorf("a plain session got %s", reply)
 	}
 }
+
+// With no process behind it, a run's hook is a call Mabari won't speak for. Printing nothing would
+// let an allow rule through at PreToolUse, so anything that gates an action hears no out loud.
+func TestAHookFromAGoneRunIsToldNo(t *testing.T) {
+	c, engine := newConnector(t)
+	call := func(event string) []byte {
+		body, _ := json.Marshal(map[string]any{
+			"session_id": "abc-123", "cwd": "/home/me/shop", "hook_event_name": event, "tool_name": "Bash",
+			"tool_input": map[string]any{"command": "npm test"},
+		})
+		return c.HandleRun(context.Background(), body)
+	}
+	var pre struct {
+		Output struct {
+			Decision string `json:"permissionDecision"`
+			Reason   string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(call("PreToolUse"), &pre); err != nil {
+		t.Fatal(err)
+	}
+	if pre.Output.Decision != "deny" || pre.Output.Reason == "" {
+		t.Fatalf("PreToolUse = %+v", pre)
+	}
+	var permission struct {
+		Output struct {
+			Decision struct {
+				Behavior string `json:"behavior"`
+			} `json:"decision"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(call("PermissionRequest"), &permission); err != nil {
+		t.Fatal(err)
+	}
+	if permission.Output.Decision.Behavior != "deny" {
+		t.Fatalf("PermissionRequest = %+v", permission)
+	}
+	for _, event := range []string{"PostToolUse", "Stop", "SessionStart", "UserPromptSubmit", "Notification"} {
+		if reply := call(event); reply != nil {
+			t.Errorf("%s = %s", event, reply)
+		}
+	}
+	if agent := agentOf(t, engine); agent != nil {
+		t.Fatalf("a gone run took a desk: %+v", agent.Agent)
+	}
+}

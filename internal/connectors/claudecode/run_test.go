@@ -670,6 +670,24 @@ func TestInterruptNeverSettlesAnApproval(t *testing.T) {
 	}
 }
 
+// A session Mabari runs fires settings.json's hooks as well as its own. That copy says nothing,
+// or the person would be asked twice.
+func TestSettingsHooksOfALiveRunAreIgnored(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:hang")
+	b.working(agent.ID)
+	body, _ := json.Marshal(map[string]any{
+		"session_id": agent.Session.ID, "cwd": b.folder, "hook_event_name": "PreToolUse",
+		"tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf build"},
+	})
+	if reply := b.c.Handle(context.Background(), body); reply != nil {
+		t.Fatalf("reply = %s", reply)
+	}
+	if saved := b.read(agent.ID); saved.Approval != nil {
+		t.Fatalf("asked: %+v", saved.Approval)
+	}
+}
+
 // A folder can bring more after the click, from a pull or a branch. A running process already has
 // what it has, but no new one starts until the person has seen the rest.
 func TestAFolderThatGainedConfigStartsNoProcess(t *testing.T) {

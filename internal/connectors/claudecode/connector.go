@@ -189,7 +189,8 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 }
 
 // HandleRun answers one hook call from the hooks Mabari passed to a session it runs. In such a
-// session, printing nothing denies whatever was asked.
+// session, printing nothing at PermissionRequest denies what was asked, but printing nothing at
+// PreToolUse lets an allow rule through, so a call Mabari won't speak for is refused out loud.
 func (c *Connector) HandleRun(ctx context.Context, body []byte) []byte {
 	return c.handle(ctx, body, true)
 }
@@ -205,16 +206,22 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	_, live := c.runs[c.sessions[in.SessionID]]
 	c.mu.Unlock()
 	// With Claude Code attached, a session Mabari runs fires settings.json's hooks as well as its
-	// own, so that copy is ignored. A process Mabari no longer speaks for gets no answer, which
-	// denies what it asks. Both hooks firing would ask the person twice.
-	if fromRun != live {
+	// own, so that copy is ignored: both firing would ask the person twice.
+	if !fromRun && live {
 		return nil
+	}
+	// A process Mabari no longer speaks for has nobody to ask.
+	if fromRun && !live {
+		return refused(in, "This session no longer runs in Mabari.")
 	}
 	if stopped {
 		if in.Event == "SessionEnd" {
 			c.mu.Lock()
 			delete(c.stopped, in.SessionID)
 			c.mu.Unlock()
+		}
+		if fromRun {
+			return refused(in, "This session was stopped in Mabari.")
 		}
 		return nil
 	}
@@ -241,6 +248,25 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	return reply
 }
 
+// refused answers a hook call from a session Mabari won't speak for: no to anything that decides
+// whether an action goes ahead, and nothing to the rest.
+func refused(in input, why string) []byte {
+	switch in.Event {
+	case "PreToolUse":
+		return denyTool(why)
+	case "PermissionRequest":
+		return denyReply(why)
+	}
+	return nil
+}
+
+// denyTool stops a tool call at PreToolUse, whatever a rule or another hook says.
+func denyTool(why string) []byte {
+	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why,
+	}})
+}
+
 // gated reports whether a tool can change something or reach beyond this computer. Everything else
 // is left to Claude Code, which asks about it, and so denies it here, unless a rule allows it. Tools
 // like TodoWrite would otherwise need a click every time.
@@ -263,10 +289,7 @@ func (c *Connector) gate(in input) []byte {
 	}
 	agent := c.engine.Agent(c.idOf(in.SessionID))
 	if agent == nil {
-		return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
-			"hookEventName": "PreToolUse", "permissionDecision": "deny",
-			"permissionDecisionReason": "This agent has left Mabari.",
-		}})
+		return denyTool("This agent has left Mabari.")
 	}
 	if approvalFor(in, workFolder(agent)).RiskLevel == models.RiskLow {
 		return nil

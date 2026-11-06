@@ -147,3 +147,29 @@ func TestShapeKeepsWhatItMasks(t *testing.T) {
 		t.Errorf("keys = %+v", got)
 	}
 }
+
+// In prose or a log line a cookie or an authorization is often written as JSON, with a quote
+// between the name and its value.
+func TestCookiesAndAuthorizationWrittenAsJSON(t *testing.T) {
+	for _, text := range []string{
+		`the request had {"cookie":"sessionvalue"} in it`,
+		`"Cookie": "sessionvalue"`,
+		`'set-cookie': 'sessionvalue'`,
+		`cookie=sessionvalue`,
+		`--cookie sessionvalue`,
+		`{"authorization":"sessionvalue"}`,
+		`"Authorization": "Bearer sessionvalue"`,
+	} {
+		if got := Text(text); strings.Contains(got, "sessionvalue") {
+			t.Errorf("%q = %q", text, got)
+		}
+	}
+	if got := Text(`{"cookie":"x"}`); got != `{"cookie":"`+Mask+`"}` {
+		t.Errorf("a short value = %q", got)
+	}
+	for _, text := range []string{"we use cookies", "the cookie banner is broken"} {
+		if got := Text(text); got != text {
+			t.Errorf("%q = %q", text, got)
+		}
+	}
+}

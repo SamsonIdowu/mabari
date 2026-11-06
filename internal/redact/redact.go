@@ -16,7 +16,7 @@ const Mask = "[redacted]"
 // secretWords name a secret, for both text and JSON keys.
 //
 //nolint:gosec // This is a pattern of names, not a credential.
-const secretWords = `api[_-]?key|token|secret|passw(?:or)?d|passphrase|pwd|private[_-]?key|credential`
+const secretWords = `api[_-]?key|token|secret|passw(?:or)?d|passphrase|pwd|private[_-]?key|credential|cookie`
 
 var patterns = []*regexp.Regexp{
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)`),
@@ -33,13 +33,13 @@ var patterns = []*regexp.Regexp{
 // Each keeps the name and hides the value.
 var (
 	cookie     = regexp.MustCompile(`(?i)\b((?:set-)?cookie:\s*)[^\r\n]+`)
-	header     = regexp.MustCompile(`(?i)\b(authorization:\s*(?:bearer\s+|basic\s+|token\s+)?)[^\s'"]+`)
+	header     = regexp.MustCompile(`(?i)\b(authorization["']?\s*:\s*["']?(?:bearer\s+|basic\s+|token\s+)?)[^\s'"]+`)
 	bearer     = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}`)
 	flag       = regexp.MustCompile(`(?i)(--?[a-z0-9-]*(?:` + secretWords + `)[a-z0-9-]*\s+)("(?:[^"\\]|\\.)*"|'[^']*'|"[^\n]*|'[^\n]*|[^\s"']+)`)
 	assignment = regexp.MustCompile(`(?i)\b([a-z0-9_-]*(?:` + secretWords + `)[a-z0-9_-]*["']?\s*[:=]\s*)("(?:[^"\\]|\\.)*"|'[^']*'|"[^\n]*|'[^\n]*|[^\s"'&,;]{4,})`)
 	userInfo   = regexp.MustCompile(`(://[^/\s:@]*:)\S*@`)
 	tokenUser  = regexp.MustCompile(`(://)[^/\s:@]{8,}@`)
-	secretKey  = regexp.MustCompile(`(?i)(` + secretWords + `|authorization|cookie)`)
+	secretKey  = regexp.MustCompile(`(?i)(` + secretWords + `|authorization)`)
 )
 
 // masked hides a value, keeping any quotes around it.

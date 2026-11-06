@@ -27,6 +27,7 @@ import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.
 import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './OfficeWall.tsx';
 import { PromptTray } from './PromptTray.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
 
@@ -558,6 +559,10 @@ function FloorMessage({ office }: { office: Snapshot }) {
   return (
     <div className="floormsg">
       <div className="card">
+        <Cast
+          who={connected ? 1 : keysOnly ? 2 : 0}
+          act={connected ? 'sparkle' : keysOnly ? 'think' : 'wave'}
+        />
         {connected ? (
           <>
             <h2>Connected. No agents running yet.</h2>

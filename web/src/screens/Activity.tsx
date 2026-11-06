@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, emptyLogText, filterLog, logAgents, logTypes } from '../format.ts';
 import { PageHead } from './parts.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 const TYPE_CHIPS: Record<string, string> = {
   Instruction: 'accent',
@@ -115,6 +116,7 @@ export function Activity() {
               ) : (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 40 }} className="muted">
+                    <Cast who={4} act="rest" />
                     {emptyLogText(office.log.length)}
                   </td>
                 </tr>

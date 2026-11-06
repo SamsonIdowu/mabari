@@ -31,6 +31,7 @@ import { Icon } from '../shell/Icon.tsx';
 import { MabariHead } from '../shell/MabariHead.tsx';
 import { Modal } from '../shell/Modal.tsx';
 import { useEscape } from '../shell/useEscape.ts';
+import { Cast } from '../shell/Cast.tsx';
 
 const toast = (text: string) => useOfficeStore.getState().toast(text);
 
@@ -439,6 +440,7 @@ export function Builder() {
           </div>
         ) : (
           <div className="card defempty">
+            <Cast who={5} act="read" />
             <h2>{defs.length ? 'No agents match' : 'Build your first agent'}</h2>
             <p className="muted">
               Agents you build here are saved as files Claude Code reads. Account agents work in

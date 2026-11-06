@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
@@ -79,6 +80,60 @@ func (hook Hook) args(event string) []string {
 		args = append(args, "--token-file", hook.TokenFile)
 	}
 	return append(args, event)
+}
+
+// SessionPermissionWait is how long a session Mabari runs waits for a click, in seconds. It is
+// longer than PermissionWait because nothing else can answer: a terminal session falls back to its
+// own prompt, and this one is denied.
+const SessionPermissionWait = 30 * 60
+
+// gateWait is how long the hook of a session Mabari runs waits for PreToolUse to be answered.
+// Running out of time blocks the action, so it allows for a busy office.
+const gateWait = 10 * time.Second
+
+// sessionEvents are the hooks a session Mabari runs gets. MessageDisplay is left out because the
+// stream carries every message.
+func sessionEvents() []string {
+	return slices.DeleteFunc(slices.Clone(hookEvents), func(event string) bool { return event == "MessageDisplay" })
+}
+
+// sessionArgs is the hook command of a session Mabari runs.
+func (hook Hook) sessionArgs(event string) []string {
+	return append([]string{"hook", "--run"}, hook.args(event)[1:]...)
+}
+
+// sessionTimeout is each event's timeout in seconds, for a session Mabari runs.
+func sessionTimeout(event string) int {
+	switch event {
+	case "PermissionRequest":
+		return SessionPermissionWait + 10
+	case "PreToolUse":
+		return int(gateWait/time.Second) + 10
+	}
+	return hookTimeout(event)
+}
+
+// SessionSettings is the --settings value of a session Mabari runs: its hooks, for this process
+// only, so a session can run without anything being written to settings.json. The hooks that gate
+// an action set onFailure to block, so a hook that fails or times out stops the action.
+func (hook Hook) SessionSettings() (string, error) {
+	hooks := map[string][]map[string]any{}
+	for _, event := range sessionEvents() {
+		handler := map[string]any{
+			"type": "command", "command": hook.Binary, "args": hook.sessionArgs(event),
+			"timeout": sessionTimeout(event),
+		}
+		if Gates(event) {
+			handler["onFailure"] = "block"
+		}
+		group := map[string]any{"hooks": []map[string]any{handler}}
+		if toolEvents[event] {
+			group["matcher"] = "*"
+		}
+		hooks[event] = []map[string]any{group}
+	}
+	data, err := json.Marshal(map[string]any{"hooks": hooks})
+	return string(data), err
 }
 
 // Plan is a change to settings.json, shown before it is made.

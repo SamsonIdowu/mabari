@@ -94,6 +94,21 @@ func ShellLine(request Request) string {
 	return "cd " + ShellQuote(request.Folder) + " && " + strings.Join(quoted, " ")
 }
 
+// shellSafe matches a word a shell reads as it is, so it needs no quotes.
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_./:=@%+,-]+$`)
+
+func shellWord(word string) string {
+	if shellSafe.MatchString(word) {
+		return word
+	}
+	return ShellQuote(word)
+}
+
+// ContinueCommand is the exact command that carries a session on in a terminal.
+func ContinueCommand(folder, session string) string {
+	return "cd " + shellWord(folder) + " && claude --resume " + shellWord(session)
+}
+
 // appleScriptString quotes text for AppleScript: backslashes and double quotes are escaped.
 func appleScriptString(text string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `"`, `\"`) + `"`

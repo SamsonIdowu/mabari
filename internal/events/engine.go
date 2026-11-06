@@ -19,7 +19,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
-	"github.com/SamsonIdowu/mabari/internal/redact"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
@@ -587,13 +586,17 @@ func (e *Engine) Converse(agentID string, item models.ConversationItem) models.C
 	if item.Time == 0 {
 		item.Time = e.now().UnixMilli()
 	}
-	item.Text = redact.Text(item.Text)
+	var cutText, cutInput, cutOutput bool
+	item.Text, cutText = maskText(item.Text, models.ConversationTextLimit)
 	if item.Tool != nil {
 		tool := *item.Tool
-		tool.Summary, tool.Input, tool.Output = redact.Text(tool.Summary), maskStructured(tool.Input), maskStructured(tool.Output)
+		tool.Summary, _ = maskText(tool.Summary, models.ConversationToolLimit)
+		tool.Input, cutInput = maskData(tool.Input)
+		tool.Output, cutOutput = maskData(tool.Output)
 		item.Tool = &tool
 	}
 	item = item.WithinLimits()
+	item.Clipped = item.Clipped || cutText || cutInput || cutOutput
 	seq, err := e.store.ConversationSeq(ctx, agentID, item.ID)
 	e.record(err)
 	if seq == 0 {
@@ -979,6 +982,12 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	}
 }
 
+// OfficeWatcher is a connector that needs to know when the office is cleared, because it runs
+// something for agents that are going. keep names the agents that stay. Called inside Do.
+type OfficeWatcher interface {
+	OfficeCleared(keep []string)
+}
+
 // Answerer is a connector whose agents can ask the person questions, and hear back.
 type Answerer interface {
 	// Answer passes checked answers to the agent's waiting session, and reports whether the
@@ -1252,6 +1261,11 @@ func (e *Engine) StoredAccounts() []models.Account {
 // ClearOffice empties agents, projects and history, keeping settings and accounts. keep names
 // agents the caller is about to put back, whose conversations stay. Call inside Do.
 func (e *Engine) ClearOffice(keep ...string) {
+	for _, connector := range e.connectors {
+		if watcher, ok := connector.(OfficeWatcher); ok {
+			watcher.OfficeCleared(keep)
+		}
+	}
 	e.record(e.store.ClearOffice(context.Background(), keep...))
 	accounts := e.accounts
 	e.resetMemory()

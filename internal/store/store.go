@@ -570,7 +570,7 @@ func (s *Store) ClearOffice(ctx context.Context, keep ...string) error {
 		query, args := "DELETE FROM conversation_items", make([]any, 0, len(keep))
 		if len(keep) > 0 {
 			// Only placeholders are added, one for each id.
-			query += " WHERE agent_id NOT IN (?" + strings.Repeat(", ?", len(keep)-1) + ")"
+			query += " WHERE agent_id NOT IN (?" + strings.Repeat(", ?", len(keep)-1) + ")" // #nosec G202
 			for _, id := range keep {
 				args = append(args, id)
 			}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -103,6 +104,68 @@ func TestConverseKeepsMaskedToolInputAsJSON(t *testing.T) {
 	}
 	if !strings.Contains(item.Tool.Input, "&b=<2>") {
 		t.Fatalf("escaped for HTML, which nobody asked for: %s", item.Tool.Input)
+	}
+}
+
+// Masking runs with the whole office waiting, so a huge line mustn't hold it up.
+func TestConverseStaysQuickOnAHugeMessage(t *testing.T) {
+	engine := conversationEngine(t)
+	timed := func(text string) (models.ConversationItem, time.Duration) {
+		var item models.ConversationItem
+		started := time.Now()
+		_ = engine.Do(func() {
+			item = engine.Converse("a1", models.ConversationItem{
+				Kind: models.ConversationTool, Text: text,
+				Tool: &models.ToolCall{Summary: text, Input: `{"content":"` + text + `"}`, Output: text},
+			})
+		})
+		return item, time.Since(started)
+	}
+	// Compared with a message at the limit, so a slow machine can't fail it. Masking grows with
+	// what it is given, so a message 400 times longer would take about 400 times as long.
+	_, usual := timed(strings.Repeat("x", models.ConversationTextLimit))
+	item, took := timed(strings.Repeat("the quick brown fox ", models.ConversationTextLimit*20))
+	if took > 20*usual+100*time.Millisecond {
+		t.Fatalf("a huge message held the office for %v, against %v for one at the limit", took, usual)
+	}
+	if !item.Clipped || len([]rune(item.Text)) != models.ConversationTextLimit {
+		t.Fatalf("clipped %v, length %d", item.Clipped, len([]rune(item.Text)))
+	}
+}
+
+// Part of a JSON document can't be decoded, so a secret in one too long to check is not kept.
+func TestToolDataTooLongToCheckIsNotKept(t *testing.T) {
+	engine := conversationEngine(t)
+	data := `{"Authorization":"plainvalue123","content":"` + strings.Repeat("x", 1<<20) + `"}`
+	var item models.ConversationItem
+	_ = engine.Do(func() {
+		item = engine.Converse("a1", models.ConversationItem{
+			Kind: models.ConversationTool, Tool: &models.ToolCall{Summary: "Write a.txt", Input: data, Output: data},
+		})
+	})
+	if strings.Contains(item.Tool.Input, "plainvalue123") || strings.Contains(item.Tool.Output, "plainvalue123") {
+		t.Fatalf("kept a secret: %.100s", item.Tool.Input)
+	}
+	if !item.Clipped || item.Tool.Summary != "Write a.txt" {
+		t.Fatalf("clipped %v, summary %q", item.Clipped, item.Tool.Summary)
+	}
+}
+
+// A secret lying across the cut must not survive as a piece too short to look like one.
+func TestASecretAtTheCutIsNotLeftHalfShown(t *testing.T) {
+	const secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789"
+	engine := conversationEngine(t)
+	limit := models.ConversationTextLimit
+	most := limit + 1024
+	for _, at := range []int{limit - 20, limit - 5, most - 12, most - 4} {
+		text := strings.Repeat("x", at) + " " + secret + " " + strings.Repeat("y", most)
+		var item models.ConversationItem
+		_ = engine.Do(func() {
+			item = engine.Converse("a1", models.ConversationItem{Kind: models.ConversationAssistant, Text: text})
+		})
+		if strings.Contains(item.Text, "sk-ant") || strings.Contains(item.Text, "abcdef") {
+			t.Fatalf("at %d: kept part of a secret: ...%s", at, item.Text[max(0, len(item.Text)-60):])
+		}
 	}
 }
 

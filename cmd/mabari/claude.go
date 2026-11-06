@@ -45,35 +45,54 @@ func hookBinary() (string, error) {
 	return path, nil
 }
 
+// actionBlocked says a hook that gates an action couldn't reach Mabari. It exits with 2, which is
+// how a hook tells Claude Code to block the action.
+type actionBlocked struct{ event string }
+
+func (b actionBlocked) Error() string {
+	return "couldn't reach Mabari, so " + b.event + " was blocked rather than left to go ahead"
+}
+
 // runHook is `mabari hook [--port N] <event>`, which Claude Code runs. It never fails: any
-// problem leaves Claude Code's normal behaviour in place.
+// problem leaves Claude Code's normal behaviour in place. With --run, which Mabari passes to
+// sessions it runs, a problem blocks an action instead of letting it go ahead.
 func runHook(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	port := flags.Int("port", config.DefaultPort, "Mabari's port")
 	tokenFile := flags.String("token-file", "", "read the token from this file")
+	session := flags.Bool("run", false, "the hook of a session Mabari runs")
 	if flags.Parse(args) != nil || flags.NArg() != 1 {
 		return nil
 	}
-	if *tokenFile != "" {
-		claudecode.RunHook(flags.Arg(0), *port, stdin, stdout, func() (string, error) {
-			return claudecode.ReadTokenFile(*tokenFile)
-		})
+	event := flags.Arg(0)
+	call := func(token func() (string, error)) error {
+		if !*session {
+			claudecode.RunHook(event, *port, stdin, stdout, token)
+			return nil
+		}
+		if !claudecode.RunSessionHook(event, *port, stdin, stdout, token) && claudecode.Gates(event) {
+			return actionBlocked{event}
+		}
 		return nil
+	}
+	if *tokenFile != "" {
+		return call(func() (string, error) { return claudecode.ReadTokenFile(*tokenFile) })
 	}
 	cfg, err := config.Load(nil, os.Getenv, io.Discard)
 	if err != nil {
+		if *session && claudecode.Gates(event) {
+			return actionBlocked{event}
+		}
 		return nil
 	}
-	token := func() (string, error) {
+	return call(func() (string, error) {
 		store, err := openSecrets(cfg)
 		if err != nil {
 			return "", err
 		}
 		return store.Get(claudecode.TokenName)
-	}
-	claudecode.RunHook(flags.Arg(0), *port, stdin, stdout, token)
-	return nil
+	})
 }
 
 // connectClaude is `mabari connect claude`: it shows the change to settings.json, asks, backs up

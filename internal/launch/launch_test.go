@@ -110,3 +110,17 @@ func TestSlashCommands(t *testing.T) {
 		}
 	}
 }
+
+// The command is run by hand, so it reads plainly, and is quoted only where a shell needs it.
+func TestContinueCommand(t *testing.T) {
+	const session = "550e8400-e29b-41d4-a716-446655440000"
+	if got := ContinueCommand("/Users/me/shop", session); got != "cd /Users/me/shop && claude --resume "+session {
+		t.Errorf("command = %q", got)
+	}
+	if got := ContinueCommand("/Users/me/my shop", session); got != "cd '/Users/me/my shop' && claude --resume "+session {
+		t.Errorf("command = %q", got)
+	}
+	if got := ContinueCommand("/x/$(rm -rf ~)", "a;b"); got != `cd '/x/$(rm -rf ~)' && claude --resume 'a;b'` {
+		t.Errorf("command = %q", got)
+	}
+}

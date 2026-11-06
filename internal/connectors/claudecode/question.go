@@ -116,7 +116,7 @@ func (c *Connector) ask(ctx context.Context, in input) []byte {
 	pending.ctx = ctx
 	var asker, id string
 	_ = c.engine.Do(func() {
-		agent := c.engine.Agent(agentID(in.SessionID))
+		agent := c.engine.Agent(c.idOf(in.SessionID))
 		if in.AgentID != "" {
 			agent = c.engine.Agent(helperID(in))
 		}

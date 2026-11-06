@@ -178,6 +178,11 @@ export interface AgentSession {
    */
   agentFile: string;
   /**
+   * Started is true once Claude Code has reported the session. Before that it may have saved
+   * nothing, and --resume would fail for ever, so it starts afresh under the same id.
+   */
+  started: boolean;
+  /**
    * Resume is the exact command that continues the session in a terminal.
    */
   resume: string;

@@ -61,6 +61,10 @@ const mapEvery = 10 * time.Second
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "mabari:", err)
+		var blocked actionBlocked
+		if errors.As(err, &blocked) {
+			os.Exit(2)
+		}
 		os.Exit(1)
 	}
 }

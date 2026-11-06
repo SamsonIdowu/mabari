@@ -148,6 +148,9 @@ type AgentSession struct {
 	Mode string `json:"mode"`
 	// AgentFile is the agent it runs as, passed to --agent, or "".
 	AgentFile string `json:"agentFile"`
+	// Started is true once Claude Code has reported the session. Before that it may have saved
+	// nothing, and --resume would fail for ever, so it starts afresh under the same id.
+	Started bool `json:"started"`
 	// Resume is the exact command that continues the session in a terminal.
 	Resume string `json:"resume"`
 	// PID is the running process, or zero. It lets a restart after a crash end what was left.

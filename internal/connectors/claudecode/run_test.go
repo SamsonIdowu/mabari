@@ -1718,7 +1718,12 @@ func TestTakingOverASessionStartedElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The fake finds a session by the folder it runs in, as Claude Code searches.
-	fakeFile := filepath.Join(b.config, "projects", strings.ReplaceAll(strings.ReplaceAll(b.folder, "/", "-"), ".", "-"), session+".jsonl")
+	// It sees the folder's real path, which on a Mac isn't the temporary path it was given.
+	real, err := filepath.EvalSymlinks(b.folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakeFile := filepath.Join(b.config, "projects", strings.ReplaceAll(strings.ReplaceAll(real, "/", "-"), ".", "-"), session+".jsonl")
 	if err := os.MkdirAll(filepath.Dir(fakeFile), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -1737,7 +1742,6 @@ func TestTakingOverASessionStartedElsewhere(t *testing.T) {
 	if saved := b.read(id); len(saved.Queued) != 1 {
 		t.Fatalf("queued = %+v", saved.Queued)
 	}
-	var err error
 	_ = b.engine.Do(func() { err = b.c.ResumeSession(b.engine.Agent(id)) })
 	if err != nil {
 		t.Fatal(err)

@@ -115,9 +115,10 @@ func (a *api) compose(body chatBody, self string) composed {
 	return composed{text: text}
 }
 
-// quote marks each line as quoted, so an agent reads it as someone else's words.
+// quote marks each line as quoted, so an agent reads it as someone else's words, and an @ in them
+// can't work as a file mention in the prompt they land in.
 func quote(text string) string {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
+	lines := strings.Split(strings.TrimSpace(models.InertMentions(text)), "\n")
 	for index, line := range lines {
 		lines[index] = "> " + line
 	}

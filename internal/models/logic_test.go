@@ -191,3 +191,22 @@ func TestEveryStateHasAPhrase(t *testing.T) {
 		t.Errorf("an agent in error says %q", got)
 	}
 }
+
+func TestForwardedTextMentionsNothing(t *testing.T) {
+	const zero = "\u200b"
+	for text, want := range map[string]string{
+		"@/etc/passwd":         "@" + zero + "/etc/passwd",
+		"read @~/.ssh/id_rsa":  "read @" + zero + "~/.ssh/id_rsa",
+		`see @"my file.txt"`:   `see @` + zero + `"my file.txt"`,
+		"(@a.md and @b.md)":    "(@" + zero + "a.md and @" + zero + "b.md)",
+		"@@/etc/passwd":        "@@" + zero + "/etc/passwd",
+		"me@example.com":       "me@" + zero + "example.com",
+		"@@ -14,9 +14,14 @@":   "@@ -14,9 +14,14 @@",
+		"no mention, a lone @": "no mention, a lone @",
+		"@ at the start":       "@ at the start",
+	} {
+		if got := InertMentions(text); got != want {
+			t.Errorf("%q = %q, want %q", text, got, want)
+		}
+	}
+}

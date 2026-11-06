@@ -495,3 +495,13 @@ func AIName(a *LiveAgent) string {
 		return "Custom AI"
 	}
 }
+
+// mention is an @ with something after it, which is how a prompt names a file. A lone @, or the
+// first of Git's @@, names nothing.
+var mention = regexp.MustCompile(`@([^\s@])`)
+
+// InertMentions keeps forwarded text from acting on the agent that reads it. Claude Code reads
+// @path in a prompt as "attach this file", and words from another agent or from a file aren't the
+// person asking for that. A zero-width space after the @ changes nothing a reader sees. What the
+// person typed themselves never goes through this.
+func InertMentions(text string) string { return mention.ReplaceAllString(text, "@\u200b$1") }

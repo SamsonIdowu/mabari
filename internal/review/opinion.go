@@ -58,8 +58,8 @@ func opinionHeader(author, folder string, changes models.Changes) string {
 	if changes.FileCount == 1 {
 		files = "file"
 	}
-	return fmt.Sprintf("Second opinion wanted: review the changes %s made in %s (%d %s, +%d -%d).\n",
-		author, folder, changes.FileCount, files, changes.Added, changes.Removed)
+	return models.InertMentions(fmt.Sprintf("Second opinion wanted: review the changes %s made in %s (%d %s, +%d -%d).\n",
+		author, folder, changes.FileCount, files, changes.Added, changes.Removed))
 }
 
 // OpinionSummary is the same request without the diff: the line that says what it is, and the
@@ -72,13 +72,13 @@ func OpinionSummary(author, folder string, changes models.Changes) string {
 			fmt.Fprintf(&text, "and %d more\n", changes.FileCount-index)
 			break
 		}
-		fmt.Fprintf(&text, "%s (%s)\n", file.Path, file.Status)
+		fmt.Fprintf(&text, "%s (%s)\n", models.InertMentions(file.Path), file.Status)
 	}
 	return text.String()
 }
 
 // opinionFile is one file as the reviewer reads it: its name, what happened to it, and its hunks
-// the way Git prints them.
+// the way Git prints them. All of it came from files, so an @ in it mentions nothing.
 func opinionFile(file models.ChangedFile) string {
 	var text strings.Builder
 	name := file.Path
@@ -100,5 +100,5 @@ func opinionFile(file models.ChangedFile) string {
 			text.WriteString(prefix + line.Text + "\n")
 		}
 	}
-	return text.String()
+	return models.InertMentions(text.String())
 }

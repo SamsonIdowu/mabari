@@ -259,6 +259,30 @@ test('a notification shows only while the page is hidden, once for each, and a c
   await approval.printed;
 });
 
+test('the demo office shows the count and the dot from the first look', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#office');
+  // Atlas waits on an approval and Mori has stopped with an error: two need you, and both are red.
+  await expect(page).toHaveTitle('(2) Agents · Mabari');
+  expect(faviconText(await favicon(page))).toContain('id="alert-dot"');
+  // Allowing the approval leaves the error, then retrying that leaves nobody.
+  const [approval] = (await (await request.get('/api/approvals?pending=1')).json()) as {
+    id: string;
+  }[];
+  await request.post(`/api/approvals/${approval!.id}/decision`, { data: { decision: 'allowed' } });
+  await expect(page).toHaveTitle('(1) Agents · Mabari');
+  const snapshot = (await (await request.get('/api/snapshot')).json()) as {
+    agents: { id: string; name: string }[];
+  };
+  const mori = snapshot.agents.find((agent) => agent.name === 'Mori')!;
+  await request.post(`/api/agents/${mori.id}/retry`);
+  await expect(page).toHaveTitle('Agents · Mabari');
+  expect(await favicon(page)).toBe('/favicon.svg');
+});
+
 test('with the permission refused, nothing is shown, hidden or not', async ({ page, request }) => {
   const stub = await stubNotifications(page, { permission: 'denied', hidden: true });
   const token = await hubToken(request);

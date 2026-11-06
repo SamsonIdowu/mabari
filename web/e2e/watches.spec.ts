@@ -456,3 +456,52 @@ test('a watch that fires while the page is in front shows no desktop notificatio
   await page.waitForTimeout(500);
   expect(await stub.seen()).toEqual([]);
 });
+
+/** Opens an agent in the demo office from its row in the list beside the floor. */
+async function openFromList(page: Page, name: string) {
+  const row = page.locator('.flrow', {
+    has: page.locator('.flname', { hasText: new RegExp(`^${name}$`) }),
+  });
+  await expect(row).toBeVisible();
+  await row.click();
+  const panel = panelOf(page);
+  await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible();
+  return panel;
+}
+
+test('in the demo office a watch is set from the panel and from chat, and shows on both agents', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/demo/load');
+  await page.goto('/#home');
+  await expect(page.locator('#homeSum')).toContainText('working');
+
+  // Rune has just finished in the demo, so there is nothing to wait for.
+  await ask(page, 'tell me when Rune is done');
+  await expect(page.locator('#veeSay')).toContainText('Rune already finished');
+  expect(await watches(request)).toHaveLength(0);
+
+  // Bolt is still working: Mabari watches it.
+  await ask(page, 'tell me when Bolt is done');
+  await expect(page.locator('#veeSay')).toContainText("Okay. I'll tell you when Bolt is done.");
+  await page.goto('/#office');
+  const bolt = await openFromList(page, 'Bolt');
+  await expect(toggle(bolt)).toBeChecked();
+  await toggle(bolt).uncheck();
+  await expect.poll(async () => (await watches(request)).length).toBe(0);
+
+  // And a chain, which shows on Bolt's panel and on Pixel's.
+  await page.locator('.rail a.nav[href="#home"]').click();
+  await ask(page, 'when Bolt is done, tell Pixel to write up the failures');
+  await expect(page.locator('#veeSay')).toContainText('then tell Pixel “write up the failures”');
+  await page.locator('.rail a.nav[href="#office"]').click();
+  const boltAgain = await openFromList(page, 'Bolt');
+  await expect(boltAgain.getByTestId('watchThen')).toContainText(
+    'Then tell Pixel “write up the failures”',
+  );
+  const pixel = await openFromList(page, 'Pixel');
+  await expect(pixel.getByTestId('watchesWaiting')).toContainText(
+    '“write up the failures” once Bolt is done',
+  );
+});

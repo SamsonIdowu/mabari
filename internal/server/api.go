@@ -53,6 +53,8 @@ func (a *api) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/agents", a.listAgents)
 	mux.HandleFunc("POST /api/agents", a.createAgent)
+	mux.HandleFunc("POST /api/agents/interrupt", a.interruptGroup)
+	mux.HandleFunc("POST /api/agents/continue", a.continueGroup)
 	mux.HandleFunc("GET /api/agents/{id}", a.getAgent)
 	mux.HandleFunc("PATCH /api/agents/{id}", a.updateAgent)
 	mux.HandleFunc("GET /api/agents/{id}/events", a.agentEvents)

@@ -74,6 +74,8 @@ type Engine struct {
 	defs []models.AgentDef
 	// accountNotes adds what only the running server knows to each account as the office shows it.
 	accountNotes func(account models.Account, demo bool) models.Account
+	// quiet is set while a group action runs, so what its steps would each say is said once.
+	quiet bool
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -601,8 +603,26 @@ func (e *Engine) UpdateLog(id, outcome, chip string) {
 
 // Toast shows a short notice in the UI. Call inside Do.
 func (e *Engine) Toast(text string) {
+	if e.quiet {
+		return
+	}
 	e.broadcast(models.ServerMessage{Type: models.MsgToast, Text: text})
 }
+
+// Quietly runs work with the toasts its steps would each show held back, for an action on a group
+// of agents that tells the person once, at the end. A connector that would write a plain row to the
+// activity log asks Quiet first. Instructions still log: each is a row of its own that its
+// delivery updates. Call inside Do.
+func (e *Engine) Quietly(work func()) {
+	was := e.quiet
+	e.quiet = true
+	defer func() { e.quiet = was }()
+	work()
+}
+
+// Quiet reports whether a group action is running through Quietly, so a connector leaves out the
+// log row and notice it would write for one agent, and the group's own row says it for everyone.
+func (e *Engine) Quiet() bool { return e.quiet }
 
 // Reset tells clients the office was replaced, by a wipe or the demo, so they reload the snapshot
 // and clear what they were looking at. Call inside Do.

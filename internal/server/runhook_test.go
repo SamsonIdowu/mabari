@@ -202,9 +202,8 @@ func TestASessionsHookWorksWithItsOwnToken(t *testing.T) {
 		t.Fatalf("as a settings hook = %d", response.Code)
 	}
 	// It ends with the process.
-	o.until(t, "the turn to end", func() bool { return o.state(agent.ID).State == models.StateDone })
-	if response := o.do(t, http.MethodPost, "/api/agents/"+agent.ID+"/session/release", ""); response.Code != http.StatusOK {
-		t.Fatalf("release = %d %s", response.Code, response.Body.String())
+	if response := o.do(t, http.MethodPost, "/api/agents/"+agent.ID+"/stop", ""); response.Code != http.StatusOK {
+		t.Fatalf("stop = %d %s", response.Code, response.Body.String())
 	}
 	o.until(t, "the token to end", func() bool {
 		_, known := o.connector.RunToken(claudecode.RunKey(token))

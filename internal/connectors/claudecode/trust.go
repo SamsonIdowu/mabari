@@ -5,7 +5,6 @@ package claudecode
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -69,6 +68,9 @@ func insideRepository(folder string) bool {
 	}
 }
 
+// errTrustUnread stops a start when the record of what was agreed to can't be read.
+const errTrustUnread = sessionProblem("Couldn't read which folders you trust, so nothing was started.")
+
 // Trusted is what the person agreed to: for each folder, by full path, what it brought when they
 // trusted it.
 type Trusted map[string][]string
@@ -121,7 +123,7 @@ func (c *Connector) folderProblem(agent *models.LiveAgent) error {
 	folder := filepath.Clean(workFolder(agent))
 	raw, err := c.engine.Store().Meta(context.Background(), store.MetaTrusted)
 	if err != nil {
-		return errors.New("Couldn't read which folders you trust, so nothing was started.")
+		return errTrustUnread
 	}
 	found := FolderConfig(folder)
 	if unseen := ReadTrusted(raw).Unseen(folder, found); len(unseen) > 0 {

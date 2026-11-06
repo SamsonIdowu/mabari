@@ -1118,6 +1118,7 @@ func TestOnlyMabarisPageCanDoWhatNeedsAClick(t *testing.T) {
 		t.Fatalf("from the page = %d %s", response.Code, response.Body)
 	}
 }
+
 // The demo's agents go the same way, so what the panel does doesn't depend on who runs the agent.
 func TestThePanelsInterruptDeniesADemoApproval(t *testing.T) {
 	o := newOffice(t)

@@ -758,7 +758,7 @@ func TestASavedSessionIdThatIsAFlagStartsNoProcess(t *testing.T) {
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return b.read(agent.ID).Session.PID == 0 })
 	const hostile = "--dangerously-skip-permissions"
-	real := agent.Session.ID
+	original := agent.Session.ID
 	var delivered, resumed error
 	_ = b.engine.Do(func() {
 		saved := b.engine.Agent(agent.ID)
@@ -773,7 +773,7 @@ func TestASavedSessionIdThatIsAFlagStartsNoProcess(t *testing.T) {
 	if !errors.Is(delivered, ErrBadSession) || !errors.Is(resumed, ErrBadSession) {
 		t.Fatalf("delivered = %v, resumed = %v", delivered, resumed)
 	}
-	if runs := b.argsOf(real); len(runs) != 1 {
+	if runs := b.argsOf(original); len(runs) != 1 {
 		t.Fatalf("runs = %q", runs)
 	}
 }

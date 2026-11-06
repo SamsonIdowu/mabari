@@ -119,6 +119,7 @@ func TestWatchPhrasesItCannotPlaceAreAskedAbout(t *testing.T) {
 		{"tell me when it's done", "I can watch one agent or one project"},
 		{"let me know when everything is done", "I can watch one agent or one project"},
 		{"tell me when they finish", "I can watch one agent or one project"},
+		{"tell me when you're done", "I can watch one agent or one project"},
 		{"tell me when Nobody is done", "I couldn't find an agent or project called Nobody"},
 		{"let me know when Nobody finishes", "I couldn't find an agent or project called Nobody"},
 		{"when Nobody is done, tell Ledger to start", "I couldn't find an agent or project called Nobody"},

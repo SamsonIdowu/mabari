@@ -112,16 +112,6 @@ func (e *Engine) watchedNow(kind models.WatchKind, target string) (watched, bool
 // Watches lists the watches, oldest first. Call inside Do.
 func (e *Engine) Watches() []models.Watch { return slices.Clone(e.watches) }
 
-// WatchFor finds a watch by id, or returns nil. Call inside Do.
-func (e *Engine) WatchFor(id string) *models.Watch {
-	for index := range e.watches {
-		if e.watches[index].ID == id {
-			return &e.watches[index]
-		}
-	}
-	return nil
-}
-
 // SetWatch starts watching an agent or a project, with an instruction for another agent if one is
 // given. If the work has already ended there is nothing to wait for, so no watch is made and the
 // answer says how it ended. A thing already watched keeps its watch: asking again with no

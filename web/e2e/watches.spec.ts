@@ -46,6 +46,17 @@ async function watches(request: APIRequestContext) {
   }[];
 }
 
+/**
+ * Turns the switch on, and waits until the server has the watch. The switch flips at once and the
+ * server answers a moment later, so a test that went on to make the agent finish straight away
+ * would find the work already done and nothing to wait for.
+ */
+async function turnOn(request: APIRequestContext, where: Locator) {
+  const before = (await watches(request)).length;
+  await toggle(where).check();
+  await expect.poll(async () => (await watches(request)).length).toBeGreaterThan(before);
+}
+
 async function logRows(request: APIRequestContext, text: string) {
   return (await (await request.get(`/api/activity?q=${encodeURIComponent(text)}`)).json()) as {
     message: string;
@@ -99,7 +110,7 @@ test("the line in Home's chat says it too, and counts as unread when you are els
   request,
 }) => {
   const token = await seat(request, { ledger: working('Ledger', 'Refactor invoice totals') });
-  await openAgent(page, 'ledger', 'Ledger').then((panel) => toggle(panel).check());
+  await openAgent(page, 'ledger', 'Ledger').then((panel) => turnOn(request, panel));
   await hubReport(request, token, 'ledger', { state: 'done' });
   await expect(toast(page, 'Ledger is done')).toBeVisible();
   // On the Agents page when it fired: Home shows a count of what Mabari said, and says it.
@@ -126,7 +137,7 @@ test('an agent that stops with an error ends the watch, and says so, calmly', as
   request,
 }) => {
   const token = await seat(request, { mori: working('Mori', 'Index the docs folder') });
-  await openAgent(page, 'mori', 'Mori').then((panel) => toggle(panel).check());
+  await openAgent(page, 'mori', 'Mori').then((panel) => turnOn(request, panel));
   await hubReport(request, token, 'mori', {
     state: 'error',
     error: 'Lost connection to the embedding service',
@@ -142,7 +153,7 @@ test('an agent that stops with an error ends the watch, and says so, calmly', as
 
 test('a watch clears when its agent leaves, without a word', async ({ page, request }) => {
   const token = await seat(request, { ledger: working('Ledger', 'Refactor invoice totals') });
-  await openAgent(page, 'ledger', 'Ledger').then((panel) => toggle(panel).check());
+  await openAgent(page, 'ledger', 'Ledger').then((panel) => turnOn(request, panel));
   await expect.poll(async () => (await watches(request)).length).toBe(1);
   await hubReport(request, token, 'ledger', { state: 'end' });
   await expect.poll(async () => (await watches(request)).length).toBe(0);
@@ -246,7 +257,7 @@ test('a project card has the switch too, and tells you once every agent on it is
     has: page.getByRole('heading', { name: 'Checkout revamp' }),
   });
   await expect(toggle(card)).not.toBeChecked();
-  await toggle(card).check();
+  await turnOn(request, card);
   await expect(card).toContainText(
     'Watching. You will be told once, when every agent on Checkout revamp has finished.',
   );
@@ -403,7 +414,7 @@ test('a watch that fires while the page is hidden shows one desktop notification
   await page.goto('/#preferences');
   await page.getByLabel('Notify me when an approval or error needs me').check();
   const panel = await openAgentHere(page, 'ledger', 'Ledger');
-  await toggle(panel).check();
+  await turnOn(request, panel);
   await expect.poll(async () => (await watches(request)).length).toBe(1);
   const [watch] = await watches(request);
 
@@ -439,7 +450,7 @@ test('a watch that fires while the page is in front shows no desktop notificatio
   await page.goto('/#preferences');
   await page.getByLabel('Notify me when an approval or error needs me').check();
   const panel = await openAgentHere(page, 'ledger', 'Ledger');
-  await toggle(panel).check();
+  await turnOn(request, panel);
   await hubReport(request, token, 'ledger', { state: 'done' });
   await expect(toast(page, 'Ledger is done')).toBeVisible();
   await page.waitForTimeout(500);

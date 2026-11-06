@@ -63,7 +63,10 @@ func firedMessages(sub *events.Subscription) []models.WatchFired {
 	var out []models.WatchFired
 	for {
 		select {
-		case message := <-sub.C:
+		case message, open := <-sub.C:
+			if !open {
+				return out
+			}
 			if message.Type == models.MsgWatchFired {
 				out = append(out, *message.Fired)
 			}

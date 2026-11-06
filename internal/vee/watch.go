@@ -36,7 +36,7 @@ var (
 	// whenDone starts a chain: "when Ledger is done, tell Quill to …".
 	whenDone = regexp.MustCompile(`(?is)^(?:please\s+)?(?:when|once|as soon as|after)\s+(.+)$`)
 	// finishedAt splits "Ledger is done, then …" into the name, and what follows the finishing word.
-	finishedAt = regexp.MustCompile(`(?is)^(.+?)(?:\s+(?:is|are|has|have|gets?|will be|will have|will|should be)|[’']s)?` +
+	finishedAt = regexp.MustCompile(`(?is)^(.+?)(?:\s+(?:is|are|has|have|gets?|will be|will have|will|should be)|[’'](?:s|re))?` +
 		`\s+(?:(?:now|all|completely|fully)\s+)*(?:done|finished|finishes|finish|completes?|completed|ready)\b\s*(.*)$`)
 	// thenTell is what may follow: ", then tell Quill to review it".
 	thenTell = regexp.MustCompile(`(?is)^[,;:.\-–—]*\s*(?:and\s+)?(?:then\s+)?(?:please\s+)?(?:tell|ask|have|get)\s+(.+)$`)
@@ -45,7 +45,7 @@ var (
 	questionWord = regexp.MustCompile(`(?i)^(?:is|are|was|were|does|do|did|will|would|can|could|should|how|what|who|why|which|if)\b`)
 	// notOne are the words that name no one thing: "tell me when it's done" doesn't say what. Mabari
 	// asks, and never hands such a phrase to an agent.
-	notOne = regexp.MustCompile(`(?i)^(?:it|that|this|they|them|everything|everyone|everybody|all|we|the office|the team)$`)
+	notOne = regexp.MustCompile(`(?i)^(?:it|that|this|they|them|you|there|everything|everyone|everybody|all|we|the office|the team)$`)
 	// toMe is a "tell me" that comes after: "…, then tell me", which only repeats the request.
 	toMe = regexp.MustCompile(`(?i)^me\b`)
 	// politeness may follow a request to be told, and is no part of a chain.

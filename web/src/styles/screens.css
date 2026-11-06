@@ -4039,12 +4039,16 @@ section[data-screen='components'] .page h1 {
   font-size: 13px;
   color: var(--fg2);
 }
+/* Every link-like button here is a target of 24 px at least, once the pages' 0.88 zoom is applied.
+   The margin takes the padding back out, so the rows keep their spacing. */
+.watch .linkbtn {
+  padding: 5px 0;
+  margin: -5px 0;
+}
 .watch .watchmore {
   align-self: flex-start;
   font-size: 12.5px;
   color: var(--muted);
-  padding: 3px 0;
-  margin: -3px 0;
 }
 .watch .watchmore:hover {
   color: var(--fg);

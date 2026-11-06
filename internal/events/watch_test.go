@@ -55,7 +55,10 @@ func drain(sub *Subscription) []models.ServerMessage {
 	var out []models.ServerMessage
 	for {
 		select {
-		case message := <-sub.C:
+		case message, open := <-sub.C:
+			if !open {
+				return out
+			}
 			out = append(out, message)
 		default:
 			return out

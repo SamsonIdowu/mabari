@@ -77,6 +77,8 @@ A session starts without any `MABARI_` variable, as do Codex and terminal sessio
 
 Hook input's `session_id` must be UUID-shaped, or the call is ignored, and a run's gating hook hears no. `--session-id` "must be a valid UUID" (CLI reference, read 2026-11-06). The hook docs only show the placeholder `abc123` and don't state a format, so if real sessions ever report anything else, this check drops them. Check this against a real session.
 
+A turn of a session Mabari runs ends on the stream's `result`, not on the `Stop` hook. `Stop` fires before `result` is written and reaches Mabari by another road, so it can arrive while the turn's text is still unread in the pipe. It only says what the reply was, for a `result` that leaves it out. `result` is the last line of a turn, so `pending` reaching zero means all of it has been read. The exception is an interrupted turn: the docs don't say a `result` always follows one, so there `Stop` still marks the agent done. Letting a process go, for a release, a place or a new mode or model, waits on `pending`, not on what the agent shows: input closes, the stream keeps being read, and a process that hasn't ended after `endWait` is stopped, with what it wrote by then kept.
+
 ### Limits
 
 - `AskUserQuestion` and `ExitPlanMode` are offered in `-p` "only when the run has a permission host", and Mabari has none, because an MCP `--permission-prompt-tool` couldn't be tested here. So Claude asks questions as plain text, and the person answers with a message. A plan session stops at its plan, Mabari asks with an approval, and approving starts the process again with `--resume --permission-mode default`. `-p --resume` doesn't restore a stored permission mode.
@@ -124,7 +126,7 @@ On `resync` or `reset`, reload what is open: conversations aren't in the snapsho
 `LiveAgent.session` is the session behind an agent: `{id, status, mode, agentFile, started, resume, pid}`, or null. `status` is `running`, `resumable` or `elsewhere`, and `resume` is the exact command for a terminal.
 
 - `POST /api/agents/{id}/session/resume {confirm}` lets Mabari run a session and sends what is waiting. For a session started elsewhere it answers 409 without `confirm: true`.
-- `POST /api/agents/{id}/session/release` ends the process and keeps the session resumable.
+- `POST /api/agents/{id}/session/release` ends the process and keeps the session resumable. One still owing a result ends just after this answers, once its stream has been read, and the agent's session shows when it has.
 - `POST /api/folders/trust {path, confirm, found}` is the person's click, from the page only. `found` is what the page showed them, and is what gets recorded. Anything that starts a session can answer 409 with `{error, trust: {folder, found}}`, and `request()` in `web/src/data/api.ts` asks and retries by itself.
 
 Everything goes through `Engine.Converse`, which masks and cuts inside the office lock, so the cost is bounded before masking starts. JSON tool data is masked by key, and only text that isn't JSON falls back to text patterns. A wipe or `ClearOffice` drops the replay history and changes the boot id, so a page resuming from before it reloads rather than being sent deleted text.

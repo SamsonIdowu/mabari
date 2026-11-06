@@ -73,6 +73,7 @@ const (
 	ErrOfficeFull = sessionProblem("The office is full. Stop an agent to free a desk.")
 	ErrDeskTaken  = sessionProblem("That desk has just been taken. Pick another.")
 	ErrBadSession = sessionProblem("This session's id isn't one Claude Code would give, so Mabari won't pass it on.")
+	ErrLeaving    = sessionProblem("This session is finishing up, and takes messages again in a moment.")
 )
 
 // CapError says the most sessions allowed are all busy.
@@ -112,8 +113,8 @@ type SessionSpec struct {
 	DailyCostCap float64
 }
 
-// run is one live process. pending is only touched inside Do, and the live text, tools and denied
-// maps only by the goroutine reading the stream.
+// run is one live process. pending and lastSaid are only touched inside Do, and the live text,
+// tools and denied maps only by the goroutine reading the stream.
 type run struct {
 	agentID string
 	cmd     *exec.Cmd
@@ -133,6 +134,8 @@ type run struct {
 	// isn't one, and can arrive after the person has already said to continue.
 	interrupted bool
 	lastUsed    time.Time
+	// lastSaid is the reply the Stop hook reported, for a result that leaves it out.
+	lastSaid string
 
 	live   map[int]*liveText
 	order  []*liveText
@@ -278,6 +281,13 @@ func (r *run) write(line []byte) bool {
 	default:
 		return false
 	}
+}
+
+// closing reports whether the process takes no more messages.
+func (r *run) closing() bool {
+	r.inputMu.Lock()
+	defer r.inputMu.Unlock()
+	return r.closed
 }
 
 func (r *run) closeInput() {
@@ -497,7 +507,9 @@ func (c *Connector) leavingNow(agentID string) bool {
 	return false
 }
 
-// retire ends a process that no longer speaks for its agent. Call inside Do.
+// retire ends a process that stops speaking for its agent at once, so anything it hasn't said yet
+// is dropped. That is for a process whose words are unwanted: anything else goes through letGo.
+// Call inside Do.
 func (c *Connector) retire(r *run) {
 	c.mu.Lock()
 	if c.runs[r.agentID] == r {
@@ -508,9 +520,39 @@ func (c *Connector) retire(r *run) {
 	r.stop(c.endWait)
 }
 
+// letGo ends a process Mabari has no more use for, without losing what it is saying. With every
+// result in, the stream has nothing left to bring, so it goes at once. Otherwise a reply is on its
+// way, and only a stream read to its end can bring it: the run keeps speaking for its agent, and
+// keeps its place, while it ends by itself now that its input has closed. One that hasn't after
+// endWait is stopped, and what it wrote by then is still read. Call inside Do.
+func (c *Connector) letGo(r *run) {
+	if r.pending == 0 {
+		c.retire(r)
+		if agent := c.engine.Agent(r.agentID); agent != nil {
+			c.markResumable(agent)
+		}
+		return
+	}
+	if r.closing() {
+		return
+	}
+	r.ended.Store(true)
+	r.closeInput()
+	wait := c.endWait
+	go func() {
+		select {
+		case <-r.exited:
+		case <-time.After(wait):
+			r.stop(wait)
+		}
+	}()
+}
+
 // roomForRun makes sure one more process stays within the cap. A session waiting for its next
 // message gives up its place, the longest waiting first, because it resumes with nothing lost.
-// With every session busy, it says so. Call inside Do.
+// With every session busy, it says so. One that isn't working but hasn't had its result, such as
+// just after an interrupt, can't go yet: it is let go, and its place comes free when it has ended.
+// Call inside Do.
 func (c *Connector) roomForRun() error {
 	limit := c.engine.Settings().MaxSessions
 	if limit <= 0 {
@@ -527,21 +569,26 @@ func (c *Connector) roomForRun() error {
 		if live < limit {
 			return nil
 		}
-		var longest *run
+		var longest, owing *run
 		for _, r := range runs {
 			agent := c.engine.Agent(r.agentID)
-			idle := agent == nil || (!agent.State.Active() && agent.Approval == nil)
-			if idle && (longest == nil || r.lastUsed.Before(longest.lastUsed)) {
+			if agent != nil && (agent.State.Active() || agent.Approval != nil) {
+				continue
+			}
+			switch {
+			case r.pending > 0:
+				owing = r
+			case longest == nil || r.lastUsed.Before(longest.lastUsed):
 				longest = r
 			}
 		}
 		if longest == nil {
+			if owing != nil {
+				c.letGo(owing)
+			}
 			return CapError{Limit: limit}
 		}
-		c.retire(longest)
-		if agent := c.engine.Agent(longest.agentID); agent != nil {
-			c.markResumable(agent)
-		}
+		c.letGo(longest)
 	}
 }
 
@@ -551,6 +598,9 @@ func (c *Connector) liveRun(agent *models.LiveAgent) (*run, error) {
 	r := c.runs[agent.ID]
 	c.mu.Unlock()
 	if r != nil {
+		if r.closing() {
+			return nil, ErrLeaving
+		}
 		return r, nil
 	}
 	if err := c.roomForRun(); err != nil {
@@ -612,6 +662,9 @@ func (c *Connector) fail(agent *models.LiveAgent, why string) {
 // turnFinished is the session having nothing left to do. full is its last reply, already masked.
 // Call inside Do.
 func (c *Connector) turnFinished(agent *models.LiveAgent, full string) {
+	if agent.State != models.StateDone {
+		c.engine.AddEvent(agent, "done", "Finished: "+agent.Task, nil)
+	}
 	agent.State, agent.Progress = models.StateDone, 1
 	if said := clip(full, 90); said != "" {
 		c.engine.SetReply(agent, said, 8000)
@@ -709,8 +762,7 @@ func (c *Connector) planDecided(agent *models.LiveAgent, approval models.Approva
 	}
 	// The mode is set on the command line, so the session starts again in the new one, once the
 	// old process has let go of it.
-	c.retire(old)
-	c.markResumable(agent)
+	c.letGo(old)
 	id := agent.ID
 	go func() {
 		<-old.exited
@@ -733,11 +785,11 @@ func (c *Connector) afterPlan(agent *models.LiveAgent) {
 }
 
 // waitForPlace remembers an agent left holding a message because all the places were taken by busy
-// sessions. Nothing else would send it: the agent isn't working, so it has no next step. Call
-// inside Do.
+// sessions, or its own process is on its way out. Nothing else would send it: the agent isn't
+// working, so it has no next step. Call inside Do.
 func (c *Connector) waitForPlace(agent *models.LiveAgent, err error) {
 	var full CapError
-	if errors.As(err, &full) {
+	if errors.As(err, &full) || errors.Is(err, ErrLeaving) {
 		c.mu.Lock()
 		c.noPlace[agent.ID] = true
 		c.mu.Unlock()
@@ -882,7 +934,8 @@ func (c *Connector) ResumeSession(agent *models.LiveAgent) error {
 }
 
 // ReleaseSession lets a session go, so it can be opened in a terminal without two programs writing
-// to it. It stays resumable. Call inside Do.
+// to it. It stays resumable. A process still owing a result goes once that has been read, or after
+// a time limit. See letGo. Call inside Do.
 func (c *Connector) ReleaseSession(agent *models.LiveAgent) error {
 	if !agent.RunsHere() {
 		return errors.New(agent.Name + " doesn't run in Mabari.")
@@ -894,7 +947,8 @@ func (c *Connector) ReleaseSession(agent *models.LiveAgent) error {
 	r := c.runs[agent.ID]
 	c.mu.Unlock()
 	if r != nil {
-		c.retire(r)
+		c.letGo(r)
+		return nil
 	}
 	c.markResumable(agent)
 	return nil

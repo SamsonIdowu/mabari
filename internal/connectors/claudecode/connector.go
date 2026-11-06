@@ -275,6 +275,15 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	}
 	var reply []byte
 	_ = c.engine.Do(func() {
+		// The process may have been ended while this call waited to get in, and what it reports
+		// mustn't undo that, such as a prompt clearing the error that says why it was ended.
+		c.mu.Lock()
+		_, live := c.runs[c.sessions[in.SessionID]]
+		c.mu.Unlock()
+		if fromRun && !live {
+			reply = refused(in, "This session no longer runs in Mabari.")
+			return
+		}
 		reply = c.observe(in)
 		if reply == nil && fromRun && in.Event == "PreToolUse" {
 			if reply = c.attachedRead(in); reply == nil {
@@ -830,6 +839,17 @@ func (c *Connector) observe(in input) []byte {
 	case "Stop":
 		if reply := c.deliverAtStop(agent); reply != nil {
 			return reply
+		}
+		// A session Mabari runs finishes on its stream's result, which comes after all of the turn's
+		// text. This hook comes by another road and can get here while that text is still in the
+		// pipe, and Done would let the process go before it is read. An interrupted turn is left
+		// out, as the docs don't say a result always follows one; its text waits on pending anyway.
+		c.mu.Lock()
+		r := c.runs[agent.ID]
+		c.mu.Unlock()
+		if r != nil && !r.interrupted {
+			r.lastSaid = redact.Text(in.LastAssistantMessage)
+			return nil
 		}
 		agent.State = models.StateDone
 		agent.Progress = 1

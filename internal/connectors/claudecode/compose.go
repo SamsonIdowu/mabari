@@ -102,8 +102,7 @@ func (c *Connector) InstructWith(agent *models.LiveAgent, text string, opt SendO
 		c.instructRun(agent, text)
 		return nil
 	}
-	c.retire(old)
-	c.markResumable(agent)
+	c.letGo(old)
 	id := agent.ID
 	go func() {
 		<-old.exited

@@ -24,25 +24,31 @@ func TestASlowPageIsDroppedNotWaitedFor(t *testing.T) {
 	}
 	slow := engine.Subscribe(Resume{}).Sub
 	fast := engine.Subscribe(Resume{}).Sub
+	// The page reads between sends, so it keeps up however the machine schedules things. A reader on
+	// its own goroutine may not run at all during the burst, and is then rightly dropped too.
 	got := 0
-	done := make(chan struct{})
-	go func() {
-		for range fast.C {
-			got++
-		}
-		close(done)
-	}()
 	total := clientBuffer + 10
 	for range total {
 		if err := engine.Do(func() { engine.Toast("hello") }); err != nil {
 			t.Fatal(err)
+		}
+		select {
+		case _, open := <-fast.C:
+			if !open {
+				t.Fatalf("the page that kept up was dropped after %d messages", got)
+			}
+			got++
+		default:
+			t.Fatalf("the page that kept up has nothing to read after %d messages", got)
 		}
 	}
 	if !closedAfterDraining(slow) {
 		t.Error("the slow page is still subscribed")
 	}
 	engine.Unsubscribe(fast)
-	<-done
+	for range fast.C {
+		got++
+	}
 	if got != total {
 		t.Errorf("the page that kept up got %d of %d", got, total)
 	}

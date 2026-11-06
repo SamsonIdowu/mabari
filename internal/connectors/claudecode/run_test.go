@@ -192,7 +192,8 @@ func (b *bench) read(id string) models.LiveAgent {
 
 func (b *bench) until(what string, ok func() bool) {
 	b.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	// Long: the race detector makes masking a very long reply take seconds, and Done comes after it.
+	deadline := time.Now().Add(30 * time.Second)
 	for !ok() {
 		if time.Now().After(deadline) {
 			b.t.Fatalf("waited too long for %s", what)
@@ -1438,6 +1439,248 @@ func TestReleasingASessionKeepsItResumable(t *testing.T) {
 	b.until("the process to end", func() bool { return processGone(pid) })
 	if saved := b.read(agent.ID); saved.Session.Status != models.SessionResumable {
 		t.Fatalf("session = %+v", saved.Session)
+	}
+}
+
+// stopHeard waits until the Stop hook has been answered, with the reply still to come.
+func (b *bench) stopHeard() {
+	b.t.Helper()
+	b.until("the Stop hook", func() bool {
+		replies, _ := filepath.Glob(filepath.Join(b.hooks, "*.Stop.reply"))
+		return len(replies) > 0
+	})
+}
+
+// openGate lets the fake write the reply it is holding back.
+func (b *bench) openGate() {
+	b.t.Helper()
+	if err := os.WriteFile(filepath.Join(b.hooks, "gate"), nil, 0o600); err != nil {
+		b.t.Fatal(err)
+	}
+}
+
+// keptWhole checks that the reply is in the conversation once, finished, with no empty bubble.
+func (b *bench) keptWhole(id, reply string) {
+	b.t.Helper()
+	found := 0
+	for _, item := range b.conversation(id) {
+		if item.Kind != models.ConversationAssistant {
+			continue
+		}
+		if strings.TrimSpace(item.Text) == "" {
+			b.t.Fatalf("an empty bubble was left: %q", b.said(id))
+		}
+		if item.Streaming {
+			b.t.Fatalf("a bubble is still streaming: %+v", item)
+		}
+		if item.Text == reply {
+			found++
+		}
+	}
+	if found != 1 {
+		b.t.Fatalf("the reply is there %d times: %q", found, b.said(id))
+	}
+}
+
+// bubble reports whether an assistant message has this text, finished or not.
+func (b *bench) bubble(id, text string) bool {
+	return slices.ContainsFunc(b.conversation(id), func(item models.ConversationItem) bool {
+		return item.Kind == models.ConversationAssistant && item.Text == text
+	})
+}
+
+func (b *bench) limit(sessions int) {
+	_ = b.engine.Do(func() {
+		settings := b.engine.Settings()
+		settings.MaxSessions = sessions
+		b.engine.SaveSettings(settings)
+	})
+}
+
+func (b *bench) release(id string) error {
+	var err error
+	_ = b.engine.Do(func() { err = b.c.ReleaseSession(b.engine.Agent(id)) })
+	return err
+}
+
+func (b *bench) interrupt(id string) {
+	_ = b.engine.Do(func() { b.c.Interrupt(b.engine.Agent(id)) })
+}
+
+// tryStart starts a session that may not get a place.
+func (b *bench) tryStart(prompt, name string) error {
+	var err error
+	_ = b.engine.Do(func() {
+		_, err = b.c.StartSession(SessionSpec{Name: name, Folder: b.folder, Task: prompt})
+	})
+	return err
+}
+
+func (b *bench) resumable(id string) bool {
+	session := b.read(id).Session
+	return session != nil && session.Status == models.SessionResumable
+}
+
+const lateReply = "the whole of the reply"
+
+// The Stop hook can get here before the text does. The turn isn't over until the stream says so, so
+// the session can't be released in that gap.
+func TestStopDoesNotFinishATurnBeforeItsText(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:late " + lateReply)
+	b.stopHeard()
+	if state := b.read(agent.ID).State; state == models.StateDone {
+		t.Error("done before the text was read")
+	}
+	if err := b.release(agent.ID); err == nil {
+		t.Error("released before the text was read")
+	}
+	b.openGate()
+	b.untilState(agent.ID, models.StateDone)
+	b.keptWhole(agent.ID, lateReply)
+	saved := b.read(agent.ID)
+	if count := len(saved.Asked); count == 0 || saved.Asked[count-1].Reply != lateReply {
+		t.Fatalf("asked = %+v", saved.Asked)
+	}
+	if err := b.release(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The same gap, with another session wanting the place.
+func TestAPlaceIsNotGivenUpBeforeTheTextIsRead(t *testing.T) {
+	b := newBench(t)
+	b.limit(1)
+	first := b.start("fake:late " + lateReply)
+	b.stopHeard()
+	if err := b.tryStart("second", "Pepper"); err == nil {
+		t.Error("the place was given up before the text was read")
+	}
+	b.openGate()
+	b.untilState(first.ID, models.StateDone)
+	b.keptWhole(first.ID, lateReply)
+	if err := b.tryStart("second", "Pepper"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A paused session can be released, and what it was still writing arrives before it goes.
+func TestReleasingWaitsForTheRestOfTheStream(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:trail " + lateReply)
+	b.working(agent.ID)
+	b.interrupt(agent.ID)
+	if err := b.release(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if b.resumable(agent.ID) {
+		t.Error("shown as resumable while its process still writes")
+	}
+	b.openGate()
+	b.until("the process to end", func() bool { return b.resumable(agent.ID) })
+	b.keptWhole(agent.ID, lateReply)
+	if saved := b.read(agent.ID); saved.Error != "" {
+		t.Fatalf("shown as a failure: %q", saved.Error)
+	}
+}
+
+// A model change restarts the process, so it waits the same way, and then sends its message.
+func TestSwitchingModelWaitsForTheRestOfTheStream(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:trail " + lateReply)
+	b.working(agent.ID)
+	b.interrupt(agent.ID)
+	var err error
+	_ = b.engine.Do(func() {
+		err = b.c.InstructWith(b.engine.Agent(agent.ID), "next", SendOptions{Model: "claude-haiku-4-5"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.openGate()
+	b.until("the next message", func() bool {
+		return slices.Contains(b.said(agent.ID), "assistant: Done: next")
+	})
+	if said := b.said(agent.ID); !slices.Contains(said, "assistant: "+lateReply) {
+		t.Fatalf("the reply was lost: %q", said)
+	}
+}
+
+// A message sent while the process is on its way out isn't lost, and doesn't start a second process
+// beside the first.
+func TestAMessageWaitsForAProcessOnItsWayOut(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:trail " + lateReply)
+	b.working(agent.ID)
+	_ = b.engine.Do(func() {
+		running := b.engine.Agent(agent.ID)
+		b.c.Interrupt(running)
+		if err := b.c.ReleaseSession(running); err != nil {
+			t.Error(err)
+		}
+		// A paused agent holds on to what it is sent until the person carries on.
+		running.State, running.PausedFrom = models.StateIdle, ""
+		b.engine.Touch(running)
+	})
+	b.instruct(agent.ID, "next")
+	if queued := b.read(agent.ID).Queued; len(queued) != 1 {
+		t.Fatalf("queued = %+v", queued)
+	}
+	if runs := b.argsOf(agent.Session.ID); len(runs) != 1 {
+		t.Fatalf("a second process started: %q", runs)
+	}
+	b.openGate()
+	b.until("the held message", func() bool {
+		return slices.Contains(b.said(agent.ID), "assistant: Done: next")
+	})
+	if said := b.said(agent.ID); !slices.Contains(said, "assistant: "+lateReply) {
+		t.Fatalf("the reply was lost: %q", said)
+	}
+}
+
+// A process that never finishes can't hold a release up for ever. What it did write is kept.
+func TestAStreamThatNeverEndsIsGivenUpOn(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:stall")
+	b.until("half a reply", func() bool { return b.bubble(agent.ID, "Half a reply ") })
+	b.interrupt(agent.ID)
+	began := time.Now()
+	if err := b.release(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	b.until("the process to end", func() bool { return b.resumable(agent.ID) })
+	if took := time.Since(began); took < b.c.endWait {
+		t.Fatalf("given up on after %s, with %s to end", took, b.c.endWait)
+	}
+	b.keptWhole(agent.ID, "Half a reply ")
+}
+
+// The same for a place: the stuck session goes, and then there is room.
+func TestAStuckSessionGivesUpItsPlaceInTime(t *testing.T) {
+	b := newBench(t)
+	b.limit(1)
+	stuck := b.start("fake:stall")
+	b.until("half a reply", func() bool { return b.bubble(stuck.ID, "Half a reply ") })
+	b.interrupt(stuck.ID)
+	if err := b.tryStart("second", "Pepper"); err == nil {
+		t.Fatal("the place was taken before the stream ended")
+	}
+	b.until("the place to come free", func() bool { return b.resumable(stuck.ID) })
+	if err := b.tryStart("second", "Pepper"); err != nil {
+		t.Fatal(err)
+	}
+	b.keptWhole(stuck.ID, "Half a reply ")
+}
+
+// A message that never says anything leaves nothing behind.
+func TestAMessageWithNoTextLeavesNoBubble(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("fake:silent")
+	b.untilState(agent.ID, models.StateDone)
+	for _, item := range b.conversation(agent.ID) {
+		if item.Kind == models.ConversationAssistant {
+			t.Fatalf("a bubble with nothing in it: %q", b.said(agent.ID))
+		}
 	}
 }
 

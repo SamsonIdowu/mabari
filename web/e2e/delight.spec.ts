@@ -660,3 +660,67 @@ test.describe('the motion language', () => {
     expect(pressed).toContain('1');
   });
 });
+
+test.describe('the floor stays smooth', () => {
+  /** Animation frames a second over a window, counted in the page the way the browser draws. */
+  const framesPerSecond = (page: Page, ms: number) =>
+    page.evaluate(
+      (window_ms) =>
+        new Promise<number>((resolve) => {
+          let count = 0;
+          const start = performance.now();
+          const tick = (now: number) => {
+            count++;
+            if (now - start < window_ms) requestAnimationFrame(tick);
+            else resolve((count * 1000) / (now - start));
+          };
+          requestAnimationFrame(tick);
+        }),
+      ms,
+    );
+
+  test('with a full shelf, agents in every mood and a party under way', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    const token = await hubToken(request);
+    // Eight shipped projects fill a shelf of two cases.
+    for (let index = 0; index < 8; index++) {
+      const project = await shippable(request, token, `Shelf ${index}`, '#48DBFB', 1);
+      await complete(request, project.id);
+    }
+    // Sixteen agents at once: some typing, some running, some stopped by an error and glancing at
+    // the camera, and some resting in the lounge doing their different things.
+    const moods = ['editing', 'running', 'error', 'idle'];
+    for (let index = 0; index < 16; index++) {
+      await hub(request, token, {
+        agent: `mood-${index}`,
+        name: `Mood ${index}`,
+        state: moods[index % moods.length],
+        task: 'Work',
+        error: 'Stuck',
+      });
+    }
+    // The team of one more project, about to ship.
+    const shipping = await shippable(request, token, 'Shipping now', '#FF6B9A', 3);
+    await page.goto('/#office');
+    await expect(page.locator('.trophy')).toHaveCount(8);
+    await expect(page.locator('.tag .nt')).toHaveCount(8 + 16 + 3);
+    await settled(page.locator('[data-o]', { hasText: 'Mood 15' }).locator('.nt'));
+
+    const calm = await framesPerSecond(page, 1500);
+    console.log(`frame rate, full shelf and sixteen moods: ${calm.toFixed(1)} fps`);
+    expect(calm, 'a full shelf and agents in every mood').toBeGreaterThan(50);
+
+    await complete(request, shipping.id);
+    await expect(phaseOf(page)).toHaveAttribute('data-shipped', 'gather');
+    const walking = await framesPerSecond(page, 2500);
+    console.log(`frame rate, the team walking to the party: ${walking.toFixed(1)} fps`);
+    expect(walking, 'the team walking to the meeting room').toBeGreaterThan(50);
+    await expect(phaseOf(page)).toHaveAttribute('data-shipped', 'party', { timeout: 30_000 });
+    const party = await framesPerSecond(page, 2500);
+    console.log(`frame rate, the party with confetti: ${party.toFixed(1)} fps`);
+    expect(party, 'the party with its confetti').toBeGreaterThan(50);
+  });
+});

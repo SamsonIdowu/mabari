@@ -1301,3 +1301,19 @@ func TestPaddingCantPushAnArgumentOffTheCard(t *testing.T) {
 		t.Errorf("not JSON = %d characters", len(got))
 	}
 }
+
+// A no settles the card as much as a yes does: the agent isn't left showing as waiting with nothing
+// to answer.
+func TestADeniedApprovalLeavesTheApprovalState(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	waiting := callPermission(c, bashCommand("rm -rf build"))
+	card := cardFor(t, engine, "rm -rf build")
+	decideCard(t, engine, card.ID, models.DecisionDenied)
+	replyOf(t, waiting)
+	if agent := agentOf(t, engine); agent.State != models.StateThinking || agent.Approval != nil {
+		t.Fatalf("state %s, card %+v", agent.State, agent.Approval)
+	}
+}

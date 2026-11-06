@@ -1289,7 +1289,8 @@ func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
 
 // Interrupt stops Claude at its next tool call. Typing in the session carries on. A session Mabari
 // runs stops at once, unless it is waiting on an approval: that stays waiting, and it pauses at its
-// next step after it, so no interrupt ever settles an approval.
+// next step after it, so this never settles an approval. The panel's Interrupt says no to the
+// approval first, as a person's click on that agent can.
 func (c *Connector) Interrupt(agent *models.LiveAgent) {
 	if agent.RunsHere() {
 		c.interruptRun(agent)

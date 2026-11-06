@@ -1118,3 +1118,25 @@ func TestOnlyMabarisPageCanDoWhatNeedsAClick(t *testing.T) {
 		t.Fatalf("from the page = %d %s", response.Code, response.Body)
 	}
 }
+// The demo's agents go the same way, so what the panel does doesn't depend on who runs the agent.
+func TestThePanelsInterruptDeniesADemoApproval(t *testing.T) {
+	o := newOffice(t)
+	snapshot := o.demo(t)
+	var waiting *models.LiveAgent
+	for index := range snapshot.Agents {
+		if snapshot.Agents[index].Approval != nil {
+			waiting = &snapshot.Agents[index]
+			break
+		}
+	}
+	if waiting == nil {
+		t.Fatal("no approval waiting")
+	}
+	if response := o.do(t, http.MethodPost, "/api/agents/"+waiting.ID+"/interrupt", ""); response.Code != http.StatusOK {
+		t.Fatalf("interrupt = %d %s", response.Code, response.Body.String())
+	}
+	agent := decode[models.LiveAgent](t, o.do(t, http.MethodGet, "/api/agents/"+waiting.ID, ""))
+	if agent.Approval != nil || agent.State != models.StatePaused {
+		t.Fatalf("state %s, card %+v", agent.State, agent.Approval)
+	}
+}

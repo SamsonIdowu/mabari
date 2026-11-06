@@ -72,8 +72,8 @@ func (c *Connector) InstructWith(agent *models.LiveAgent, text string, opt SendO
 		return errors.New(agent.Name + " is working. Change its model once it has finished.")
 	}
 	if opt.Now && agent.State.Active() && agent.Approval == nil && !agent.Asking() {
-		// An interrupt ends the turn at once. It never settles an approval, which is why it is only
-		// done with none waiting.
+		// An interrupt ends the turn at once. A message must never settle an approval, which is why
+		// it is only done with none waiting.
 		c.Interrupt(agent)
 	}
 	// Plan mode starts at the next turn, so a session in the middle of one carries on as it is.

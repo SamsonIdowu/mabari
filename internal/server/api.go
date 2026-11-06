@@ -60,7 +60,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/{id}/events", a.agentEvents)
 	mux.HandleFunc("GET /api/agents/{id}/conversation", a.agentConversation)
 	mux.HandleFunc("GET /api/agents/{id}/card", a.agentCard)
-	mux.HandleFunc("POST /api/agents/{id}/interrupt", a.agentAction(interruptAgent))
+	mux.HandleFunc("POST /api/agents/{id}/interrupt", a.agentAction(a.interruptAgent))
 	mux.HandleFunc("POST /api/agents/{id}/continue", a.agentAction(a.continueAgent))
 	mux.HandleFunc("POST /api/agents/{id}/stop", a.agentAction(stopAgent))
 	mux.HandleFunc("POST /api/agents/{id}/retry", a.agentAction(retryAgent))
@@ -430,8 +430,24 @@ func (a *api) applyAgentBody(agent *models.LiveAgent, body agentBody) {
 	}
 }
 
-func interruptAgent(c events.Connector, agent *models.LiveAgent) { c.Interrupt(agent) }
-func stopAgent(c events.Connector, agent *models.LiveAgent)      { c.StopAgent(agent) }
+// interruptAgent is the panel's Interrupt, which a person clicks on one agent. An approval waiting
+// on it is answered no first, because stopping an agent is no way to leave a question open, and
+// whatever was in line behind that card goes with it. A plan answered no leaves the agent with
+// nothing to interrupt. Pausing a group never comes through here, and leaves approvals alone.
+func (a *api) interruptAgent(c events.Connector, agent *models.LiveAgent) {
+	if agent.Approval != nil {
+		if line, ok := c.(interface{ WithdrawQueued(*models.LiveAgent) }); ok {
+			line.WithdrawQueued(agent)
+		}
+		a.engine.Decide(agent.Approval.ID, models.DecisionDenied)
+		if !agent.State.Active() {
+			return
+		}
+	}
+	c.Interrupt(agent)
+}
+
+func stopAgent(c events.Connector, agent *models.LiveAgent) { c.StopAgent(agent) }
 
 // continueAgent resumes an interrupted agent and says so in its steps, the log and a toast.
 func (a *api) continueAgent(c events.Connector, agent *models.LiveAgent) {

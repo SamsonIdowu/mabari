@@ -4,6 +4,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -211,6 +212,44 @@ func TestASessionsHookWorksWithItsOwnToken(t *testing.T) {
 	})
 	if answered, _ := call(token); answered {
 		t.Fatal("a gone process's token still works")
+	}
+}
+
+// The panel's Interrupt answers a waiting approval no, then interrupts, and what was in line behind
+// the card goes too. It isn't left waiting, and nothing comes up after it.
+func TestThePanelsInterruptDeniesAWaitingApproval(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	session := agent.Session.ID
+	bash := func(command string) map[string]any {
+		return map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": command}}
+	}
+	first := o.hookCall(t, true, session, "PermissionRequest", bash("rm -rf one"))
+	o.until(t, "the card", func() bool { return o.state(agent.ID).Approval != nil })
+	card := o.state(agent.ID).Approval.ID
+	second := o.hookCall(t, true, session, "PermissionRequest", bash("rm -rf two"))
+	time.Sleep(100 * time.Millisecond)
+	if response := o.do(t, http.MethodPost, "/api/agents/"+agent.ID+"/interrupt", ""); response.Code != http.StatusOK {
+		t.Fatalf("interrupt = %d %s", response.Code, response.Body.String())
+	}
+	if body := reply(t, first).Body.String(); !strings.Contains(body, "denied this") {
+		t.Fatalf("first = %q", body)
+	}
+	if body := reply(t, second).Body.String(); !strings.Contains(body, "withdrawn") {
+		t.Fatalf("second = %q", body)
+	}
+	got := o.state(agent.ID)
+	if got.Approval != nil || got.State != models.StatePaused {
+		t.Fatalf("state %s, card %+v", got.State, got.Approval)
+	}
+	approvals, err := o.engine.Store().Approvals(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, approval := range approvals {
+		if approval.ID == card && (approval.Decision == nil || *approval.Decision != models.DecisionDenied) {
+			t.Fatalf("approval = %+v", approval)
+		}
 	}
 }
 

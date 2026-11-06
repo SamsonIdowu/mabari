@@ -315,3 +315,14 @@ section[data-screen]:not([data-screen='office']) {
   padding: 6px;
   box-sizing: content-box;
 }
+
+/* ---------- office sound ---------- */
+input[type='range'].volume {
+  width: 220px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+input[type='range'].volume:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { Project } from '../gen/models.ts';
 import { PARTY_MS } from './moments.ts';
+import { playChime } from './officeSound.ts';
 
 /**
  * Shipping a project: when one is marked complete, its agents walk to the meeting room, a burst of
@@ -186,6 +187,8 @@ export const useShipped = create<ShippedStore>((set, get) => ({
       saveSeen(storage(), seen);
     }
     set(after);
+    // A soft chime as the party begins, if the office's sound is on.
+    if (after.phase === 'party' && before.phase !== 'party') playChime();
   },
 }));
 

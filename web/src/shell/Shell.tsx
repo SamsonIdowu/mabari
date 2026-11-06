@@ -17,6 +17,7 @@ import { Settings } from '../screens/Settings.tsx';
 import { Library } from '../screens/Library.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
+import { startOfficeSound } from '../office/officeSound.ts';
 import { listenForCompletions } from '../office/shipped.ts';
 import { routeTitle } from '../routeTitles.ts';
 import { useHashRoute } from '../useHashRoute.ts';
@@ -71,6 +72,7 @@ export function Shell() {
 
   useEffect(listenForApprovals, []);
   useEffect(listenForCompletions, []);
+  useEffect(startOfficeSound, []);
 
   return (
     <div className={collapsed ? 'app collapsed' : 'app'}>

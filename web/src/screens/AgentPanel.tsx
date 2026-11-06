@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from '../format.ts';
@@ -38,6 +38,24 @@ function elapsedText(seconds: number): string {
   const rest = seconds % 60;
   if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   return `${minutes}m ${rest < 10 ? '0' : ''}${rest}s`;
+}
+
+/**
+ * How long an agent has been running. The server sends it with each change to the agent, so a real
+ * one that is quiet counts on here. The demo's agents run on office time, which only it can tell.
+ */
+function RunningFor({ agent }: { agent: Pick<LiveAgent, 'elapsed' | 'source'> }) {
+  const [since, setSince] = useState({ seconds: agent.elapsed, at: Date.now() });
+  const [now, setNow] = useState(Date.now);
+  if (since.seconds !== agent.elapsed) setSince({ seconds: agent.elapsed, at: now });
+  const ticking = agent.source !== 'sim';
+  useEffect(() => {
+    if (!ticking) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  const gone = ticking ? Math.max(0, Math.floor((now - since.at) / 1000)) : 0;
+  return <b className="num">{elapsedText(agent.elapsed + gone)}</b>;
 }
 
 const subModelOf = (agent: LiveAgent) =>
@@ -780,7 +798,7 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
             <b>{project?.name ?? 'No project'}</b>
           </span>
           <span>
-            Running for <b className="num">{elapsedText(agent.elapsed)}</b>
+            Running for <RunningFor agent={agent} />
           </span>
           <span>
             Folder <b className="mono">{agent.folder}</b>

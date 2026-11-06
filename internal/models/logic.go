@@ -199,6 +199,10 @@ func (a *LiveAgent) Refresh(now time.Time) {
 	a.Working = a.State.Active() && !a.Asking()
 	a.Estimate = a.EstimateAt(now)
 	a.Bubble, a.BubbleKind = bubbleFor(a, now.UnixMilli())
+	// The demo counts its own office time. Anyone else has been here since it arrived.
+	if a.Source != SourceDemo && a.CreatedAt > 0 {
+		a.Elapsed = max(0, (now.UnixMilli()-a.CreatedAt)/1000)
+	}
 }
 
 func bubbleFor(a *LiveAgent, now int64) (text, kind string) {

@@ -90,7 +90,7 @@ func withResult(item models.ConversationItem, block contentBlock, denied bool) m
 	tool := *item.Tool
 	tool.Output = toolOutput(block.Content)
 	switch {
-	case denied:
+	case denied, tool.State == models.ToolDenied:
 		tool.State = models.ToolDenied
 	case block.IsError:
 		tool.State = models.ToolFailed

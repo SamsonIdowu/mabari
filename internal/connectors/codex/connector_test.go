@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -345,5 +346,16 @@ func TestApprovalsAreJudgedAgainstTheAgentsFolder(t *testing.T) {
 	}
 	if _, ok := c.approvalFor("item/fileChange/requestApproval", event{ItemID: "unknown"}, folder); ok {
 		t.Error("a change with no details was shown")
+	}
+}
+
+func TestCodexGetsNothingOfMabaris(t *testing.T) {
+	t.Setenv("MABARI_MASTER_KEY", "a-key-codex-must-never-see")
+	cmd := appServer(context.Background(), "/usr/local/bin/codex")
+	if cmd.Env == nil {
+		t.Fatal("codex inherits everything")
+	}
+	if slices.ContainsFunc(cmd.Env, func(entry string) bool { return strings.HasPrefix(entry, "MABARI_") }) {
+		t.Fatalf("env = %q", cmd.Env)
 	}
 }

@@ -778,6 +778,115 @@ func TestASavedSessionIdThatIsAFlagStartsNoProcess(t *testing.T) {
 	}
 }
 
+// tokenFileOf finds the --token-file a run's hooks were given.
+func tokenFileOf(t *testing.T, args []string) string {
+	t.Helper()
+	for index, arg := range args {
+		if arg != "--settings" {
+			continue
+		}
+		var settings struct {
+			Hooks map[string][]struct {
+				Hooks []struct {
+					Args []string `json:"args"`
+				} `json:"hooks"`
+			} `json:"hooks"`
+		}
+		if err := json.Unmarshal([]byte(args[index+1]), &settings); err != nil {
+			t.Fatal(err)
+		}
+		hookArgs := settings.Hooks["PreToolUse"][0].Hooks[0].Args
+		for at, value := range hookArgs {
+			if value == "--token-file" {
+				return hookArgs[at+1]
+			}
+		}
+	}
+	t.Fatalf("no token file in %q", args)
+	return ""
+}
+
+// The master key opens every secret, so it doesn't reach a session or anything the session runs.
+func TestASessionGetsNothingOfMabaris(t *testing.T) {
+	b := newBench(t)
+	t.Setenv("MABARI_MASTER_KEY", "a-key-the-session-must-never-see")
+	t.Setenv("MABARI_MASTER_KEY_FILE", "/run/secrets/key")
+	t.Setenv("MABARI_DATA_DIR", "/home/me/.mabari")
+	t.Setenv("SOMETHING_ELSE", "stays")
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	env, err := os.ReadFile(filepath.Join(b.logs, agent.Session.ID+".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(env), "MABARI_") || strings.Contains(string(env), "must-never-see") {
+		t.Fatalf("the session's environment:\n%s", env)
+	}
+	if !strings.Contains(string(env), "SOMETHING_ELSE=stays") || !strings.Contains(string(env), "PATH=") ||
+		!slices.Contains(strings.Split(string(env), "\n"), "PWD="+b.folder) {
+		t.Fatalf("the session lost its own environment:\n%s", env)
+	}
+}
+
+// With no master key a run's hook can't open the secret store, so each process has a token of its
+// own, in a file only this user reads, that ends with the process.
+func TestEachProcessHasItsOwnHookToken(t *testing.T) {
+	b := newBench(t)
+	b.c.RunTokens = filepath.Join(filepath.Dir(b.folder), "run-tokens")
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	file := tokenFileOf(t, b.argsOf(agent.Session.ID)[0])
+	if !strings.HasPrefix(file, b.c.RunTokens) {
+		t.Fatalf("file = %s", file)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v", info.Mode())
+	}
+	token, err := ReadTokenFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, known := b.c.RunToken(RunKey(token)); !known || got != token {
+		t.Fatalf("known = %v", known)
+	}
+	_ = b.engine.Do(func() {
+		if err := b.c.ReleaseSession(b.engine.Agent(agent.ID)); err != nil {
+			t.Error(err)
+		}
+	})
+	b.until("the token to end", func() bool {
+		_, known := b.c.RunToken(RunKey(token))
+		_, err := os.Stat(file)
+		return !known && errors.Is(err, os.ErrNotExist)
+	})
+	// A new process has a new token.
+	b.instruct(agent.ID, "again")
+	b.until("a new process", func() bool { return len(b.argsOf(agent.Session.ID)) == 2 })
+	if tokenFileOf(t, b.argsOf(agent.Session.ID)[1]) == file {
+		t.Fatal("the same file twice")
+	}
+}
+
+// A process that couldn't start leaves no token behind.
+func TestAProcessThatDidntStartLeavesNoToken(t *testing.T) {
+	b := newBench(t)
+	b.c.RunTokens = filepath.Join(filepath.Dir(b.folder), "run-tokens")
+	b.c.Program = func() string { return filepath.Join(b.folder, "no-such-program") }
+	var err error
+	_ = b.engine.Do(func() { _, err = b.c.StartSession(SessionSpec{Name: "Mori", Folder: b.folder, Task: "x"}) })
+	if err == nil {
+		t.Fatal("it started")
+	}
+	entries, _ := os.ReadDir(b.c.RunTokens)
+	if len(entries) != 0 || len(b.c.runKeys) != 0 {
+		t.Fatalf("left %v, keys %v", entries, b.c.runKeys)
+	}
+}
+
 func TestStopEndsTheProcess(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("fake:hang")

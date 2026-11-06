@@ -149,3 +149,16 @@ func TestOnlyAUUIDIsASessionId(t *testing.T) {
 		}
 	}
 }
+
+func TestATerminalGetsNothingOfMabaris(t *testing.T) {
+	t.Setenv("MABARI_MASTER_KEY", "a-key-the-session-must-never-see")
+	cmd := Command(context.Background(), "darwin", nil, Request{Folder: "/x"}, "/tmp/s.sh")
+	if cmd == nil || cmd.Env == nil {
+		t.Fatalf("cmd = %+v", cmd)
+	}
+	for _, entry := range cmd.Env {
+		if strings.HasPrefix(entry, "MABARI_") {
+			t.Fatalf("env has %q", entry)
+		}
+	}
+}

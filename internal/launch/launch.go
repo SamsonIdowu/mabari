@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 // Request is one Claude Code session to open.
@@ -153,6 +155,14 @@ func script(request Request) (string, error) {
 // where a terminal needs one line, and the prompt follows "--", so none of them can run a command
 // or add a flag.
 func Command(ctx context.Context, goos string, lookPath func(string) (string, error), request Request, path string) *exec.Cmd {
+	cmd := terminalCommand(ctx, goos, lookPath, request, path)
+	if cmd != nil {
+		cmd.Env = secrets.ChildEnv(os.Environ())
+	}
+	return cmd
+}
+
+func terminalCommand(ctx context.Context, goos string, lookPath func(string) (string, error), request Request, path string) *exec.Cmd {
 	switch goos {
 	case "darwin":
 		line := "sh " + ShellQuote(path)

@@ -43,7 +43,7 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 		}
 		return quickWait
 	}
-	callHook(event, port, stdin, stdout, token, wait, "")
+	callHook(event, port, stdin, stdout, token, wait, false)
 }
 
 // RunSessionHook is `mabari hook --run <event>`, the hook of a session Mabari runs. It reports
@@ -59,17 +59,17 @@ func RunSessionHook(event string, port int, stdin io.Reader, stdout io.Writer, t
 		}
 		return quickWait
 	}
-	return callHook(event, port, stdin, stdout, token, wait, "1")
+	return callHook(event, port, stdin, stdout, token, wait, true)
 }
 
 // Gates reports whether a hook event decides if an action goes ahead.
 func Gates(event string) bool { return event == "PermissionRequest" || event == "PreToolUse" }
 
 // callHook makes the call and reports whether a signed answer came back, printing it if it has
-// anything to say. run is the value of RunHeader, or "".
+// anything to say. fromRun marks it as a run's, with RunHeader naming the token it is signed with.
 func callHook(
 	event string, port int, stdin io.Reader, stdout io.Writer, token func() (string, error),
-	wait func(body []byte) time.Duration, run string,
+	wait func(body []byte) time.Duration, fromRun bool,
 ) bool {
 	body, err := io.ReadAll(io.LimitReader(stdin, maxHookInput))
 	if err != nil {
@@ -94,13 +94,15 @@ func callHook(
 	}
 	nonceText := hex.EncodeToString(nonce)
 	sent := strconv.FormatInt(time.Now().Unix(), 10)
+	run := ""
+	if fromRun {
+		run = RunKey(secret)
+		request.Header.Set(RunHeader, run)
+	}
 	request.Header.Set(NonceHeader, nonceText)
 	request.Header.Set(TimeHeader, sent)
 	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, sent, event, run, body))
 	request.Header.Set("Content-Type", "application/json")
-	if run != "" {
-		request.Header.Set(RunHeader, run)
-	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return false

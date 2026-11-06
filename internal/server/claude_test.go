@@ -136,7 +136,7 @@ func TestHooksNeedTheInstallToken(t *testing.T) {
 			strings.NewReader(body))
 		request.Header.Set(claudecode.NonceHeader, nonce)
 		request.Header.Set(claudecode.TimeHeader, sent)
-		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, signedEvent, []byte(body)))
+		request.Header.Set(claudecode.SignatureHeader, claudecode.SignRequest(token, nonce, sent, signedEvent, "", []byte(body)))
 		recorder := httptest.NewRecorder()
 		o.handler.ServeHTTP(recorder, request)
 		return recorder.Code

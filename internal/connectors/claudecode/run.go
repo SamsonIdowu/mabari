@@ -22,6 +22,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/launch"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/redact"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 // A session Mabari runs is `claude -p` as a child process, with stream-json in and out, kept alive
@@ -116,6 +117,7 @@ type run struct {
 	agentID string
 	cmd     *exec.Cmd
 	stderr  *tailBuffer
+	token   *runToken
 
 	inputMu sync.Mutex
 	closed  bool
@@ -303,7 +305,7 @@ func (r *run) stop(wait time.Duration) {
 }
 
 // spawn starts the process for an agent's session. Call inside Do.
-func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
+func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (started *run, failure error) {
 	program := c.program()
 	if program == "" {
 		return nil, ErrNoClaude
@@ -315,7 +317,18 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	if err := c.folderProblem(agent); err != nil {
 		return nil, err
 	}
-	settings, err := c.Hook.SessionSettings()
+	token, err := c.newRunToken()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if failure != nil {
+			c.forgetRunToken(token)
+		}
+	}()
+	hook := c.Hook
+	hook.TokenFile = token.file
+	settings, err := hook.SessionSettings()
 	if err != nil {
 		return nil, err
 	}
@@ -331,10 +344,13 @@ func (c *Connector) spawn(agent *models.LiveAgent, resume bool) (*run, error) {
 	})
 	cmd := exec.CommandContext(context.Background(), program, args...) // #nosec G204 -- the program is found by its fixed name, and the arguments never reach a shell
 	cmd.Dir = workFolder(agent)
+	// Nothing of Mabari's reaches the session or what it runs. Its hooks use the token above. Go only
+	// sets PWD for a command with no Env of its own, and a stale one misleads anything reading it.
+	cmd.Env = append(secrets.ChildEnv(os.Environ()), "PWD="+cmd.Dir)
 	cmd.WaitDelay = endWait
 	ownGroup(cmd)
 	r := &run{
-		agentID: agent.ID, cmd: cmd, stderr: &tailBuffer{}, inbox: make(chan []byte, inboxSize),
+		agentID: agent.ID, cmd: cmd, stderr: &tailBuffer{}, token: token, inbox: make(chan []byte, inboxSize),
 		exited: make(chan struct{}), lastUsed: time.Now(), live: map[int]*liveText{},
 		tools: map[string]models.ConversationItem{}, denied: map[string]bool{},
 	}
@@ -400,6 +416,7 @@ func (c *Connector) watch(r *run, stdout *os.File) {
 // exited updates the office after a process has gone. Its agent keeps its place, and the session
 // is resumable, whatever happened.
 func (c *Connector) exited(r *run) {
+	c.forgetRunToken(r.token)
 	_ = c.engine.Do(func() {
 		c.mu.Lock()
 		current := c.runs[r.agentID] == r
@@ -836,6 +853,10 @@ func (c *Connector) ReleaseSession(agent *models.LiveAgent) error {
 // person's account with nobody asking. An approval that was waiting is settled, because the process
 // that asked has gone and has been told no by now. Call inside Do, before serving.
 func (c *Connector) Resume() {
+	// Tokens left by a Mabari that didn't get to end its processes open nothing now.
+	if c.RunTokens != "" {
+		_ = os.RemoveAll(c.RunTokens)
+	}
 	for _, agent := range c.engine.Agents() {
 		if agent.Source != Source || agent.Lead != nil {
 			continue

@@ -272,6 +272,7 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	}
 	claude := claudecode.New(engine)
 	claude.MapFile = projectmap.File(cfg.DataDir)
+	claude.RunTokens = filepath.Join(cfg.DataDir, "run-tokens")
 	engine.AddConnector(claudecode.Source, claude)
 	_ = engine.Do(func() {
 		claude.TidyNames()

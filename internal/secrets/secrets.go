@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -95,4 +97,13 @@ func (m *Memory) Names() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// ChildEnv is the environment for a program Mabari starts that runs other people's code, such as a
+// Claude Code session and every command in it: this one, without anything of Mabari's. The master
+// key opens every secret, and nothing a session runs has a use for it, or for where it is kept.
+func ChildEnv(environ []string) []string {
+	return slices.DeleteFunc(slices.Clone(environ), func(entry string) bool {
+		return strings.HasPrefix(strings.ToUpper(entry), "MABARI_")
+	})
 }

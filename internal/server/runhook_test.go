@@ -3,9 +3,14 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -136,6 +141,76 @@ func TestTheRunHeaderIsPartOfTheSignature(t *testing.T) {
 	}
 	if got := o.state(agent.ID); got.Approval != nil {
 		t.Fatalf("asked: %+v", got.Approval)
+	}
+}
+
+// tokenOf reads the token Mabari gave a session's hooks, as `mabari hook --run --token-file` does.
+func (o *runOffice) tokenOf(t *testing.T, session string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(o.logs, session+".args"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`--token-file\\",\\"([^\\]+)\\"`).FindSubmatch(data)
+	if found == nil {
+		t.Fatalf("no token file in %s", data)
+	}
+	token, err := claudecode.ReadTokenFile(string(found[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+// The whole way a session's hook works now: no master key, a token from its own file, over a real
+// port. It reaches the approval flow, and no other token gets the same answer.
+func TestASessionsHookWorksWithItsOwnToken(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	session := agent.Session.ID
+	token := o.tokenOf(t, session)
+	server := httptest.NewServer(o.handler)
+	defer server.Close()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := json.Marshal(map[string]any{
+		"session_id": session, "cwd": o.folder, "hook_event_name": "PreToolUse",
+		"tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf build"},
+	})
+	call := func(secret string) (bool, string) {
+		var out bytes.Buffer
+		answered := claudecode.RunSessionHook("PreToolUse", port, bytes.NewReader(input), &out,
+			func() (string, error) { return secret, nil })
+		return answered, out.String()
+	}
+	if answered, printed := call(token); !answered || !strings.Contains(printed, `"ask"`) {
+		t.Fatalf("answered = %v, printed %q", answered, printed)
+	}
+	if answered, printed := call(strings.Repeat("x", 40)); answered || printed != "" {
+		t.Fatalf("a made up token: answered = %v, printed %q", answered, printed)
+	}
+	// It only signs a run's calls: on a settings hook's it means nothing.
+	done := o.signedCall(t, token, "", "", session, "PreToolUse", map[string]any{"tool_name": "Read"})
+	if response := reply(t, done); response.Code != http.StatusUnauthorized {
+		t.Fatalf("as a settings hook = %d", response.Code)
+	}
+	// It ends with the process.
+	o.until(t, "the turn to end", func() bool { return o.state(agent.ID).State == models.StateDone })
+	if response := o.do(t, http.MethodPost, "/api/agents/"+agent.ID+"/session/release", ""); response.Code != http.StatusOK {
+		t.Fatalf("release = %d %s", response.Code, response.Body.String())
+	}
+	o.until(t, "the token to end", func() bool {
+		_, known := o.connector.RunToken(claudecode.RunKey(token))
+		return !known
+	})
+	if answered, _ := call(token); answered {
+		t.Fatal("a gone process's token still works")
 	}
 }
 

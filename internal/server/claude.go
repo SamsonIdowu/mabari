@@ -44,10 +44,15 @@ func (a *api) claudeRoutes(mux *http.ServeMux) {
 // claudeHook takes one hook call. Only a call signed with the install's token gets in, because a
 // hook reply can steer Claude, and the reply is signed so the hook knows it came from here.
 func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
-	token, err := a.claude.token()
-	if err != nil || token == "" {
-		writeError(w, http.StatusUnauthorized, "Claude Code is not connected")
-		return
+	// A process Mabari runs signs with its own token, and only on a call marked as a run's.
+	run := r.Header.Get(claudecode.RunHeader)
+	token, own := a.claude.Connector.RunToken(run)
+	if !own {
+		var err error
+		if token, err = a.claude.token(); err != nil || token == "" {
+			writeError(w, http.StatusUnauthorized, "Claude Code is not connected")
+			return
+		}
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHookBody))
 	if err != nil {
@@ -55,7 +60,6 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce, sent := r.Header.Get(claudecode.NonceHeader), r.Header.Get(claudecode.TimeHeader)
-	run := r.Header.Get(claudecode.RunHeader)
 	want := claudecode.SignRequest(token, nonce, sent, r.PathValue("event"), run, body)
 	if len(nonce) < 16 || !claudecode.Verify(want, r.Header.Get(claudecode.SignatureHeader)) {
 		writeError(w, http.StatusUnauthorized, "this hook call is not signed with the install's token")

@@ -137,6 +137,9 @@ type Connector struct {
 	Program func() string
 	// Hook is how a session Mabari runs reports back.
 	Hook Hook
+	// RunTokens is where each process's hook token is kept while it runs. Empty uses the system's
+	// temporary folder.
+	RunTokens string
 	// runWait is how long a session Mabari runs waits for a click, and endWait how long a process
 	// has to end when asked.
 	runWait time.Duration
@@ -146,6 +149,8 @@ type Connector struct {
 	leaving map[*run]struct{}
 	// sessions are the sessions Mabari runs or has run, as session id to agent id.
 	sessions map[string]string
+	// runKeys are the tokens of the processes still alive, by key. See runtoken.go.
+	runKeys map[string]string
 	// tails are how far each followed session's transcript has been read, by agent.
 	tails map[string]*tail
 }
@@ -171,6 +176,7 @@ func New(engine *events.Engine) *Connector {
 		runs:     map[string]*run{},
 		leaving:  map[*run]struct{}{},
 		sessions: map[string]string{},
+		runKeys:  map[string]string{},
 		tails:    map[string]*tail{},
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -165,5 +166,16 @@ func TestKeychainThroughTheMock(t *testing.T) {
 	}
 	if err := store.Delete("k"); err != nil {
 		t.Errorf("second delete: %v", err)
+	}
+}
+
+func TestAChildGetsNothingOfMabaris(t *testing.T) {
+	got := ChildEnv([]string{
+		"PATH=/bin", "MABARI_MASTER_KEY=key", "MABARI_MASTER_KEY_FILE=/run/key", "mabari_secrets=file",
+		"HOME=/home/me", "ANTHROPIC_API_KEY=theirs", "NOT_MABARI_X=1",
+	})
+	want := []string{"PATH=/bin", "HOME=/home/me", "ANTHROPIC_API_KEY=theirs", "NOT_MABARI_X=1"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q", got)
 	}
 }

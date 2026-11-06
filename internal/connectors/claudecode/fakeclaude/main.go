@@ -212,6 +212,8 @@ func recordArgs(session string, args []string) {
 	if dir == "" {
 		return
 	}
+	// What the process was given to run with, which is what every command it runs inherits.
+	_ = os.WriteFile(filepath.Join(dir, session+".env"), []byte(strings.Join(os.Environ(), "\n")), 0o600) // #nosec G304,G703 -- a test double, using paths its test gave it
 	line, _ := json.Marshal(args)
 	file, err := os.OpenFile(filepath.Join(dir, session+".args"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304,G703 -- a test double, using paths its test gave it
 	if err != nil {

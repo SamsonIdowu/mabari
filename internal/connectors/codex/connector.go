@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/redact"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/risk"
 )
 
@@ -88,7 +90,7 @@ func (c *Connector) Launch(ctx context.Context) error {
 		_ = c.engine.Do(c.touchAccount)
 		return ErrNotInstalled
 	}
-	cmd := exec.CommandContext(ctx, path, "app-server") // #nosec G204 -- the user's own codex
+	cmd := appServer(ctx, path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -102,6 +104,14 @@ func (c *Connector) Launch(ctx context.Context) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return c.Attach(ctx, stdin, stdout)
+}
+
+// appServer is the command for Codex's app server, which runs what a thread asks, so it gets
+// nothing of Mabari's.
+func appServer(ctx context.Context, path string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, path, "app-server") // #nosec G204 -- the user's own codex
+	cmd.Env = secrets.ChildEnv(os.Environ())
+	return cmd
 }
 
 // Attach speaks to an app server over the given pipes: initialize, then read the account and

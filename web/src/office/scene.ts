@@ -1058,6 +1058,9 @@ export class OfficeScene {
     // Tests read the floor's size, and where the free desk is, to find things on it.
     const world = `${this.floor.width}x${this.floor.height}`;
     if (canvas.dataset.world !== world) canvas.dataset.world = world;
+    // Tests read how big the floor is drawn: screen pixels to a world pixel.
+    const scale = this.matrix().a.toFixed(2);
+    if (canvas.dataset.scale !== scale) canvas.dataset.scale = scale;
     // Tests read where a shipped project's celebration is: "", "gather" or "party".
     const shipped = useShipped.getState().phase === 'idle' ? '' : useShipped.getState().phase;
     if ((canvas.dataset.shipped ?? '') !== shipped) canvas.dataset.shipped = shipped;

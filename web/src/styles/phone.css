@@ -81,11 +81,12 @@
    at a third of the screen, wraps its rows rather than clipping them, and leaves room before
    Mabari's bubble. Opened out, it scrolls inside a limit. */
 @media (max-width: 1100px) {
-  .awaycard {
+  /* Through .home2, so these win over the card's own rules, which load after this file. */
+  .home2 .awaycard {
     max-height: none;
     margin-bottom: 18px;
   }
-  .awaycard[data-open='yes'] {
+  .home2 .awaycard[data-open='yes'] {
     max-height: 56vh;
   }
   .awaycard .recap .recaptext {
@@ -102,6 +103,18 @@
   .awaymore {
     margin-top: 10px;
   }
+}
+/* The folded card: a line of counts, in the lists' own small capitals. */
+.recapsum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .awaymore {
   display: none;

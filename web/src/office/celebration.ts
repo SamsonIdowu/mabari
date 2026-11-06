@@ -256,9 +256,9 @@ export function stillConfetti(
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return state / 4294967296;
   };
-  for (let index = 0; index < 16; index++) {
-    const x = around.x + (next() - 0.5) * 70;
-    const y = around.y - 54 + next() * 62;
+  for (let index = 0; index < 28; index++) {
+    const x = around.x + (next() - 0.5) * 120;
+    const y = around.y - 62 + next() * 76;
     R(c, Math.round(x), Math.round(y), next() < 0.4 ? 5 : 4, 4, colours[index % colours.length]!);
   }
 }

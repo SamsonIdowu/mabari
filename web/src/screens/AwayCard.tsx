@@ -19,7 +19,7 @@ function openAgentById(id: string) {
  * What happened, as lists with a link to each agent still here. Every number comes from the
  * server; the page only words them. A long list is cut and says by how many.
  */
-export function RecapBody({ recap, limit }: { recap: Recap; limit?: number | undefined }) {
+export function RecapBody({ recap }: { recap: Recap }) {
   // Only an approval or an error waiting makes the count red; a question waits calmly.
   const red = useOfficeStore((state) => {
     const agents = state.office?.agents ?? [];
@@ -38,7 +38,7 @@ export function RecapBody({ recap, limit }: { recap: Recap; limit?: number | und
               </span>
             </h3>
             <ul className="hclist">
-              {group.items.slice(0, limit).map((item, index) => (
+              {group.items.map((item, index) => (
                 <li key={`${item.agentId}-${item.time}-${index}`}>
                   {item.hue ? (
                     <span className="idot" style={{ ['--ac' as string]: item.hue }} />
@@ -59,10 +59,8 @@ export function RecapBody({ recap, limit }: { recap: Recap; limit?: number | und
                   </span>
                 </li>
               ))}
-              {group.count > Math.min(group.items.length, limit ?? Infinity) ? (
-                <li className="muted">
-                  and {group.count - Math.min(group.items.length, limit ?? Infinity)} more
-                </li>
+              {group.count > group.items.length ? (
+                <li className="muted">and {group.count - group.items.length} more</li>
               ) : null}
             </ul>
           </section>
@@ -82,8 +80,32 @@ function needsKey(agents: LiveAgent[] | undefined): string {
 
 /** Where the card sits above Mabari instead of beside it, and has room for little. */
 const NARROW = '(max-width: 1100px)';
-/** How many rows of each kind it shows there until it is opened out. */
-export const NARROW_ROWS = 3;
+
+/**
+ * The card folded down to what it says in one line: how many of each kind, in the order of the
+ * lists, with the count of what needs you red only when an approval or an error waits. The rows
+ * are a tap away.
+ */
+function RecapSummary({ recap }: { recap: Recap }) {
+  const red = useOfficeStore((state) => {
+    const agents = state.office?.agents ?? [];
+    return floorCounts(counted(agents)).tone === 'red';
+  });
+  return (
+    <p className="recapsum" data-testid="recapsum">
+      {recapGroups(recap)
+        .filter(({ group }) => group.count > 0)
+        .map(({ key, title, group }) => (
+          <span key={key}>
+            {title}{' '}
+            <span className={key === 'needs' && red ? 'recapcount red' : 'recapcount'}>
+              {group.count}
+            </span>
+          </span>
+        ))}
+    </p>
+  );
+}
 
 function useNarrow(): boolean {
   return useSyncExternalStore(
@@ -106,8 +128,8 @@ export function AwayCard() {
   const ready = useOfficeStore((state) => state.office !== null);
   const waiting = useOfficeStore((state) => needsKey(state.office?.agents));
   const [recap, setRecap] = useState<Recap | null>(null);
-  // Narrow, the card shows a few rows of each kind and opens out to all of them on request, so it
-  // is never cut off in the middle of a row, and never crowds Mabari's speech bubble.
+  // Narrow, the card is a line of counts and opens out to every row on request, so it is never cut
+  // off in the middle of a row, and never crowds Mabari's speech bubble or the buttons under it.
   const narrow = useNarrow();
   const [opened, setOpened] = useState(false);
   const from = absence?.from;
@@ -131,10 +153,7 @@ export function AwayCard() {
   if (!absence || !recap || recap.since !== absence.from || !cardShown(absence, recap.happened)) {
     return null;
   }
-  const cut = narrow && !opened ? NARROW_ROWS : undefined;
-  const longer = recapGroups(recap).some(
-    ({ group }) => group.count > NARROW_ROWS || group.items.length > NARROW_ROWS,
-  );
+  const folded = narrow && !opened;
   return (
     <aside
       className="awaycard"
@@ -151,15 +170,15 @@ export function AwayCard() {
           Dismiss
         </button>
       </div>
-      <RecapBody recap={recap} limit={cut} />
-      {narrow && longer ? (
+      {folded ? <RecapSummary recap={recap} /> : <RecapBody recap={recap} />}
+      {narrow ? (
         <button
           type="button"
           className="btn sm awaymore"
           aria-expanded={opened}
           onClick={() => setOpened(!opened)}
         >
-          {opened ? 'Show less' : 'Show everything'}
+          {opened ? 'Hide details' : 'Show details'}
         </button>
       ) : null}
     </aside>

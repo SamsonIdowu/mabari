@@ -335,11 +335,11 @@ describe('the confetti', () => {
     const second = recorder();
     stillConfetti(first.c, { x: 100, y: 200 }, colours, 3);
     stillConfetti(second.c, { x: 100, y: 200 }, colours, 3);
-    expect(first.rects.length).toBeGreaterThanOrEqual(12);
+    expect(first.rects.length).toBeGreaterThanOrEqual(24);
     expect(first.rects).toEqual(second.rects);
     // Round the team, near where they stand, and not for a different agent in the same place.
     for (const rect of first.rects) {
-      expect(Math.abs(rect.x - 100)).toBeLessThan(40);
+      expect(Math.abs(rect.x - 100)).toBeLessThan(64);
       expect(rect.y).toBeGreaterThan(130);
       expect(rect.y).toBeLessThan(215);
     }

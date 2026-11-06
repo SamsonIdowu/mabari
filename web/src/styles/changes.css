@@ -404,6 +404,9 @@
   margin: 0;
 }
 /* The line is always there, empty or not, so what it says doesn't push the diffs about. */
+.chstatus {
+  line-height: 1.4;
+}
 .chstatus:empty {
   min-height: 1.4em;
 }

@@ -887,8 +887,12 @@ for (const theme of ['light', 'dark'] as const) {
       // A project's thread, with a round of replies.
       await page.goto(`/#conversations?project=${known.projects['Docs site']}`);
       await expect(thread(page, 'Docs site')).toBeVisible();
-      await box(page, 'Docs site').fill('one line please');
-      await page.getByRole('button', { name: /Ask everyone/ }).click();
+      const ask = page.getByRole('button', { name: /Ask everyone/ });
+      await expect(async () => {
+        await box(page, 'Docs site').fill('one line please');
+        await expect(ask).toBeEnabled({ timeout: 1000 });
+      }).toPass();
+      await ask.click();
       await expect(thread(page, 'Docs site').getByTestId('chatRound')).toBeVisible();
       await check('a project thread with a round');
       // Between agents.

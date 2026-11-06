@@ -17,17 +17,19 @@ test('the project chat and the agent panel show times in 24 hours, as the log do
   await page.goto('/#projects');
   await page
     .locator('article', { hasText: 'Docs site' })
-    .getByRole('button', { name: 'Chat' })
+    .getByRole('link', { name: 'Chat' })
     .click();
-  const chat = page.getByRole('complementary', { name: 'Chat with Docs site' });
-  await chat.getByLabel('Message Docs site').fill('Fix the typo in the install guide');
-  await chat.getByLabel('Message Docs site').press('Enter');
-  const meta = chat.locator('.pcm.you .pcmmeta').last();
-  await expect(meta).toContainText('To ');
-  await expect(meta).toContainText(TWENTY_FOUR_HOUR);
-  await expect(chat.locator('.pcm.ai .pcmmeta').last()).toContainText(TWENTY_FOUR_HOUR, {
-    timeout: 15_000,
-  });
+  const chat = page.getByRole('log', { name: 'Messages with Docs site' });
+  const message = page.getByRole('textbox', { name: 'Message Docs site' });
+  await message.fill('Fix the typo in the install guide');
+  await message.press('Enter');
+  const mine = chat.getByTestId('chatYou').filter({ hasText: 'Fix the typo in the install guide' });
+  await expect(mine.locator('.mmeta')).toContainText('You to ', { timeout: 15_000 });
+  await expect(mine.locator('.mmeta')).toContainText(TWENTY_FOUR_HOUR);
+  await expect(chat.getByTestId('chatAgent').last().locator('.mby')).toContainText(
+    TWENTY_FOUR_HOUR,
+    { timeout: 15_000 },
+  );
   await expect(chat).not.toContainText(/\d ?[AP]M\b/);
 
   await page.goto('/#office');

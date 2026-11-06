@@ -106,9 +106,11 @@ test('typing a name and pressing Enter opens that agent', async ({ page }) => {
   await loadDemo(page);
   await open(page);
   await page.keyboard.type('ledger');
-  await expect(results(page)).toHaveCount(1);
+  // The agent, and the chat with it in the Chats group: two ways to the same one.
+  await expect(results(page)).toHaveCount(2);
   await expect(results(page).first()).toContainText('Ledger');
   await expect(results(page).first()).toContainText('Checkout revamp');
+  await expect(results(page).last()).toContainText('Chat with Ledger');
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toHaveCount(0);
   await expect(page).toHaveURL(/#office\?agent=/);
@@ -142,8 +144,9 @@ test('typing a project and pressing Enter opens the project', async ({ page }) =
   await expect(first).toContainText('Projects');
   await expect(first.getByRole('option').first()).toContainText('Docs site');
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#projects\?chat=docs$/);
-  await expect(page.getByRole('complementary', { name: 'Chat with Docs site' })).toBeVisible();
+  // A project's chat is its thread on the Chats screen, which the old address leads to.
+  await expect(page).toHaveURL(/#conversations\?project=docs$/);
+  await expect(page.getByRole('log', { name: 'Messages with Docs site' })).toBeVisible();
 });
 
 test('typing a screen and pressing Enter opens it', async ({ page }) => {

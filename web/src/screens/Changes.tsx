@@ -151,7 +151,12 @@ const DiffRow = memo(function DiffRow(props: {
   if (row.kind === 'hunk') {
     return (
       <tr className="chl hunk">
-        <td colSpan={4}>{row.text}</td>
+        <td className="chn" />
+        <td className="chn" />
+        <td className="chmark" />
+        <td className="chtext">
+          <code>{row.text}</code>
+        </td>
       </tr>
     );
   }
@@ -215,32 +220,34 @@ function Composer(props: {
   return (
     <tr className="chc">
       <td colSpan={4}>
-        <form className="chform" onSubmit={submit}>
-          <label className="sr" htmlFor={id}>
-            Comment on {props.at.side === 'old' ? 'removed line' : 'line'} {props.at.line} of{' '}
-            {props.file.path}
-          </label>
-          <textarea
-            id={id}
-            rows={3}
-            // Opens ready to type.
-            autoFocus
-            value={text}
-            placeholder={`What should ${props.who} change here?`}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit(event);
-            }}
-          />
-          <div className="chbtns">
-            <button type="submit" className="btn sm primary" disabled={!text.trim()}>
-              Add comment
-            </button>
-            <button type="button" className="btn sm" onClick={props.cancel}>
-              Cancel
-            </button>
-          </div>
-        </form>
+        <div className="chfloat">
+          <form className="chform" onSubmit={submit}>
+            <label className="sr" htmlFor={id}>
+              Comment on {props.at.side === 'old' ? 'removed line' : 'line'} {props.at.line} of{' '}
+              {props.file.path}
+            </label>
+            <textarea
+              id={id}
+              rows={3}
+              // Opens ready to type.
+              autoFocus
+              value={text}
+              placeholder={`What should ${props.who} change here?`}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit(event);
+              }}
+            />
+            <div className="chbtns">
+              <button type="submit" className="btn sm primary" disabled={!text.trim()}>
+                Add comment
+              </button>
+              <button type="button" className="btn sm" onClick={props.cancel}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       </td>
     </tr>
   );
@@ -300,12 +307,7 @@ const FileView = memo(function FileView(props: FileProps) {
       </h3>
       {file.note ? <p className="help chnote">{file.note}</p> : null}
       {rows.length ? (
-        <div
-          className="codebox chcode"
-          tabIndex={0}
-          role="region"
-          aria-label={`Changes in ${file.path}`}
-        >
+        <div className="chcode" tabIndex={0} role="region" aria-label={`Changes in ${file.path}`}>
           <table className="chtable">
             <caption className="sr">
               Changed lines in {file.path}. Press a line number to comment on that line.
@@ -323,16 +325,18 @@ const FileView = memo(function FileView(props: FileProps) {
                     {here?.map((item) => (
                       <tr className="chc done" key={item.id}>
                         <td colSpan={4}>
-                          <div className="chcard" data-testid="reviewComment">
-                            <span className="chcomment">{item.comment}</span>
-                            <button
-                              type="button"
-                              className="linkbtn"
-                              aria-label={`Remove your comment on line ${item.line} of ${file.path}`}
-                              onClick={() => props.remove(item.id)}
-                            >
-                              Remove
-                            </button>
+                          <div className="chfloat">
+                            <div className="chcard" data-testid="reviewComment">
+                              <span className="chcomment">{item.comment}</span>
+                              <button
+                                type="button"
+                                className="linkbtn"
+                                aria-label={`Remove your comment on line ${item.line} of ${file.path}`}
+                                onClick={() => props.remove(item.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>

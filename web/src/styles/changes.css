@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The review view: a file list beside the diffs, in the diff style of the settings and approval
-   cards (.codebox with green and red lines). Everything else is the calm surface the other dialogs
-   use. Only the diff itself uses green and red. */
+   cards (the code box with green and red lines). Everything else is the calm surface the other
+   dialogs use. Only the diff itself uses green and red. */
 
 .dialog.changes {
   width: min(1240px, 100%);
@@ -180,10 +180,12 @@
   padding: 8px 14px;
   margin: 0;
 }
-.chcode.codebox {
-  padding: 0;
-  border: 0;
+/* The same box as .codebox, made here: .codebox's own rules for .add, .del and .ctx make a line a
+   block with a negative margin, which a table row can't be. */
+.chcode {
+  background: var(--code-bg);
   border-radius: 0 0 12px 12px;
+  overflow-x: auto;
   container-type: inline-size;
 }
 .chtable {
@@ -217,8 +219,11 @@
   color: var(--muted);
   padding: 2px 14px;
 }
+/* A column of numbers is as wide as its numbers: a width of 1px with no wrapping asks for just that.
+   A percentage width here would feed back into the table's own width, which is "as wide as its
+   longest line", and make the table enormous. */
 .chn {
-  width: 1%;
+  width: 1px;
   min-width: 5.5ch;
   white-space: nowrap;
   user-select: none;
@@ -253,7 +258,8 @@
   outline-offset: -2px;
 }
 .chmark {
-  width: 2ch;
+  width: 1px;
+  min-width: 2ch;
   text-align: center;
   user-select: none;
 }
@@ -272,10 +278,15 @@
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
-.chform,
-.chcard {
+/* The box is zero wide, with the comment overflowing it: a row that spans the table must not make the
+   table's columns wider, whatever it holds. It sticks to the left edge while a long line scrolls. */
+.chfloat {
   position: sticky;
   left: 14px;
+  width: 0;
+}
+.chform,
+.chcard {
   width: min(720px, calc(100cqw - 28px));
 }
 .chform {

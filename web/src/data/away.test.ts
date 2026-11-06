@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ABSENCE_KEPT_MS,
   AWAY_MS,
   RECENT_ABSENCE_MS,
   absenceBetween,
+  browserStorage,
   cardShown,
   recapSince,
   restoreAbsence,
@@ -231,5 +232,36 @@ describe('the tracker', () => {
     watch.touch();
     watch.save();
     expect(found).toEqual([{ from: NOW, to: NOW + 30 * MINUTE, dismissed: false }]);
+  });
+});
+
+describe('the browser storage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps nothing, and does not throw, where the browser will not give it out', () => {
+    vi.stubGlobal('window', {
+      get localStorage(): Storage {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+    });
+    const storage = browserStorage();
+    expect(() => storage.setItem('a', 'b')).not.toThrow();
+    expect(storage.getItem('a')).toBeNull();
+    // The tracker works on it as on any other: a first visit, with nothing found.
+    const found: Absence[] = [];
+    expect(
+      tracker(
+        storage,
+        () => NOW,
+        (absence) => found.push(absence),
+      ).start(),
+    ).toBeNull();
+    expect(found).toEqual([]);
+  });
+
+  it('is the browser own when it gives one out', () => {
+    const own = { getItem: () => 'x', setItem: () => undefined };
+    vi.stubGlobal('window', { localStorage: own });
+    expect(browserStorage()).toBe(own);
   });
 });

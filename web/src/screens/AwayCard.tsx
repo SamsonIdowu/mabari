@@ -4,7 +4,7 @@ import { cardShown, useAway } from '../data/away.ts';
 import { catchUp, recapGroups } from '../data/catchUp.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { minsText } from '../format.ts';
-import type { Recap } from '../gen/models.ts';
+import type { LiveAgent, Recap } from '../gen/models.ts';
 import { floorCounts } from '../office/floorList.ts';
 import { counted, needsYou, openAgent } from '../office/uiStore.ts';
 import '../styles/catchup.css';
@@ -70,9 +70,9 @@ export function RecapBody({ recap }: { recap: Recap }) {
 }
 
 /** The ids of everyone who needs you, so the card is read again when that changes. */
-function needsKey(agents: { id: string; state: string; question: unknown }[] | undefined): string {
+function needsKey(agents: LiveAgent[] | undefined): string {
   return (agents ?? [])
-    .filter((agent) => needsYou(agent as Parameters<typeof needsYou>[0]))
+    .filter(needsYou)
     .map((agent) => agent.id)
     .sort()
     .join(',');

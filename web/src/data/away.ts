@@ -141,6 +141,15 @@ function readStorage(storage: Storage, key: string): string | null {
   }
 }
 
+/** The browser's storage, or one that keeps nothing where the browser won't give it out. */
+export function browserStorage(): Storage {
+  try {
+    return window.localStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => undefined };
+  }
+}
+
 interface AwayState {
   /** The latest absence, or null when there has been none, or it is forgotten. */
   absence: Absence | null;
@@ -156,7 +165,7 @@ export const useAway = create<AwayState>((set, get) => ({
     const { absence } = get();
     if (!absence) return;
     const dismissed = { ...absence, dismissed: true };
-    write(localStorage, ABSENCE_KEY, JSON.stringify(dismissed));
+    write(browserStorage(), ABSENCE_KEY, JSON.stringify(dismissed));
     set({ absence: dismissed });
   },
 }));
@@ -165,7 +174,7 @@ const EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] 
 
 /** Starts watching for the person coming back. Returns a function that stops it. */
 export function startAbsenceWatch(): () => void {
-  const watch = tracker(localStorage, Date.now, (absence) => useAway.getState().set(absence));
+  const watch = tracker(browserStorage(), Date.now, (absence) => useAway.getState().set(absence));
   watch.start();
   const onVisible = () => {
     if (document.visibilityState === 'visible') watch.touch();

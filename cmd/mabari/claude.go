@@ -232,7 +232,11 @@ func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
 	o.claude.HookBinary = binary
 	// Sessions Mabari runs live no longer than this process, so a go run binary serves them too.
 	o.claude.Hook = claudecode.Hook{Binary: sessionHookBinary(binary), Port: cfg.Port}
-	o.claude.Program = findClaude
+	// The end-to-end tests' shared server can never start a session, so they can't reach the real
+	// program, whatever is on PATH.
+	if os.Getenv("MABARI_NO_SESSIONS") != "1" {
+		o.claude.Program = findClaude
+	}
 	return &server.ClaudeOptions{
 		Connector: o.claude, Secrets: o.secrets, ConfigDir: dir,
 		Hook: claudecode.Hook{Binary: binary, Port: cfg.Port},

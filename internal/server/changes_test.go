@@ -297,6 +297,17 @@ func TestAProjectsChangesComeFromItsFolder(t *testing.T) {
 		t.Errorf("attached: %d %+v", code, changes)
 	}
 
+	// An agent on the project that works in a folder outside the project's own adds nothing: the
+	// project's changes are those of its folder, whatever else its agents have been doing.
+	outside := repoWithChanges(t)
+	write(t, outside, "OUTSIDE-CANARY.txt", "outside\n")
+	withRealAgent(t, office, "Wanderer", outside, &attached.ID)
+	code, within := getChanges(t, office, "/api/projects/"+attached.ID+"/changes")
+	encoded, _ := json.Marshal(within)
+	if code != http.StatusOK || within.Folder != dir || within.FileCount != 3 || strings.Contains(string(encoded), "OUTSIDE-CANARY") {
+		t.Errorf("with an agent working outside: %d %s", code, encoded)
+	}
+
 	// With no folder attached, the folder its agents share is the project's.
 	shared := decode[models.Project](t, office.do(t, http.MethodPost, "/api/projects", `{"name":"Shared","color":"#FF6B9A"}`))
 	withRealAgent(t, office, "Ledger", dir, &shared.ID)

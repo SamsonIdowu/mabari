@@ -31,6 +31,7 @@ func Demo(folder string, files []string) models.Changes {
 		}
 		seen[name] = true
 		file := demoFile(name)
+		file.ID = fileID(file)
 		changes.Files = append(changes.Files, file)
 		changes.Added += file.Added
 		changes.Removed += file.Removed
@@ -120,8 +121,11 @@ func demoFile(name string) models.ChangedFile {
 			"+}",
 		}
 	default:
+		// A little function of its own for each file, so no two files read alike.
+		stem := strings.TrimSuffix(base, ext)
+		adjust := "adjust" + strings.ToUpper(stem[:1]) + stem[1:]
 		spec = []string{
-			"@@ -14,9 +14,14 @@ export function total(lines: Line[]): number {",
+			"@@ -14,9 +14,14 @@ export function " + stem + "(lines: Line[]): number {",
 			"   let sum = 0;",
 			"   for (const line of lines) {",
 			"-    sum += line.price * line.quantity;",
@@ -129,10 +133,10 @@ func demoFile(name string) models.ChangedFile {
 			"+    sum += Math.round(line.price * line.quantity * 100) / 100;",
 			"   }",
 			"-  return sum;",
-			"+  return applyDiscount(sum);",
+			"+  return " + adjust + "(sum);",
 			" }",
 			" ",
-			"+function applyDiscount(sum: number): number {",
+			"+function " + adjust + "(sum: number): number {",
 			"+  return sum > 100 ? sum * 0.95 : sum;",
 			"+}",
 		}

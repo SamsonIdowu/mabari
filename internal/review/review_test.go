@@ -4,6 +4,7 @@ package review
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -314,5 +315,37 @@ func TestAVersionLetsTheCallerSkipWhatItHas(t *testing.T) {
 	put(t, dir, "new.txt", "fresher\n")
 	if after := reader.Read(context.Background(), dir, settled.Version); after.State != models.ChangesRead {
 		t.Errorf("an untracked file's change = %s", after.State)
+	}
+}
+
+// A file that is as it was isn't put through the secret filter again, and one that differs at all
+// is: a secret added to a file already seen never rides in on the earlier answer.
+func TestAFileAlreadyFilteredIsNotFilteredAgainButAChangedOneIs(t *testing.T) {
+	reader := requireGit(t)
+	dir := newRepo(t)
+	put(t, dir, "a.txt", "one\n")
+	put(t, dir, "b.txt", "one\n")
+	commitAll(t, dir)
+	put(t, dir, "a.txt", "one\ntwo\n")
+	put(t, dir, "b.txt", "one\nthree\n")
+	first := read(t, reader, dir)
+	if len(reader.filtered) != 2 {
+		t.Fatalf("%d files remembered after the first read, want 2", len(reader.filtered))
+	}
+	read(t, reader, dir)
+	if len(reader.filtered) != 2 {
+		t.Errorf("%d files remembered after a second read of the same, want 2", len(reader.filtered))
+	}
+	put(t, dir, "a.txt", "one\ntwo\npassword = \"hunter2hunter2\"\n")
+	next := read(t, reader, dir)
+	if len(reader.filtered) != 3 {
+		t.Errorf("%d files remembered after one changed, want 3", len(reader.filtered))
+	}
+	encoded, _ := json.Marshal(next)
+	if strings.Contains(string(encoded), "hunter2hunter2") {
+		t.Error("a secret added to a file that was filtered before got through")
+	}
+	if got, want := fileOf(t, next, "b.txt").Hunks, fileOf(t, first, "b.txt").Hunks; len(got) != len(want) || len(got) == 0 {
+		t.Errorf("the file that didn't change differs: %v and %v", got, want)
 	}
 }

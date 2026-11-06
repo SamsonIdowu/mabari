@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -28,8 +29,13 @@ type Reader struct {
 	// git is the program, or "" when this computer has none.
 	git  string
 	gate chan struct{}
-	// wait is how long one call may take, or zero for callWait.
-	wait time.Duration
+	// wait is how long one call may take, or zero for callWait. patchMax is how much of a patch is
+	// kept, or zero for patchLimit. Tests set both small.
+	wait     time.Duration
+	patchMax int
+	// filtered remembers files already through the secret filter. See redacted.
+	mu       sync.Mutex
+	filtered map[[sha256.Size]byte]models.ChangedFile
 }
 
 // New finds Git on the PATH. Without it, every read says Git isn't installed.
@@ -49,6 +55,14 @@ const (
 	newFileLimit = 160 << 10
 	untrackedMax = 30
 )
+
+// cmpPositive is first, or second when first is zero.
+func cmpPositive(first, second int) int {
+	if first > 0 {
+		return first
+	}
+	return second
+}
 
 var objectID = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
 
@@ -123,7 +137,7 @@ func (r *Reader) Read(ctx context.Context, folder, have string) models.Changes {
 		if numstats, numCut, err = g.diff(ctx, numstatLimit, base, "--numstat", "-z"); err != nil {
 			return fail(models.ChangesFailed, trouble(err))
 		}
-		if patch, patchCut, err = g.diff(ctx, patchLimit, base, "-U3"); err != nil {
+		if patch, patchCut, err = g.diff(ctx, cmpPositive(r.patchMax, patchLimit), base, "-U3"); err != nil {
 			return fail(models.ChangesFailed, trouble(err))
 		}
 		hash.Write(numstats)
@@ -155,7 +169,11 @@ func (r *Reader) Read(ctx context.Context, folder, have string) models.Changes {
 		files = files[:models.ChangesFilesMax]
 	}
 	for i := range files {
-		redactFile(&files[i])
+		// The secret filter is the slow part of a big change, so it stops with the time allowed.
+		if ctx.Err() != nil {
+			return fail(models.ChangesFailed, trouble(errTooSlow))
+		}
+		r.redacted(&files[i])
 		files[i].ID = fileID(files[i])
 		if files[i].Hunks == nil {
 			files[i].Hunks = []models.ChangeHunk{}

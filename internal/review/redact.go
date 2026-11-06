@@ -3,6 +3,8 @@
 package review
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -60,6 +62,40 @@ func redactFile(file *models.ChangedFile) {
 			}
 		}
 	}
+}
+
+// redactedKept is how many filtered files are remembered.
+const redactedKept = 256
+
+// redacted is redactFile for a file that may have been filtered before. An agent at work changes
+// one file at a time, while a read gives every file again, and the filter costs the most on a big
+// change, so a file that is as it was is not filtered twice. The key is a hash of everything the
+// filter reads, so a file that differs at all is filtered afresh.
+func (r *Reader) redacted(file *models.ChangedFile) {
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "%s\x00%s\x00%s\x00%s\x00", file.Path, file.OldPath, file.Status, file.Note)
+	for _, hunk := range file.Hunks {
+		_, _ = fmt.Fprintf(hash, "%s\x00", hunk.Header)
+		for _, line := range hunk.Lines {
+			_, _ = fmt.Fprintf(hash, "%s%d %d %s\x00", line.Kind, line.Old, line.New, line.Text)
+		}
+	}
+	var key [sha256.Size]byte
+	copy(key[:], hash.Sum(nil))
+	r.mu.Lock()
+	kept, ok := r.filtered[key]
+	r.mu.Unlock()
+	if ok {
+		file.Path, file.OldPath, file.Note, file.Hunks = kept.Path, kept.OldPath, kept.Note, kept.Hunks
+		return
+	}
+	redactFile(file)
+	r.mu.Lock()
+	if r.filtered == nil || len(r.filtered) >= redactedKept {
+		r.filtered = map[[sha256.Size]byte]models.ChangedFile{}
+	}
+	r.filtered[key] = *file
+	r.mu.Unlock()
 }
 
 // clipLine cuts a line longer than the page should be given, and says so. It runs after the secret

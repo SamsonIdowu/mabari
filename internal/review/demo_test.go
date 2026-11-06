@@ -26,6 +26,7 @@ func TestTheDemoMakesUpChangesInTheRealShape(t *testing.T) {
 		t.Errorf("files = %d, last %q", changes.FileCount, changes.Files[len(changes.Files)-1].Path)
 	}
 	added, removed := 0, 0
+	ids := map[string]bool{}
 	for _, file := range changes.Files {
 		count := [2]int{}
 		for _, hunk := range file.Hunks {
@@ -49,9 +50,10 @@ func TestTheDemoMakesUpChangesInTheRealShape(t *testing.T) {
 			}
 		}
 		// The counts are counted from the lines, not typed.
-		if !file.Counted || file.Added != count[0] || file.Removed != count[1] || len(file.ID) != 0 {
+		if !file.Counted || file.Added != count[0] || file.Removed != count[1] || ids[file.ID] || file.ID == "" {
 			t.Errorf("%s = +%d -%d, lines +%d -%d", file.Path, file.Added, file.Removed, count[0], count[1])
 		}
+		ids[file.ID] = true
 		added += file.Added
 		removed += file.Removed
 	}

@@ -512,15 +512,17 @@ func TestTrackedChangesBeyondTheLinesBudgetKeepTheirCounts(t *testing.T) {
 
 func TestPatchesBeyondTheByteLimitAreCutWithoutPuttingTextOnTheWrongFile(t *testing.T) {
 	reader := requireGit(t)
+	// A small limit, so the test needn't write megabytes: 12 files of about 20 KB against 100 KB.
+	reader.patchMax = 100 << 10
 	dir := newRepo(t)
-	line := strings.Repeat("a", 900)
+	line := strings.Repeat("a", 190)
 	for i := range 12 {
 		put(t, dir, fmt.Sprintf("f%02d.txt", i), "x\n")
 	}
 	commitAll(t, dir)
 	for i := range 12 {
 		var body strings.Builder
-		for l := range 400 {
+		for l := range 100 {
 			fmt.Fprintf(&body, "%s %d %d\n", line, i, l)
 		}
 		put(t, dir, fmt.Sprintf("f%02d.txt", i), body.String())
@@ -529,8 +531,12 @@ func TestPatchesBeyondTheByteLimitAreCutWithoutPuttingTextOnTheWrongFile(t *test
 	if !changes.Truncated || changes.FileCount != 12 {
 		t.Fatalf("truncated %v, files %d", changes.Truncated, changes.FileCount)
 	}
+	withText := 0
 	for _, file := range changes.Files {
-		if file.Added != 400 || !file.Counted {
+		if len(file.Hunks) > 0 {
+			withText++
+		}
+		if file.Added != 100 || !file.Counted {
 			t.Errorf("%s = +%d counted %v", file.Path, file.Added, file.Counted)
 		}
 		// Each line ends with its own file's number and then its line's: a line that belongs to
@@ -550,6 +556,10 @@ func TestPatchesBeyondTheByteLimitAreCutWithoutPuttingTextOnTheWrongFile(t *test
 				}
 			}
 		}
+	}
+	// Some files have their text and the rest, past the limit, only their counts.
+	if withText == 0 || withText == 12 {
+		t.Errorf("%d of 12 files have their text, want some but not all", withText)
 	}
 }
 

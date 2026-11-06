@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Estimate, LiveAgent } from '../gen/models.ts';
 import {
+  areaOf,
+  filesShown,
   hasQueued,
   inScope,
   matches,
@@ -34,6 +36,7 @@ const filters = (overrides: Partial<OfficeFilters> = {}): OfficeFilters => ({
   provider: 'all',
   model: 'all',
   status: 'all',
+  area: 'all',
   team: null,
   ...overrides,
 });
@@ -55,6 +58,40 @@ describe('inScope', () => {
     const everyone = [lead, sub, other];
     const team = filters({ team: 'lead' });
     expect(everyone.map((item) => inScope(item, team, everyone))).toEqual([true, true, false]);
+  });
+
+  it('shows only the work area or only the lounge when asked', () => {
+    const busy = agent({ id: 'busy', state: 'editing' });
+    const resting = agent({ id: 'resting', state: 'idle' });
+    const briefing = agent({ id: 'briefing', state: 'spawning' });
+    const everyone = [busy, resting, briefing];
+    const shown = (area: 'all' | 'work' | 'lounge') =>
+      everyone.filter((item) => inScope(item, filters({ area }), everyone)).map((item) => item.id);
+    expect(shown('all')).toEqual(['busy', 'resting', 'briefing']);
+    expect(shown('work')).toEqual(['busy', 'briefing']);
+    expect(shown('lounge')).toEqual(['resting']);
+  });
+});
+
+describe('areaOf', () => {
+  it('puts idle agents in the lounge and everyone else in the work area', () => {
+    expect(areaOf(agent({ state: 'idle' }))).toBe('lounge');
+    for (const state of ['thinking', 'approval', 'error', 'paused', 'done', 'spawning'] as const) {
+      expect(areaOf(agent({ state }))).toBe('work');
+    }
+  });
+
+  it('never puts a workflow sub-agent in the lounge, as it leaves when off duty', () => {
+    expect(areaOf(agent({ state: 'idle', workflow: true }))).toBe('work');
+  });
+});
+
+describe('filesShown', () => {
+  it('shows agent files in the lounge unless a project, team or the work area is chosen', () => {
+    expect(filesShown(filters())).toBe(true);
+    expect(filesShown(filters({ area: 'lounge' }))).toBe(true);
+    expect(filesShown(filters({ area: 'work' }))).toBe(false);
+    expect(filesShown(filters({ project: 'docs' }))).toBe(false);
   });
 });
 
@@ -130,6 +167,13 @@ describe('opening an agent', () => {
     openAgent(other, [lead, other]);
     const ui = useOfficeUi.getState();
     expect([ui.selected, ui.project, ui.team]).toEqual(['o', 'all', null]);
+  });
+
+  it('shows the whole floor again when the agent is in the part that is hidden', () => {
+    const busy = agent({ id: 'b', state: 'editing' });
+    useOfficeUi.getState().set({ area: 'lounge' });
+    openAgent(busy, [busy]);
+    expect(useOfficeUi.getState().area).toBe('all');
   });
 
   it('opens a thread across every project', () => {

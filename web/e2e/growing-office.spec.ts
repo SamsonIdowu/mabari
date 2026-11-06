@@ -173,3 +173,69 @@ test('idle agents and agent files with nothing running rest in the lounge', asyn
   await expect(page).toHaveURL(/#builder$/);
   await expect(page.locator('.defcard.open', { hasText: 'lounge-reader' })).toBeVisible();
 });
+
+test('the floor shows only the work area or only the lounge at a click, and says who is hidden', async ({
+  page,
+  request,
+}) => {
+  await request.post('/api/defs', {
+    data: {
+      def: {
+        name: 'area-reader',
+        description: 'Use to read the docs.',
+        scope: 'account',
+        model: 'inherit',
+        tools: ['Read'],
+        instructions: 'Read the docs.',
+        color: '#7FA8FF',
+      },
+      previousId: '',
+    },
+  });
+  await loadDemo(page);
+  await hubAgents(request, [{ name: 'Napper', state: 'idle' }]);
+  const where = page.getByRole('group', { name: 'Where on the floor' });
+  const whole = where.getByRole('button', { name: /^Whole office/ });
+  const work = where.getByRole('button', { name: /^Work area/ });
+  const lounge = where.getByRole('button', { name: /^Lounge/ });
+  const napper = page.locator('.tag .nt', { hasText: 'Napper' });
+  const ledger = page.locator('.tag .nt', { hasText: 'Ledger' });
+  const file = page.locator('.tag.rest', { hasText: 'area-reader' });
+  await expect(whole).toHaveAttribute('aria-pressed', 'true');
+  await expect(napper).toBeVisible();
+  await expect(ledger).toBeVisible();
+  // Each button counts who it would show, as the list beside the floor shows them.
+  const inLounge = Number(await lounge.locator('.n').textContent());
+  expect(inLounge).toBeGreaterThanOrEqual(2);
+
+  await lounge.click();
+  await expect(lounge).toHaveAttribute('aria-pressed', 'true');
+  await expect(napper).toBeVisible();
+  await expect(file).toBeVisible();
+  await expect(ledger).toBeHidden();
+  // The list beside the floor shows the lounge only, as the floor does.
+  const list = page.getByRole('complementary', { name: 'Everyone on the floor' });
+  await expect(list.getByRole('group', { name: /Lounge/ })).toBeVisible();
+  await expect(list.getByRole('group', { name: /Working/ })).toHaveCount(0);
+  await expect(list.locator('.flrow')).toHaveCount(inLounge);
+  // Atlas waits on an approval in the hidden work area, so its button says so, in red.
+  await expect(work.locator('.badge')).toHaveText(/^[1-9]\d*$/);
+  await expect(work.locator('.badge')).not.toHaveClass(/calm/);
+  await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
+
+  await work.click();
+  await expect(ledger).toBeVisible();
+  await expect(napper).toBeHidden();
+  await expect(file).toBeHidden();
+  await expect(work.locator('.badge')).toHaveCount(0);
+
+  // The choice is remembered across a reload, as the other filters are.
+  await page.reload();
+  await expect(work).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.tag .nt', { hasText: 'Ledger' })).toBeVisible();
+
+  await whole.click();
+  await expect(napper).toBeVisible();
+  await expect(ledger).toBeVisible();
+  await expect(file).toBeVisible();
+});

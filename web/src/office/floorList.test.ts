@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import {
   agentsHere,
+  areaCounts,
   FLOOR_LIST_MIN_WIDTH,
   floorCounts,
   floorGroups,
@@ -50,6 +51,7 @@ const filters = (overrides: Partial<OfficeFilters> = {}): OfficeFilters => ({
   provider: 'all',
   model: 'all',
   status: 'all',
+  area: 'all',
   team: null,
   ...overrides,
 });
@@ -278,6 +280,18 @@ describe('floorGroups', () => {
     expect(names(floorGroups(office, filters())).lounge).toEqual(['reader']);
   });
 
+  it('lists only the work area or only the lounge when asked, as the floor shows them', () => {
+    const agents = [
+      agent({ id: 'busy', name: 'Busy' }),
+      agent({ id: 'rest', name: 'Rest', state: 'idle', working: false }),
+    ];
+    const office = { agents, defs: [def()], projects };
+    expect(names(floorGroups(office, filters({ area: 'work' })))).toEqual({ working: ['Busy'] });
+    expect(names(floorGroups(office, filters({ area: 'lounge' })))).toEqual({
+      lounge: ['Rest', 'reader'],
+    });
+  });
+
   it('fades those the Models and status filters leave out, as the floor does', () => {
     const agents = [
       agent({ id: 'c', name: 'Claude one', provider: 'claude' }),
@@ -317,6 +331,31 @@ describe('floorGroups', () => {
     expect(lounge?.entries.map((entry) => [entry.kind, entry.id])).toEqual([
       ['file', 'def:account:reader'],
     ]);
+  });
+});
+
+describe('areaCounts', () => {
+  const agents = [
+    agent({ id: 'busy', projectId: 'docs' }),
+    agent({ id: 'held', projectId: 'docs', state: 'approval', working: false }),
+    agent({ id: 'rest', projectId: 'api', state: 'idle', working: false }),
+    agent({ id: 'gone', state: 'idle', working: false, leaving: true }),
+  ];
+
+  it('counts who each part of the floor would show, with agent files in the lounge', () => {
+    const counts = areaCounts({ agents, defs: [def()] }, filters());
+    expect(counts.work).toEqual({ count: 2, need: 1, tone: 'red' });
+    expect(counts.lounge).toEqual({ count: 2, need: 0, tone: 'calm' });
+  });
+
+  it('counts the same whichever part is chosen, so the buttons never change under you', () => {
+    const office = { agents, defs: [def()] };
+    expect(areaCounts(office, filters({ area: 'lounge' }))).toEqual(areaCounts(office, filters()));
+  });
+
+  it('counts only the project the floor shows, and no agent files then', () => {
+    const counts = areaCounts({ agents, defs: [def()] }, filters({ project: 'api' }));
+    expect([counts.work.count, counts.lounge.count]).toEqual([0, 1]);
   });
 });
 

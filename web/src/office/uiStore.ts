@@ -4,9 +4,12 @@ import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
 import type { AccountKind, LiveAgent } from '../gen/models.ts';
 import { hashWith } from '../routes.ts';
 import { nextZoom } from './camera.ts';
-import { onFloor } from './layout.ts';
+import { onFloor, STATE_LOCATIONS } from './layout.ts';
 
 export type StatusFilter = 'all' | 'needs' | 'active';
+
+/** Which part of the floor shows: everyone, only the work area, or only the lounge. */
+export type AreaFilter = 'all' | 'work' | 'lounge';
 
 /** The Projects page's tab: every project, the open ones, or the completed ones. */
 export type ProjectsTab = 'all' | 'open' | 'done';
@@ -16,6 +19,7 @@ export interface OfficeFilters {
   provider: string;
   model: string;
   status: StatusFilter;
+  area: AreaFilter;
   team: string | null;
 }
 
@@ -76,6 +80,7 @@ const NO_FILTERS: OfficeFilters = {
   provider: 'all',
   model: 'all',
   status: 'all',
+  area: 'all',
   team: null,
 };
 
@@ -130,7 +135,9 @@ export const useOfficeUi = create<OfficeUi>((set) => ({
  */
 export function openAgent(agent: LiveAgent, agents: LiveAgent[]): void {
   const ui = useOfficeUi.getState();
-  const widen = inScope(agent, ui, agents) ? {} : { project: 'all', team: null };
+  const widen = inScope(agent, ui, agents)
+    ? {}
+    : { project: 'all', area: 'all' as const, team: null };
   ui.set({ ...widen, selected: agent.id, target: 'selected' });
   // The address names the agent, so a link or a reload opens its panel and Back closes it.
   window.location.hash = hashWith('office', 'agent', agent.id);
@@ -156,9 +163,22 @@ export function selectResting(key: string): void {
   useOfficeUi.getState().set({ selected: key, follow: false, reviewing: null });
 }
 
-/** Agent files resting in the lounge belong to no project or team, so a filter on either hides them. */
-export function filesShown(filters: Pick<OfficeFilters, 'project' | 'team'>): boolean {
-  return !filters.team && filters.project === 'all';
+/**
+ * Agent files resting in the lounge belong to no project or team, so a filter on either hides
+ * them, as does showing only the work area.
+ */
+export function filesShown(filters: Pick<OfficeFilters, 'project' | 'team' | 'area'>): boolean {
+  return !filters.team && filters.project === 'all' && filters.area !== 'work';
+}
+
+/**
+ * Which part of the floor an agent is in, by what it is doing: resting in the lounge when idle,
+ * and in the work area otherwise, which takes in the rooms it works in, such as the meeting room.
+ * A workflow sub-agent never rests in the lounge: off duty, it leaves from where it worked. It
+ * follows the agent's state, so an agent leaves a view as it gets up, not when it arrives.
+ */
+export function areaOf(agent: Pick<LiveAgent, 'state' | 'workflow'>): Exclude<AreaFilter, 'all'> {
+  return STATE_LOCATIONS[agent.state] === 'lounge' && !agent.workflow ? 'lounge' : 'work';
 }
 
 /** The key of the conversation between two agents, by name. */
@@ -212,8 +232,9 @@ export function whoNeedsYou(agents: LiveAgent[]): LiveAgent[] {
   return counted(agents).filter(needsYou);
 }
 
-/** Project and team decide who is on the floor. Hidden agents keep working. */
+/** Project, team and area decide who is on the floor. Hidden agents keep working. */
 export function inScope(agent: LiveAgent, filters: OfficeFilters, agents: LiveAgent[]): boolean {
+  if (filters.area !== 'all' && areaOf(agent) !== filters.area) return false;
   if (filters.team) {
     const lead = agents.find((item) => item.id === filters.team);
     if (!lead || (agent.id !== lead.id && agent.leadId !== lead.id)) return false;

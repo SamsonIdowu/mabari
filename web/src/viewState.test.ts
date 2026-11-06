@@ -31,6 +31,7 @@ describe('the saved view', () => {
       provider: 'claude',
       model: 'claude-sonnet-4-5',
       status: 'needs',
+      area: 'lounge',
       threadProject: 'docs',
       projectsTab: 'open',
     };
@@ -42,6 +43,11 @@ describe('the saved view', () => {
     expect(parseView('not json')).toEqual({});
     expect(parseView('[1,2]')).toEqual({});
     expect(parseView('7')).toEqual({});
+  });
+
+  it('forgets a part of the floor it does not know', () => {
+    expect(parseView(JSON.stringify({ area: 'kitchen' }))).toEqual({});
+    expect(parseView(JSON.stringify({ area: 'work' }))).toEqual({ area: 'work' });
   });
 
   it('keeps only values of the right shape', () => {

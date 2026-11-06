@@ -41,6 +41,7 @@ const filters = (overrides: Partial<OfficeFilters> = {}): OfficeFilters => ({
   provider: 'all',
   model: 'all',
   status: 'all',
+  area: 'all',
   team: null,
   ...overrides,
 });

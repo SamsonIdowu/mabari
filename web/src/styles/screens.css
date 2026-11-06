@@ -2030,6 +2030,11 @@ tr:last-child td {
   color: var(--muted);
   font-weight: 800;
 }
+/* The floor's header is drawn at 80%, so 30px here is the 24px target on screen. The status
+   buttons reach it through their badge; these buttons, with only a small count, need the floor. */
+#areaSeg button {
+  min-height: 30px;
+}
 .pbarwrap {
   display: flex;
   align-items: center;

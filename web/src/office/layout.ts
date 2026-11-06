@@ -225,6 +225,17 @@ export function loungeBox(floor: Floor): { x0: number; y0: number; x1: number; y
   };
 }
 
+/**
+ * Where the middle of a part of the floor is, as a share of the office's width: the work area
+ * inside its walls, or the lounge from that wall to the rooms, for the view to move to when only
+ * that part is shown.
+ */
+export function areaMiddle(floor: Floor, area: 'work' | 'lounge'): number {
+  const wall = workWalls(floor).right;
+  const middle = area === 'work' ? wall / 2 : (wall + floor.width - ROOMS_W) / 2;
+  return middle / floor.width;
+}
+
 /** Where lounge seat `index` is: a resting agent's own spot, where it first stands. */
 export function loungeSeat(floor: Floor, index: number): Point {
   const lounge = floor.lounge;

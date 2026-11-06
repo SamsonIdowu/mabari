@@ -143,8 +143,9 @@ export function PauseEveryone({ office }: { office: Snapshot }) {
   const provider = useOfficeUi((state) => state.provider);
   const model = useOfficeUi((state) => state.model);
   const status = useOfficeUi((state) => state.status);
+  const area = useOfficeUi((state) => state.area);
   const team = useOfficeUi((state) => state.team);
-  const filters: OfficeFilters = { project, provider, model, status, team };
+  const filters: OfficeFilters = { project, provider, model, status, area, team };
   const group = usePauseGroup((state) => state.group);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);

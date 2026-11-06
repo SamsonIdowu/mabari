@@ -10,12 +10,18 @@ import { savePicture } from '../office/picture.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import colourKey from '../office/colourKey.html?raw';
 import { hiddenClasses, useLayers } from '../office/layers.ts';
-import { agentsHere, floorCounts, useFloorList } from '../office/floorList.ts';
+import { agentsHere, areaCounts, floorCounts, useFloorList } from '../office/floorList.ts';
 import { renderOverlays } from '../office/overlays.ts';
 import { pageScrolls, sidewaysOf, wheelUse } from '../office/wheel.ts';
 import { onFloor, restKey } from '../office/layout.ts';
 import { OfficeScene } from '../office/scene.ts';
-import { selectAgent, selectResting, useOfficeUi, type StatusFilter } from '../office/uiStore.ts';
+import {
+  selectAgent,
+  selectResting,
+  useOfficeUi,
+  type AreaFilter,
+  type StatusFilter,
+} from '../office/uiStore.ts';
 import { providers, type ProviderName } from '../shared/tokens.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
@@ -36,13 +42,21 @@ type Menu = 'project' | 'model' | 'key' | null;
 
 const CHEVRON = 'M6 9l6 6 6-6';
 
+/** What each choice of where on the floor shows, for its tooltip. */
+const AREA_TITLES: Record<AreaFilter, string> = {
+  all: 'Show everyone on the floor',
+  work: 'Show only agents in the work area: at their desks or in a room, working',
+  lounge: 'Show only agents resting in the lounge, and agent files not running',
+};
+
 const useFilters = () => {
   const project = useOfficeUi((state) => state.project);
   const provider = useOfficeUi((state) => state.provider);
   const model = useOfficeUi((state) => state.model);
   const status = useOfficeUi((state) => state.status);
+  const area = useOfficeUi((state) => state.area);
   const team = useOfficeUi((state) => state.team);
-  return { project, provider, model, status, team };
+  return { project, provider, model, status, area, team };
 };
 
 function pointIn(event: React.MouseEvent<HTMLElement>) {
@@ -279,12 +293,24 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
     filters.provider !== 'all' ||
     filters.model !== 'all' ||
     filters.status !== 'all' ||
+    filters.area !== 'all' ||
     filters.project !== 'all';
   const statuses: [StatusFilter, string][] = [
     ['all', 'Everyone'],
     ['needs', 'Needs me'],
     ['active', 'Working'],
   ];
+  const inArea = areaCounts(office, filters);
+  const areas: [AreaFilter, string, number][] = [
+    ['all', 'Whole office', inArea.work.count + inArea.lounge.count],
+    ['work', 'Work area', inArea.work.count],
+    ['lounge', 'Lounge', inArea.lounge.count],
+  ];
+  // A part of the floor that is hidden says if anyone there needs you, so nothing is missed.
+  const hiddenNeed = (id: AreaFilter) =>
+    id !== 'all' && filters.area !== 'all' && filters.area !== id && inArea[id].need
+      ? inArea[id]
+      : null;
 
   return (
     <div className="obar2 inhead" id="officeFilters">
@@ -338,13 +364,38 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
           </button>
         ))}
       </div>
+      <div className="seg" role="group" aria-label="Where on the floor" id="areaSeg">
+        {areas.map(([id, label, count]) => {
+          const waiting = hiddenNeed(id);
+          return (
+            <button
+              type="button"
+              key={id}
+              className={filters.area === id ? 'on' : ''}
+              aria-pressed={filters.area === id}
+              title={AREA_TITLES[id]}
+              onClick={() => set({ area: id })}
+            >
+              {label} <span className="n num">{count}</span>
+              {waiting ? (
+                <span
+                  className={`badge${waiting.tone === 'red' ? '' : ' calm'}`}
+                  title={`${waiting.need} there need${waiting.need === 1 ? 's' : ''} you`}
+                >
+                  {waiting.need}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
       {filtered ? (
         <button type="button" className="btn ghost sm" onClick={clearFilters}>
           Clear filters
         </button>
       ) : null}
       <span className="note inline">
-        Project and Models narrow the floor. Hidden agents keep working.
+        Project, Models and where narrow the floor. Hidden agents keep working.
       </span>
       <div className="ddwrap" style={{ marginLeft: 'auto' }}>
         <button
@@ -1083,6 +1134,7 @@ function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] 
     filters.provider !== 'all',
     filters.model !== 'all',
     filters.status !== 'all',
+    filters.area !== 'all',
   ].filter(Boolean).length;
   return (
     <div className="ohead" ref={head} data-filters={filtersOpen ? 'open' : 'closed'}>

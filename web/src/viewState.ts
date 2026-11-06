@@ -6,7 +6,12 @@
 import { useOfficeStore } from './data/officeStore.ts';
 import type { Snapshot } from './gen/models.ts';
 import { restKey } from './office/layout.ts';
-import { useOfficeUi, type ProjectsTab, type StatusFilter } from './office/uiStore.ts';
+import {
+  useOfficeUi,
+  type AreaFilter,
+  type ProjectsTab,
+  type StatusFilter,
+} from './office/uiStore.ts';
 import { hashParam, hashWith, routeOf } from './routes.ts';
 
 /** The choices on the Agents and Projects pages and Conversations that are remembered. */
@@ -15,6 +20,7 @@ export interface SavedView {
   provider: string;
   model: string;
   status: StatusFilter;
+  area: AreaFilter;
   threadProject: string;
   projectsTab: ProjectsTab;
 }
@@ -24,12 +30,14 @@ export const DEFAULT_VIEW: SavedView = {
   provider: 'all',
   model: 'all',
   status: 'all',
+  area: 'all',
   threadProject: 'all',
   projectsTab: 'all',
 };
 
 const STORAGE_KEY = 'mabari.view';
 const STATUSES: readonly string[] = ['all', 'needs', 'active'] satisfies StatusFilter[];
+const AREAS: readonly string[] = ['all', 'work', 'lounge'] satisfies AreaFilter[];
 const TABS: readonly string[] = ['all', 'open', 'done'] satisfies ProjectsTab[];
 
 /** Reads what was saved, keeping only values of the right shape. */
@@ -51,6 +59,9 @@ export function parseView(raw: string | null): Partial<SavedView> {
   if (typeof record.status === 'string' && STATUSES.includes(record.status)) {
     view.status = record.status as StatusFilter;
   }
+  if (typeof record.area === 'string' && AREAS.includes(record.area)) {
+    view.area = record.area as AreaFilter;
+  }
   if (typeof record.projectsTab === 'string' && TABS.includes(record.projectsTab)) {
     view.projectsTab = record.projectsTab as ProjectsTab;
   }
@@ -59,8 +70,8 @@ export function parseView(raw: string | null): Partial<SavedView> {
 
 /** The part of the page's state that is remembered. */
 export function viewOf(state: SavedView): SavedView {
-  const { project, provider, model, status, threadProject, projectsTab } = state;
-  return { project, provider, model, status, threadProject, projectsTab };
+  const { project, provider, model, status, area, threadProject, projectsTab } = state;
+  return { project, provider, model, status, area, threadProject, projectsTab };
 }
 
 /**

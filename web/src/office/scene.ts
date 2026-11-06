@@ -44,6 +44,7 @@ import {
   deskTile,
   floorFor,
   doorOf,
+  areaMiddle,
   loungeArea,
   loungeSeat,
   pathTo,
@@ -290,6 +291,8 @@ export class OfficeScene {
   private partyColours: string[] = [];
   /** Which party the confetti went up for, so each party has one. */
   private burstFor = '';
+  /** The part of the floor shown when the view last moved to it, to move again only on a change. */
+  private areaShown = useOfficeUi.getState().area;
   /** Where the view was before it moved to the meeting room, to put it back. */
   private viewBefore: { zoom: number; pan: { x: number; y: number } } | null = null;
   /** Where the view was put to frame the room, to tell whether anyone has moved it since. */
@@ -1315,6 +1318,12 @@ export class OfficeScene {
       this.world = world;
     }
 
+    // Choosing to show only the work area or the lounge brings it into view, when the office is
+    // wider than the view. Choosing the whole office leaves the view where it is.
+    if (ui.area !== this.areaShown) {
+      this.areaShown = ui.area;
+      if (ui.area !== 'all' && this.span()) this.centreAt(areaMiddle(floor, ui.area));
+    }
     // While a party frames the meeting room at the office's end, the view may run a little past it.
     const target = clampView(
       this.viewTarget(),

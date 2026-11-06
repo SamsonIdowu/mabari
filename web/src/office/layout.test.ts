@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentDef, LiveAgent } from '../gen/models.ts';
 import {
+  areaMiddle,
   BASE_FLOOR,
   BASE_H,
   deskSeat,
@@ -208,6 +209,22 @@ describe('floorFor', () => {
     expect(area.x1).toBeGreaterThan(floor.lounge!.x + LOUNGE_PITCH.x);
     expect(area.y1).toBeGreaterThan(area.y0);
     expect(loungeArea(BASE_FLOOR)).toBeNull();
+  });
+});
+
+describe('areaMiddle', () => {
+  it('puts the work area left of the lounge, both inside the office', () => {
+    for (const residents of [0, 3, 40]) {
+      const floor = floorFor(desksUpTo(8), residents, [], 1600);
+      const work = areaMiddle(floor, 'work');
+      const lounge = areaMiddle(floor, 'lounge');
+      expect(work).toBeGreaterThan(0);
+      expect(work).toBeLessThan(lounge);
+      expect(lounge).toBeLessThan(1);
+      // The work area's middle is inside its walls; the lounge's is past them.
+      expect(work * floor.width).toBeLessThan(floor.workEnd);
+      expect(lounge * floor.width).toBeGreaterThan(floor.workEnd);
+    }
   });
 });
 

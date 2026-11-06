@@ -2,9 +2,10 @@
 import { useSyncExternalStore } from 'react';
 import { stateLabel } from '../format.ts';
 import type { AgentDef, LiveAgent, Project } from '../gen/models.ts';
-import { onFloor, restKey, restingDefs, STATE_LOCATIONS } from './layout.ts';
+import { onFloor, restKey, restingDefs } from './layout.ts';
 import { restingLook } from './resting.ts';
 import {
+  areaOf,
   filesShown,
   hasQueued,
   inScope,
@@ -89,7 +90,7 @@ export function useFloorList(): { shown: boolean; toggle: () => void } {
 }
 
 /** In the lounge, as the floor seats it: idle, and not a contractor, who leaves instead. */
-const inLounge = (agent: LiveAgent) => STATE_LOCATIONS[agent.state] === 'lounge' && !agent.workflow;
+const inLounge = (agent: LiveAgent) => areaOf(agent) === 'lounge';
 
 const byName = (a: { name: string; id: string }, b: { name: string; id: string }) =>
   a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
@@ -130,6 +131,34 @@ export interface FloorCounts {
   queued: number;
   /** Red when an approval or an error waits, calm when only questions do. */
   tone: 'red' | 'calm';
+}
+
+/** How many are in one part of the floor, and how many of them need you, in which colour. */
+export interface AreaCount {
+  count: number;
+  need: number;
+  tone: 'red' | 'calm';
+}
+
+/**
+ * The counts on the work area and lounge buttons: who each would show, in the project or team
+ * the floor shows, whichever part is chosen now. The lounge counts agent files resting there.
+ */
+export function areaCounts(
+  office: { agents: LiveAgent[]; defs: AgentDef[] },
+  filters: OfficeFilters,
+): Record<'work' | 'lounge', AreaCount> {
+  const everywhere = { ...filters, area: 'all' as const };
+  const here = agentsHere(office.agents, everywhere);
+  const files = filesShown(everywhere)
+    ? restingDefs(office.defs, onFloor(office.agents)).length
+    : 0;
+  const count = (area: 'work' | 'lounge', extra: number): AreaCount => {
+    const inArea = here.filter((agent) => areaOf(agent) === area);
+    const needing = inArea.filter(needsYou);
+    return { count: inArea.length + extra, need: needing.length, tone: needsTone(needing) };
+  };
+  return { work: count('work', 0), lounge: count('lounge', files) };
 }
 
 export function floorCounts(here: LiveAgent[]): FloorCounts {

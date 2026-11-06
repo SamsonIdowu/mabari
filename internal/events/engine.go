@@ -68,6 +68,8 @@ type Engine struct {
 	log        []models.LogEntry
 	dirty      map[string]struct{}
 	eventNext  map[string]int
+	// phases is what each agent was last recorded doing, so only a change is written down.
+	phases     map[string]models.Phase
 	connectors map[string]Connector
 	writeErr   error
 	// defs are the agent definitions from the agent folders. A wipe leaves them: they are files.
@@ -76,6 +78,10 @@ type Engine struct {
 	accountNotes func(account models.Account, demo bool) models.Account
 	// lastItem is the newest conversation item number of each agent seen since the server started.
 	lastItem map[string]int64
+	// watches are the "tell me when it's done" waits. See watch.go.
+	watches []models.Watch
+	// quiet is set while a group action runs, so what its steps would each say is said once.
+	quiet bool
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -90,6 +96,7 @@ func New(ctx context.Context, s *store.Store, now func() time.Time) (*Engine, er
 		subs:       map[*Subscription]struct{}{},
 		dirty:      map[string]struct{}{},
 		eventNext:  map[string]int{},
+		phases:     map[string]models.Phase{},
 		connectors: map[string]Connector{},
 		lastItem:   map[string]int64{},
 	}
@@ -152,9 +159,12 @@ func (e *Engine) load(ctx context.Context) error {
 	if err := e.loadAgents(ctx); err != nil {
 		return err
 	}
+	if err := e.loadWatches(ctx); err != nil {
+		return err
+	}
 	e.reseat()
 	e.dropPlaceholder()
-	return nil
+	return e.openPhases(ctx)
 }
 
 // dropPlaceholder removes the empty "My first project" earlier versions made on a fresh install
@@ -216,6 +226,8 @@ func (e *Engine) loadAgents(ctx context.Context) error {
 				break
 			}
 		}
+		// The office wasn't watching while it was off, so no agent counts as working until heard from.
+		agent.Ledger.Unwatched(e.now())
 		e.agents = append(e.agents, agent)
 	}
 	return nil
@@ -226,6 +238,7 @@ func (e *Engine) resetMemory() {
 	e.dirty = map[string]struct{}{}
 	e.eventNext = map[string]int{}
 	e.lastItem = map[string]int64{}
+	e.phases = map[string]models.Phase{}
 	e.accounts = map[models.AccountKind]*models.Account{}
 	for _, kind := range models.AccountKinds {
 		e.accounts[kind] = &models.Account{
@@ -247,6 +260,7 @@ func (e *Engine) Do(work func()) error {
 	defer e.mu.Unlock()
 	work()
 	e.flush()
+	e.settleWatches()
 	err := e.writeErr
 	e.writeErr = nil
 	return err
@@ -272,7 +286,11 @@ func (e *Engine) flush() {
 			e.dirty[*agent.Lead] = struct{}{}
 		}
 		agent.Refresh(now)
+		if _, ok := e.dirty[agent.ID]; ok {
+			agent.Ledger.Advance(now, agent.State, agent.Working)
+		}
 	}
+	e.trackPhases(now.UnixMilli())
 	e.record(e.store.Transaction(context.Background(), func() error {
 		for _, agent := range e.agents {
 			if _, ok := e.dirty[agent.ID]; !ok {
@@ -508,6 +526,7 @@ func (e *Engine) KeepAgent(agent *models.LiveAgent) {
 func (e *Engine) RemoveAgent(id string) {
 	for index, agent := range e.agents {
 		if agent.ID == id {
+			e.closePhase(agent)
 			e.CancelApproval(agent)
 			// Nothing will deliver what it was still waiting for.
 			for _, instruction := range agent.Queued {
@@ -673,8 +692,26 @@ func (e *Engine) UpdateLog(id, outcome, chip string) {
 
 // Toast shows a short notice in the UI. Call inside Do.
 func (e *Engine) Toast(text string) {
+	if e.quiet {
+		return
+	}
 	e.broadcast(models.ServerMessage{Type: models.MsgToast, Text: text})
 }
+
+// Quietly runs work with the toasts its steps would each show held back, for an action on a group
+// of agents that tells the person once, at the end. A connector that would write a plain row to the
+// activity log asks Quiet first. Instructions still log: each is a row of its own that its
+// delivery updates. Call inside Do.
+func (e *Engine) Quietly(work func()) {
+	was := e.quiet
+	e.quiet = true
+	defer func() { e.quiet = was }()
+	work()
+}
+
+// Quiet reports whether a group action is running through Quietly, so a connector leaves out the
+// log row and notice it would write for one agent, and the group's own row says it for everyone.
+func (e *Engine) Quiet() bool { return e.quiet }
 
 // Reset tells clients the office was replaced, by a wipe or the demo, so they reload the snapshot
 // and clear what they were looking at. Call inside Do.
@@ -962,7 +999,7 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	summary := approvalSummary(approval)
 	switch {
 	case by == models.DecidedByAuto:
-		e.Log(agent.Name, models.LogApproval, summary, "Auto-allowed", "ok")
+		e.Log(agent.Name, models.LogApproval, summary, models.OutcomeAutoAllowed, "ok")
 		e.AddEvent(agent, "approval", "Auto-allowed (auto approve is on)", nil)
 	case decision == models.DecisionAllowed:
 		e.Log(agent.Name, models.LogApproval, summary, "Allowed", "ok")
@@ -1296,6 +1333,7 @@ func (e *Engine) Wipe() {
 	settings.LANAccess = false
 	e.record(e.store.Wipe(context.Background()))
 	e.resetMemory()
+	e.watches = nil
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.firstRun, e.demo = true, false
@@ -1413,10 +1451,19 @@ func (e *Engine) Run(ctx context.Context) {
 	defer second.Stop()
 	hour := time.NewTicker(time.Hour)
 	defer hour.Stop()
+	alive := time.NewTicker(aliveEvery)
+	defer alive.Stop()
+	if err := e.Do(e.noteAlive); err != nil {
+		slog.Error("could not note that Mabari is running", "error", err)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-alive.C:
+			if err := e.Do(e.noteAlive); err != nil {
+				slog.Error("could not note that Mabari is running", "error", err)
+			}
 		case <-second.C:
 			if err := e.Do(e.Sweep); err != nil {
 				slog.Error("could not save bubbles", "error", err)
@@ -1460,6 +1507,7 @@ func (e *Engine) Snapshot() models.Snapshot {
 		Log:        append([]models.LogEntry{}, e.log...),
 		Settings:   e.settings.Clone(),
 		Defs:       append([]models.AgentDef{}, e.defs...),
+		Watches:    append([]models.Watch{}, e.watches...),
 	}
 }
 

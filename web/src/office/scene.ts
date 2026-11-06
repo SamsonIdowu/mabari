@@ -16,6 +16,18 @@ import {
   type View,
 } from './camera.ts';
 import { drawChar } from './character.ts';
+import {
+  BURST_MS,
+  burst,
+  LANDING,
+  confettiColours,
+  drawPieces,
+  meetingCentre,
+  meetingSpots,
+  stepPieces,
+  type Piece,
+} from './celebration.ts';
+import { WAVE_MS } from './moments.ts';
 import { restingLook, stableHash } from './resting.ts';
 import { drawEnvelopes } from './talk.ts';
 import { drawMascot } from './vee.ts';
@@ -39,9 +51,12 @@ import {
   STATE_LOCATIONS,
   type Floor,
   type Point,
+  type Room,
   type Seating,
 } from './layout.ts';
 import { useLayers } from './layers.ts';
+import { useShipped } from './shipped.ts';
+import { buildShelf, drawGlint, type Shelf } from './trophies.ts';
 import { teamLinks } from './links.ts';
 import {
   BETWEEN_MS,
@@ -69,6 +84,12 @@ export type Walker = LiveAgent & {
   walk: number;
   spd: number;
   popUntil: number;
+  /** When the agent reached Done, so its tick and hop play once. Unset for one found Done. */
+  doneAt?: number;
+  /** Until when a newly arrived agent waves as it walks in. */
+  waveUntil?: number;
+  /** When it began cheering at its project's party, which lasts PARTY_MS. */
+  cheerAt?: number;
   front?: boolean;
   /** Where it is heading, so it can walk again when the floor changes shape. */
   goal?: Point;
@@ -156,7 +177,10 @@ function makeMotes(): Mote[] {
   }));
 }
 
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// One query object, whose `matches` is always current, rather than a new one every frame.
+let motionQuery: MediaQueryList | null = null;
+const reducedMotion = () =>
+  (motionQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)')).matches;
 
 const sizeOf = (floor: Floor): Size => ({ width: floor.width, height: floor.height });
 
@@ -167,12 +191,49 @@ export class OfficeScene {
   /** Agent definitions resting in the lounge, in seat order. */
   resting: Resting[] = [];
   seating: Seating = seatingFor([], []);
-  private seatedFrom: { agents: LiveAgent[]; defs: AgentDef[]; inRooms: boolean; view: number } = {
+  /**
+   * Whether the floor has seen the office once. Agents on the floor when it first looks were here
+   * already; only those who arrive after it walk in through the door.
+   */
+  private populated = false;
+  /** How many agents have walked in, to keep those arriving together apart. */
+  private arrivals = 0;
+  private seatedFrom: {
+    agents: LiveAgent[];
+    defs: AgentDef[];
+    inRooms: boolean;
+    view: number;
+    celebrating: boolean;
+  } = {
     agents: [],
     defs: [],
     inRooms: false,
     view: 0,
+    celebrating: false,
   };
+  /** Where each agent sent to the meeting room for a shipped project stands there. */
+  private readonly gathered = new Map<string, Point>();
+  /** The confetti in the air, and when it went up. */
+  private pieces: Piece[] = [];
+  private burstAt = 0;
+  /** Which party the confetti went up for, so each party has one burst. */
+  private burstFor = '';
+  /** Where the view was before it moved to the meeting room, to put it back. */
+  private panBefore: { x: number; y: number } | null = null;
+  private panAt: number | null = null;
+  /** The trophies on the shelf, for the page to put buttons over, and the glint on the newest. */
+  trophies: Pick<Shelf, 'spots' | 'hidden'> = { spots: [], hidden: 0 };
+  private shelf: { projects: unknown; key: string; theme: string; picture: Shelf | null } = {
+    projects: null,
+    key: '',
+    theme: '',
+    picture: null,
+  };
+  /** Whether the view has been moved to the meeting room for the party under way. */
+  private focused = false;
+  /** Which shipped project the team on its way to the meeting room was chosen for. */
+  private teamFor = '';
+  private team: string[] = [];
   view: View = { cx: BASE_W / 2, cy: BASE_H / 2, s: 1 };
   size = { width: BASE_W, height: BASE_H };
   /** The floor's size last frame, to notice it changing. */
@@ -218,6 +279,7 @@ export class OfficeScene {
       const dt = this.last ? Math.min(50, t - this.last) : 16;
       this.last = t;
       this.sync();
+      this.shipping(Date.now());
       this.moveAgents(dt);
       this.draw(reducedMotion() ? 0 : t, dt);
       this.onFrame(this);
@@ -295,6 +357,27 @@ export class OfficeScene {
       world.y > position.y * 32 - 14 &&
       world.y < position.y * 32 + 52;
     return over && !office.agents.some((agent) => agent.desk === desk) ? desk : null;
+  }
+
+  /**
+   * The trophy shelf along the back wall, painted again only when a project is completed or the
+   * floor or theme changes, and a glint on the newest for a few seconds after it shipped.
+   */
+  private drawTrophies(theme: 'dark' | 'light', t: number): void {
+    const projects = useOfficeStore.getState().office?.projects ?? [];
+    const key = this.floor.key;
+    if (this.shelf.projects !== projects || this.shelf.key !== key || this.shelf.theme !== theme) {
+      const picture = buildShelf(this.floor, projects, theme);
+      this.shelf = { projects, key, theme, picture };
+      this.trophies = { spots: picture.spots, hidden: picture.hidden };
+    }
+    if (!this.shelf.picture?.spots.length) return;
+    this.context.drawImage(this.shelf.picture.canvas, 0, 0);
+    const last = useShipped.getState().last;
+    if (last && Date.now() - last.at < 6000) {
+      const spot = this.trophies.spots.find((item) => item.id === last.id);
+      if (spot) drawGlint(this.context, spot.x, spot.y, t, reducedMotion());
+    }
   }
 
   private drawDeskHint(theme: 'dark' | 'light'): void {
@@ -380,29 +463,47 @@ export class OfficeScene {
     // The floor fills at least the view, half work area and half lounge, so it's worked out
     // again whenever the half the view sets changes, a tile at a time.
     const view = Math.round(this.visible().width);
+    // A shipped project's party is in the meeting room, so it is kept open while it lasts.
+    const celebrating = this.partyUnderWay();
     if (
       agents !== this.seatedFrom.agents ||
       defs !== this.seatedFrom.defs ||
       inRooms !== this.seatedFrom.inRooms ||
+      celebrating !== this.seatedFrom.celebrating ||
       Math.floor(view / 64) !== Math.floor(this.seatedFrom.view / 64)
     ) {
       const before = this.floor;
-      this.seating = seatingFor(agents, defs, inRooms ? this.floor.rooms : [], view);
-      this.seatedFrom = { agents, defs, inRooms, view };
+      const keep: Room[] = inRooms ? [...this.floor.rooms] : [];
+      if (celebrating && !keep.includes('meeting')) keep.push('meeting');
+      this.seating = seatingFor(agents, defs, keep, view);
+      this.seatedFrom = { agents, defs, inRooms, view, celebrating };
       this.reshaped(before, this.floor);
     }
+    this.sendToMeeting(agents);
     const floor = this.floor;
     const present = new Set(agents.map((agent) => agent.id));
     for (const id of this.walkers.keys()) {
       if (!present.has(id)) this.walkers.delete(id);
     }
     const teleport = reducedMotion();
+    // One or two agents arriving walk in through the door and wave. A crowd arriving at once, the
+    // demo or a reconnect, is simply there, as it is after a reload or with reduced motion.
+    const arriving = agents.filter((agent) => !this.walkers.has(agent.id)).length;
+    const walkIn = this.populated && !teleport && arriving > 0 && arriving <= 3;
+    this.populated ||= office !== null;
     agents.forEach((agent, index) => {
       const existing = this.walkers.get(agent.id);
-      const target = spotFor(agent, index + 1, this.seating);
+      const target = this.gathered.get(agent.id) ?? spotFor(agent, index + 1, this.seating);
       if (!existing) {
         const isNewHelper = this.walkers.size > 0 && agent.leadId !== null;
-        const start = isNewHelper ? deskSeat(agent) : target;
+        const entering = walkIn && !isNewHelper;
+        // Agents arriving together come in side by side, not one on top of another.
+        const door = doorOf(floor);
+        const start = isNewHelper
+          ? deskSeat(agent)
+          : entering
+            ? { x: door.x + ((this.arrivals++ % 3) - 1) * 22, y: door.y }
+            : target;
         this.walkers.set(agent.id, {
           ...agent,
           n: index + 1,
@@ -413,6 +514,7 @@ export class OfficeScene {
           walk: 0,
           spd: 0,
           popUntil: isNewHelper ? Date.now() + 1600 : 0,
+          ...(entering ? { waveUntil: Date.now() + WAVE_MS } : {}),
           goal: target,
         });
         return;
@@ -426,7 +528,10 @@ export class OfficeScene {
           !goal ||
           Math.abs(goal.x - target.x) > 0.5 ||
           Math.abs(goal.y - target.y) > 0.5);
+      // Reaching Done is a moment of its own: the tick and the hop play from now.
+      const finished = existing.state !== agent.state && agent.state === 'done';
       Object.assign(existing, agent, { n: index + 1 });
+      if (finished) existing.doneAt = Date.now();
       if (startedLeaving) existing.path = pathTo(existing, doorOf(floor), floor);
       if (moved) {
         existing.goal = target;
@@ -560,6 +665,115 @@ export class OfficeScene {
   }
 
   /**
+   * Whether a shipped project's party is under way: its team walking to the meeting room, or
+   * there cheering. The room is kept open while it lasts.
+   */
+  private partyUnderWay(): boolean {
+    const shipped = useShipped.getState();
+    return shipped.phase !== 'idle' && shipped.current !== null;
+  }
+
+  /**
+   * Chooses who walks to the meeting room for a shipped project, once: its agents who aren't
+   * waiting on you, as many as the room holds. They keep their places from frame to frame. With
+   * reduced motion nobody walks, and when the party is over they all go back to their own spots.
+   */
+  private sendToMeeting(agents: LiveAgent[]): void {
+    const current = useShipped.getState().current;
+    if (!current || !this.partyUnderWay() || reducedMotion()) {
+      this.gathered.clear();
+      this.teamFor = '';
+      return;
+    }
+    if (this.teamFor !== current.key) {
+      this.teamFor = current.key;
+      this.team = agents
+        .filter(
+          (agent) =>
+            agent.projectId === current.id &&
+            !agent.leaving &&
+            agent.desk >= 0 &&
+            agent.state !== 'approval' &&
+            agent.state !== 'error' &&
+            !agent.question,
+        )
+        .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+        .map((agent) => agent.id);
+    }
+    const spots = meetingSpots(this.floor, this.team.length);
+    this.gathered.clear();
+    spots.forEach((spot, index) => this.gathered.set(this.team[index]!, spot));
+  }
+
+  /**
+   * Moves a shipped project's celebration on a frame: tells it whether everyone has reached the
+   * meeting room, sends up the confetti and starts the cheering when the party begins, and brings
+   * the view to the meeting room and back, when it isn't in view. An approval waiting on you
+   * stops all of it.
+   */
+  private shipping(now: number): void {
+    const office = useOfficeStore.getState().office;
+    const agents = onFloor(office?.agents ?? []);
+    const calm = reducedMotion();
+    let arrived = true;
+    let there = 0;
+    for (const [id, goal] of this.gathered) {
+      const walker = this.walkers.get(id);
+      if (!walker || walker.path.length || Math.hypot(walker.x - goal.x, walker.y - goal.y) > 6) {
+        arrived = false;
+      } else {
+        there++;
+      }
+    }
+    // Tests read how many of the team are in the meeting room, and how many were sent.
+    const team = this.gathered.size ? `${there}/${this.gathered.size}` : '';
+    const canvas = this.context.canvas;
+    if ((canvas.dataset.team ?? '') !== team) canvas.dataset.team = team;
+    const approval = agents.some((agent) => agent.state === 'approval' && agent.approval !== null);
+    useShipped.getState().tick(now, { arrived, approval, calm });
+    const { phase, current } = useShipped.getState();
+    if (phase === 'party' && current && this.burstFor !== current.key) {
+      this.burstFor = current.key;
+      this.burstAt = now;
+      if (!calm) {
+        this.pieces = burst(meetingCentre(this.floor), confettiColours(current.color));
+        let order = 0;
+        for (const id of this.gathered.keys()) {
+          const walker = this.walkers.get(id);
+          if (walker) walker.cheerAt = now + order++ * 90;
+        }
+      }
+    }
+    this.moveViewForParty(phase);
+  }
+
+  private moveViewForParty(phase: 'idle' | 'gather' | 'party'): void {
+    const ui = useOfficeUi.getState();
+    if (phase === 'gather' && !this.focused) {
+      this.focused = true;
+      if (reducedMotion() || ui.follow || ui.team) return;
+      const centre = meetingCentre(this.floor);
+      const point = this.screenOf(centre);
+      const { width, height } = this.size;
+      const inView = point.x > 80 && point.x < width - 80 && point.y > 60 && point.y < height - 60;
+      if (inView) return;
+      this.panBefore = { ...ui.pan };
+      this.centreAt(centre.x / this.floor.width);
+    } else if (phase === 'party' && this.panBefore && this.panAt === null) {
+      // The view has had the whole walk to arrive, so this is where the party's view rests.
+      this.panAt = ui.pan.x;
+    } else if (phase === 'idle' && this.focused) {
+      // Back where it was, unless someone has moved the view since.
+      if (this.panBefore && this.panAt !== null && Math.abs(ui.pan.x - this.panAt) < 2) {
+        ui.set({ pan: this.panBefore });
+      }
+      this.focused = false;
+      this.panBefore = null;
+      this.panAt = null;
+    }
+  }
+
+  /**
    * Mabari's rounds: it walks to each agent at work in turn, project by project, stays by its
    * desk a moment to check in, and says how that project is doing in its updates. With nobody at
    * work it goes back to its desk by the door.
@@ -666,7 +880,9 @@ export class OfficeScene {
       const dy = target.y - walker.y;
       const distance = Math.hypot(dx, dy);
       // A stroll in the lounge is slower than walking to work.
-      walker.spd = Math.min(walker.strolling ? 0.04 : 0.12, walker.spd + 0.0005 * dt);
+      // The team of a shipped project hurries to the meeting room.
+      const pace = walker.strolling ? 0.04 : this.gathered.has(walker.id) ? 0.19 : 0.12;
+      walker.spd = Math.min(pace, walker.spd + 0.0005 * dt);
       const step = walker.spd * dt;
       walker.walk += dt;
       walker.dir = Math.abs(dx) > 1 ? (dx > 0 ? 1 : -1) : 0;
@@ -714,6 +930,9 @@ export class OfficeScene {
     // Tests read the floor's size, and where the free desk is, to find things on it.
     const world = `${this.floor.width}x${this.floor.height}`;
     if (canvas.dataset.world !== world) canvas.dataset.world = world;
+    // Tests read where a shipped project's celebration is: "", "gather" or "party".
+    const shipped = useShipped.getState().phase === 'idle' ? '' : useShipped.getState().phase;
+    if ((canvas.dataset.shipped ?? '') !== shipped) canvas.dataset.shipped = shipped;
     const tile = deskTile(this.floor.free);
     const free = `${tile.x * 32 + 34},${tile.y * 32 + 20}`;
     if (canvas.dataset.freeDesk !== free) canvas.dataset.freeDesk = free;
@@ -1049,6 +1268,7 @@ export class OfficeScene {
     c.drawImage(officeBackground(theme, floor), 0, 0);
     this.drawMotes(theme, t, dt);
     this.drawLoungeLife(theme, t);
+    this.drawTrophies(theme, t);
 
     const walkers = [...this.walkers.values()];
     const inView = (walker: Walker) => inScope(walker, ui, agents);
@@ -1063,6 +1283,7 @@ export class OfficeScene {
     this.drawLinks(scoped, theme, t);
     // Everyone is drawn from back to front.
     const restingShown = this.restingShown();
+    const calm = reducedMotion();
     // An agent running Mabari's own agent file is Mabari, so it looks like Mabari.
     const office = useOfficeStore.getState().office;
     const mabariFiles = new Set(
@@ -1079,12 +1300,12 @@ export class OfficeScene {
               dim: !matches(walker, ui),
               ring: ui.selected === walker.id ? walker.hue : '',
             })
-          : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id),
+          : drawChar(c, walker, t, !matches(walker, ui), ui.selected === walker.id, calm),
     }));
     if (restingShown) {
       for (const { def, walker } of this.resting) {
         const on = ui.selected === restKey(def);
-        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, on) });
+        figures.push({ y: walker.y, paint: () => drawChar(c, walker, t, false, on, calm) });
       }
     }
     figures.sort((a, b) => a.y - b.y);
@@ -1096,6 +1317,14 @@ export class OfficeScene {
     };
     drawEnvelopes(c, messages, where, Date.now(), reducedMotion());
     this.drawMabariDesk(theme, t);
+    if (this.pieces.length) {
+      const age = Date.now() - this.burstAt;
+      if (age > BURST_MS) this.pieces = [];
+      else {
+        stepPieces(this.pieces, dt, meetingCentre(this.floor).y + LANDING);
+        drawPieces(c, this.pieces, age);
+      }
+    }
     c.setTransform(1, 0, 0, 1, 0, 0);
   }
 

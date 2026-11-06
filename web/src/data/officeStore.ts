@@ -1,11 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
-import type { ServerMessage, Snapshot } from '../gen/models.ts';
+import type { ServerMessage, Snapshot, WatchFired } from '../gen/models.ts';
 import { applyMessage } from './applyMessage.ts';
 
 const TOAST_MS = 3800;
 let nextToast = 1;
 const quiet: ((text: string) => boolean)[] = [];
+const firedListeners: ((fired: WatchFired) => void)[] = [];
+
+/**
+ * Lets another part of the page act when a watch fires ("tell me when it's done"): Home's chat
+ * says so, and a desktop notification shows if those are on. It returns how to stop listening. The
+ * toast is made here, so it is always there.
+ */
+export function onWatchFired(listener: (fired: WatchFired) => void): () => void {
+  firedListeners.push(listener);
+  return () => {
+    const at = firedListeners.indexOf(listener);
+    if (at >= 0) firedListeners.splice(at, 1);
+  };
+}
 
 /**
  * Lets a screen that already says something leave out the toast that would repeat it. Each filter
@@ -44,6 +58,11 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
       if (office && message.seq <= office.seq) continue;
       const { text } = message;
       if (message.type === 'toast' && text && !quiet.some((drop) => drop(text))) get().toast(text);
+      if (message.type === 'watch.fired' && message.fired) {
+        // Calm: a plain toast, and each place that wants to say it too.
+        get().toast(message.fired.text);
+        for (const listener of [...firedListeners]) listener(message.fired);
+      }
       if (office) office = applyMessage(office, message);
     }
     if (office !== before) set({ office });

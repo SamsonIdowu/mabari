@@ -30,6 +30,10 @@
   --ok-soft:#12291D;
   --code-bg:#050506;
   --shadow:0 16px 40px rgba(0,0,0,.8),0 0 0 1px #24242A;
+  --ease:cubic-bezier(.2,.7,.2,1);
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --dur-fast:120ms;
+  --dur:200ms;
   --ui:'Nunito',ui-rounded,system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
   color-scheme:dark;

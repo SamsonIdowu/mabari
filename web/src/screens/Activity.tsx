@@ -2,7 +2,10 @@
 import { useState } from 'react';
 import { useOfficeStore } from '../data/officeStore.ts';
 import { clockText, emptyLogText, filterLog, logAgents, logTypes } from '../format.ts';
+import { ExportMenu } from './ExportMenu.tsx';
 import { PageHead } from './parts.tsx';
+import { Timeline } from './Timeline.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 const TYPE_CHIPS: Record<string, string> = {
   Instruction: 'accent',
@@ -28,6 +31,7 @@ export function Activity() {
           title="Activity log"
           description="Every instruction you sent, every question you asked and every approval you gave."
         />
+        <Timeline />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <label className="sr" htmlFor="logSearch">
             Search the log
@@ -74,6 +78,7 @@ export function Activity() {
               </option>
             ))}
           </select>
+          <ExportMenu filters={{ search, type, agent: shownAgent }} />
         </div>
         <div className="table-wrap">
           <table>
@@ -115,6 +120,7 @@ export function Activity() {
               ) : (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: 40 }} className="muted">
+                    <Cast who={4} act="rest" />
                     {emptyLogText(office.log.length)}
                   </td>
                 </tr>

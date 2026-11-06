@@ -17,7 +17,9 @@ import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { DemoNote } from './DemoNote.tsx';
+import { NotifyRow } from './NotifyRow.tsx';
 import { PageHead } from './parts.tsx';
+import { OfficeSoundCard } from './OfficeSoundSettings.tsx';
 
 /** The accounts whose default model can be set, in the order Settings lists them. */
 const DEFAULT_KINDS: AccountKind[] = ['claude_code', 'codex', 'anthropic_key', 'openai_key'];
@@ -175,6 +177,7 @@ function ApprovalsCard({ settings }: { settings: SettingsModel }) {
             {state} Applies to all agents and is recorded in the Activity log.
           </span>
         </div>
+        <NotifyRow />
       </div>
     </div>
   );
@@ -582,6 +585,7 @@ export function Settings() {
         <DefaultsCard office={office} />
         <ApprovalsCard settings={office.settings} />
         <VoiceCard settings={office.settings} />
+        <OfficeSoundCard />
         <DataCard settings={office.settings} />
         <WipeCard />
       </div>

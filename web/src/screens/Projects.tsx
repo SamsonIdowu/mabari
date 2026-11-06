@@ -14,11 +14,15 @@ import {
   STATE_CHIPS,
   stateLabel,
 } from '../format.ts';
-import type { LiveAgent, Project } from '../gen/models.ts';
+import type { LiveAgent, Project, Snapshot } from '../gen/models.ts';
 import { openAgent, useOfficeUi, type ProjectsTab } from '../office/uiStore.ts';
+import { projectWatchable } from '../office/watches.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { ChangesDialog, ChangesIcon } from './Changes.tsx';
 import { PageHead } from './parts.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
+import { WatchControl } from './WatchControl.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 
@@ -308,9 +312,18 @@ function FolderLine({ project, edit }: { project: Project; edit: () => void }) {
   );
 }
 
-function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[] }) {
+function ProjectCard({
+  project,
+  agents,
+  office,
+}: {
+  project: Project;
+  agents: LiveAgent[];
+  office: Snapshot;
+}) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const remove = () =>
     api
       .deleteProject(project.id)
@@ -322,7 +335,7 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
   const colour = done ? 'var(--ok)' : project.color;
   const canComplete = project.status === 'ready' || project.status === 'idle';
   return (
-    <article className={done ? 'card eqcard pdone' : 'card eqcard'} style={{ height: 470 }}>
+    <article className={done ? 'card eqcard pdone' : 'card eqcard'}>
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {done ? (
@@ -393,6 +406,15 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
         <b className="num">{percent}%</b>
       </div>
       {done ? <CompletedBody project={project} /> : <OpenBody project={project} agents={agents} />}
+      {!done && projectWatchable(project) ? (
+        <WatchControl
+          office={office}
+          kind="project"
+          target={project.id}
+          name={project.name}
+          compact
+        />
+      ) : null}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {canComplete ? (
           <button
@@ -416,6 +438,15 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
             Chat
           </a>
         )}
+        <button
+          type="button"
+          className="btn sm"
+          title="See what this project has changed in its folder"
+          onClick={() => setReviewing(true)}
+        >
+          <ChangesIcon />
+          Changes
+        </button>
         <a
           className="btn sm"
           href="#office"
@@ -442,6 +473,12 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
         )}
       </div>
       {editing ? <ProjectDialog project={project} close={() => setEditing(false)} /> : null}
+      {reviewing ? (
+        <ChangesDialog
+          target={{ kind: 'project', id: project.id }}
+          close={() => setReviewing(false)}
+        />
+      ) : null}
     </article>
   );
 }
@@ -453,7 +490,7 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
   const longest = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
   const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
-    <article className="card eqcard" style={{ height: 470 }}>
+    <article className="card eqcard">
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <span className="pdot" style={{ background: '#8E8E93' }} />
@@ -561,6 +598,7 @@ export function Projects() {
         </div>
         {projects.length === 0 ? (
           <div className="card" id="noProjects" style={{ textAlign: 'center', padding: 48 }}>
+            <Cast who={1} act="sparkle" />
             <h2>No projects yet</h2>
             <p className="help">
               Describe what you want built and the planner proposes a team. Attach a folder or a Git
@@ -578,6 +616,7 @@ export function Projects() {
           </div>
         ) : filter !== 'all' && shown.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <Cast who={3} act="trophy" />
             <h2>No completed projects yet</h2>
             <p className="help">
               When every task in a project is finished, mark it as complete and it shows here.
@@ -593,6 +632,7 @@ export function Projects() {
                 key={project.id}
                 project={project}
                 agents={office.agents.filter((agent) => agent.projectId === project.id)}
+                office={office}
               />
             ))}
           </div>

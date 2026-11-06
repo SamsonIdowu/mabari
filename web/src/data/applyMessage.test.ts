@@ -43,6 +43,26 @@ describe('applyMessage', () => {
     expect(next.defs).toEqual([def]);
   });
 
+  it('replaces the watches with the whole list, so one that fired or was cancelled is gone', () => {
+    const watch = {
+      id: 'w1',
+      kind: 'agent',
+      target: 'a',
+      name: 'Scout',
+    } as Snapshot['watches'][number];
+    const set = applyMessage(snapshot(), message({ type: 'watches', watches: [watch] }));
+    expect(set.watches).toEqual([watch]);
+    const cleared = applyMessage(set, message({ seq: 3, type: 'watches', watches: null }));
+    expect(cleared.watches).toEqual([]);
+  });
+
+  it('only counts a watch that fired, which the page acts on in the store', () => {
+    const fired = { watch: 'w1', text: 'Scout is done.' } as ServerMessage['fired'];
+    const next = applyMessage(snapshot({ watches: [] }), message({ type: 'watch.fired', fired }));
+    expect(next.seq).toBe(2);
+    expect(next.watches).toEqual([]);
+  });
+
   it('advances the sequence number on any message', () => {
     expect(applyMessage(snapshot(), message({ type: 'toast', text: 'Hi' })).seq).toBe(2);
   });

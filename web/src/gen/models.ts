@@ -2,6 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //////////
+// source: card.go
+
+/**
+ * AgentCard is what the card over an agent's name tag shows. Every number is worked out here, so
+ * the page only formats them.
+ */
+export interface AgentCard {
+  agentId: string;
+  name: string;
+  /**
+   * Role says what the agent is for, in a few words.
+   */
+  role: string;
+  /**
+   * FinishedToday is how many tasks it finished since local midnight, and WorkedSeconds how long
+   * it worked in that time.
+   */
+  finishedToday: number /* int */;
+  workedSeconds: number /* int64 */;
+  /**
+   * Cost is the estimated spend so far. CostKnown is false when nothing is counted for this
+   * agent, such as a hub app that reports no tokens, and the card then shows a dash and not
+   * "$0.00". CostBasis is "estimate" for an API price estimate, or "plan" when the agent runs
+   * on a subscription that isn't billed per token, so the number is only for comparing agents.
+   */
+  cost: number /* float64 */;
+  costKnown: boolean;
+  costBasis: string;
+}
+
+//////////
 // source: conversation.go
 
 /**
@@ -223,6 +254,41 @@ export interface Estimate {
    * FinishAt is a Unix time in milliseconds.
    */
   finishAt: number /* int64 */;
+}
+
+//////////
+// source: ledger.go
+
+/**
+ * Ledger is one agent's day: how many tasks it finished and how long it worked since local
+ * midnight. Every connector's agents go through the same engine, so the engine keeps it from the
+ * states it sees, and the numbers mean the same for a demo agent, a Claude Code session and a hub
+ * app. It is stored with the agent's session, so a restart doesn't lose the day.
+ */
+export interface Ledger {
+  /**
+   * Day is the local date the counts are for, such as "2026-11-06". A new day starts them again.
+   */
+  day: string;
+  /**
+   * Finished is how many times the agent reached Done on Day.
+   */
+  finished: number /* int */;
+  /**
+   * WorkedMs is how long it was working on Day, as of Mark.
+   */
+  workedMs: number /* int64 */;
+  /**
+   * Mark is when the ledger was last brought up to date, in Unix milliseconds. Zero means the
+   * agent has not been seen yet.
+   */
+  mark: number /* int64 */;
+  /**
+   * State and Working are what the agent was doing at Mark. Time since then counts as work
+   * while Working is true.
+   */
+  state: AgentState;
+  working: boolean;
 }
 
 //////////
@@ -596,6 +662,10 @@ export interface SessionState {
    * each with the agent's reply once it gives one. At most AskedKept.
    */
   asked: Instruction[];
+  /**
+   * Ledger is what the agent did today, kept by the engine for the agent's card.
+   */
+  ledger: Ledger;
 }
 /**
  * AskedKept is how many instructions and replies an agent keeps for its panel.
@@ -982,6 +1052,10 @@ export interface Snapshot {
    * Defs are the agent definitions found in the agent folders on this computer.
    */
   defs: AgentDef[];
+  /**
+   * Watches are the "tell me when it's done" waits, oldest first. See Watch.
+   */
+  watches: Watch[];
 }
 /**
  * DefScope says where an agent definition's file lives.
@@ -1110,6 +1184,14 @@ export const MsgConversation = "conversation";
  */
 export const MsgConversationDelta = "conversation.delta";
 /**
+ * MsgWatches carries every watch, after one was set, cleared or fired.
+ */
+export const MsgWatches = "watches";
+/**
+ * MsgWatchFired says a watch has just fired, with what to tell the person.
+ */
+export const MsgWatchFired = "watch.fired";
+/**
  * ServerMessage is one WebSocket message. Type says which of the other fields is set.
  */
 export interface ServerMessage {
@@ -1134,6 +1216,8 @@ export interface ServerMessage {
    * AgentID is whose conversation a MsgConversationDelta belongs to.
    */
   agentId: string | null;
+  watches: Watch[] | null;
+  fired: WatchFired | null;
 }
 /**
  * WhisperStatus is what Settings shows about Local Whisper.
@@ -1151,4 +1235,452 @@ export interface WhisperStatus {
   done: number /* int64 */;
   total: number /* int64 */;
   error: string;
+}
+
+//////////
+// source: phase.go
+
+/**
+ * Phase is what an agent was doing over a stretch of time.
+ */
+export type Phase = string;
+/**
+ * PhaseWorking is any of the states in which the agent does work.
+ */
+export const PhaseWorking: Phase = "working";
+/**
+ * PhaseApproval is an agent paused until someone decides on an approval.
+ */
+export const PhaseApproval: Phase = "approval";
+/**
+ * PhaseQuestion is an agent waiting for the answer to a question it asked.
+ */
+export const PhaseQuestion: Phase = "question";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseError: Phase = "error";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseIdle: Phase = "idle";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseDone: Phase = "done";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhasePaused: Phase = "paused";
+/**
+ * PhaseOff is for a time Mabari knows nothing about the agent: it left the office, or Mabari
+ * was not running.
+ */
+export const PhaseOff: Phase = "off";
+/**
+ * StateChange is the moment an agent's phase changed. Name is kept so an agent that has left the
+ * office is still named on the day's timeline.
+ */
+export interface StateChange {
+  agentId: string;
+  agent: string;
+  time: number /* int64 */;
+  phase: Phase;
+}
+
+//////////
+// source: recap.go
+
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeFinished = "Finished";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const PrefixFinished = "Finished: ";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeError = "Error";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const PrefixError = "Stopped by an error: ";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeAutoAllowed = "Auto-allowed";
+/**
+ * RecapListed is the most items a recap lists under each heading. The rest are counted.
+ */
+export const RecapListed = 5;
+/**
+ * RecapItem is one thing in a recap. AgentID is empty when the agent has left the office.
+ */
+export interface RecapItem {
+  agentId: string;
+  agent: string;
+  hue: string;
+  /**
+   * Text is what happened: the task finished, the command auto approved, the error.
+   */
+  text: string;
+  time: number /* int64 */;
+}
+/**
+ * RecapGroup is everything of one kind in a recap: how many, and the newest few.
+ */
+export interface RecapGroup {
+  count: number /* int */;
+  items: RecapItem[];
+}
+/**
+ * Recap is what happened while the person was away, worked out from the activity log and the
+ * office as they are. It has no spend: only each agent's running total is kept, not what it spent
+ * in any one period, so a figure for the period could not be true.
+ */
+export interface Recap {
+  /**
+   * Since and Until are the period, in Unix milliseconds.
+   */
+  since: number /* int64 */;
+  until: number /* int64 */;
+  /**
+   * Finished are tasks agents finished, AutoApproved approvals decided by auto approve,
+   * Errors agents that stopped with an error, and Needs what waits for the person now.
+   */
+  finished: RecapGroup;
+  autoApproved: RecapGroup;
+  errors: RecapGroup;
+  needs: RecapGroup;
+  /**
+   * Happened is true when something took place in the period. An approval, error or question
+   * that was already waiting when the person left is listed under Needs but is not news.
+   */
+  happened: boolean;
+}
+
+//////////
+// source: review.go
+
+/**
+ * ChangesState says whether the changes in a folder could be read, and if not, why.
+ */
+export type ChangesState = string;
+/**
+ * ChangesRead means the folder was read. Files may still be empty: nothing has changed.
+ */
+export const ChangesRead: ChangesState = "ok";
+/**
+ * ChangesUnchanged answers a request that already holds this version, and carries no files.
+ */
+export const ChangesUnchanged: ChangesState = "unchanged";
+/**
+ * ChangesNoFolder means Mabari doesn't know a folder for this agent or project.
+ */
+export const ChangesNoFolder: ChangesState = "noFolder";
+/**
+ * ChangesMissing means the folder isn't there any more, or isn't a folder.
+ */
+export const ChangesMissing: ChangesState = "missing";
+/**
+ * ChangesNotRepo means the folder isn't in a Git repository.
+ */
+export const ChangesNotRepo: ChangesState = "notRepo";
+/**
+ * ChangesNoGit means Git isn't installed on this computer.
+ */
+export const ChangesNoGit: ChangesState = "noGit";
+/**
+ * ChangesFailed means Git ran and couldn't read the folder, such as a repository that belongs
+ * to another user.
+ */
+export const ChangesFailed: ChangesState = "failed";
+/**
+ * ChangeStatus is what happened to one file since the last commit.
+ */
+export type ChangeStatus = string;
+/**
+ * Change statuses.
+ */
+export const ChangeModified: ChangeStatus = "modified";
+/**
+ * Change statuses.
+ */
+export const ChangeAdded: ChangeStatus = "added";
+/**
+ * Change statuses.
+ */
+export const ChangeDeleted: ChangeStatus = "deleted";
+/**
+ * Change statuses.
+ */
+export const ChangeRenamed: ChangeStatus = "renamed";
+/**
+ * Change statuses.
+ */
+export const ChangeUntracked: ChangeStatus = "untracked";
+/**
+ * Change statuses.
+ */
+export const ChangeConflict: ChangeStatus = "conflict";
+/**
+ * Changes is what an agent or a project has changed in its folder since the last commit: the
+ * files, with how many lines were added and removed in each, and the changes themselves. Mabari
+ * reads them with Git and never changes anything. Every number is counted in Go; the page only
+ * formats them. Text has been through the secret filter.
+ */
+export interface Changes {
+  state: ChangesState;
+  /**
+   * Message is, for any state but "ok", what happened and what to do, in plain words.
+   */
+  message: string;
+  /**
+   * Demo is true in the demo office, whose agents have no real folder: the changes are made up.
+   */
+  demo: boolean;
+  /**
+   * Folder is the folder as Mabari knows it, such as ~/code/shop.
+   */
+  folder: string;
+  /**
+   * Branch is the branch the folder is on, or a short commit when Detached, or "" with no commit.
+   */
+  branch: string;
+  detached: boolean;
+  /**
+   * Version changes whenever what is read changes, so a page asking again can be told "no change".
+   */
+  version: string;
+  /**
+   * Files are the changed files, at most ChangesFilesMax, in path order.
+   */
+  files: ChangedFile[];
+  /**
+   * FileCount is every changed file, so it can be more than Files.
+   */
+  fileCount: number /* int */;
+  /**
+   * Added and Removed are lines, over every file that could be counted.
+   */
+  added: number /* int */;
+  removed: number /* int */;
+  /**
+   * Truncated is true when some of the text is left out for its size.
+   */
+  truncated: boolean;
+}
+/**
+ * ChangedFile is one file's change. Path is relative to the folder. OldPath is where a renamed
+ * file was. ID names the file in the list and is not a path.
+ */
+export interface ChangedFile {
+  id: string;
+  path: string;
+  oldPath: string;
+  status: ChangeStatus;
+  binary: boolean;
+  /**
+   * Counted is false when the lines weren't counted, as for a binary file or a new file
+   * among too many.
+   */
+  counted: boolean;
+  added: number /* int */;
+  removed: number /* int */;
+  /**
+   * Note says what isn't shown, such as "Binary file" or "Permissions changed", or "".
+   */
+  note: string;
+  hunks: ChangeHunk[];
+}
+/**
+ * ChangeHunk is a run of changed lines with a little around them. Header is Git's "@@" line.
+ */
+export interface ChangeHunk {
+  header: string;
+  lines: ChangeLine[];
+}
+/**
+ * ChangeLine is one line of a hunk. Kind is "ctx", "add", "del" or "note", which is Git's own
+ * remark such as "No newline at end of file". Old and New are line numbers, or 0 when the line
+ * isn't in that version of the file.
+ */
+export interface ChangeLine {
+  kind: string;
+  old: number /* int */;
+  new: number /* int */;
+  text: string;
+}
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesFilesMax = 300;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesFileLinesMax = 1500;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesLinesMax = 6000;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesLineRunesMax = 1000;
+
+//////////
+// source: timeline.go
+
+/**
+ * TimelineBlock is a stretch of time an agent spent in one shown phase. Open is true when the
+ * block runs up to now.
+ */
+export interface TimelineBlock {
+  kind: Phase;
+  from: number /* int64 */;
+  to: number /* int64 */;
+  open: boolean;
+}
+/**
+ * MarkerKind is what a marker on the timeline stands for.
+ */
+export type MarkerKind = string;
+/**
+ * Marker kinds.
+ */
+export const MarkerApproval: MarkerKind = "approval";
+/**
+ * Marker kinds.
+ */
+export const MarkerInstruction: MarkerKind = "instruction";
+/**
+ * TimelineMarker is one approval asked for or instruction sent. Text says which, and Outcome how
+ * an approval went ("Allowed", "Denied", "Auto-allowed", "Waiting" or "Cancelled").
+ */
+export interface TimelineMarker {
+  kind: MarkerKind;
+  time: number /* int64 */;
+  text: string;
+  outcome: string;
+}
+/**
+ * TimelineLane is one agent's row.
+ */
+export interface TimelineLane {
+  agentId: string;
+  agent: string;
+  /**
+   * Provider is empty once the agent has left the office. So is Present.
+   */
+  provider: Provider;
+  present: boolean;
+  blocks: TimelineBlock[];
+  markers: TimelineMarker[];
+}
+/**
+ * Timeline is one day of the office: a lane for each agent that did anything.
+ */
+export interface Timeline {
+  /**
+   * Day is the date, such as 2026-11-06, in the computer's own time zone.
+   */
+  day: string;
+  /**
+   * Start and End bound the day, and Now is the clock, all in Unix milliseconds. The line at
+   * now is drawn only when it falls inside the day.
+   */
+  start: number /* int64 */;
+  end: number /* int64 */;
+  now: number /* int64 */;
+  lanes: TimelineLane[];
+}
+
+//////////
+// source: watch.go
+
+/**
+ * WatchKind says what a Watch waits on.
+ */
+export type WatchKind = string;
+/**
+ * WatchAgent waits for one agent to be done.
+ */
+export const WatchAgent: WatchKind = "agent";
+/**
+ * WatchProject waits for every agent on a project to have finished.
+ */
+export const WatchProject: WatchKind = "project";
+/**
+ * WatchOutcome is how the thing a watch waits on ended: done, or stopped by an error. The empty
+ * value means it has not ended.
+ */
+export type WatchOutcome = string;
+/**
+ * Watch outcomes.
+ */
+export const WatchDone: WatchOutcome = "done";
+/**
+ * Watch outcomes.
+ */
+export const WatchFailed: WatchOutcome = "error";
+/**
+ * Watch is "tell me when it's done": a one-shot kept by the server, so it outlives a page reload.
+ * It fires once, when its agent is done or stops with an error, or when every agent on its project
+ * has finished, and then clears itself. It also clears itself when its agent or project is gone.
+ */
+export interface Watch {
+  id: string;
+  kind: WatchKind;
+  /**
+   * Target is the id of the agent or project.
+   */
+  target: string;
+  /**
+   * Name is what it was called when the watch was set, for a line about it once it has gone.
+   */
+  name: string;
+  time: number /* int64 */;
+  /**
+   * Then is an instruction for another agent, sent when the watch fires with the work done. It
+   * is null for a plain watch. Never sent after an error.
+   */
+  then: WatchThen | null;
+}
+/**
+ * WatchThen is the instruction a Watch carries: "when Ledger is done, tell Quill to review it".
+ * It names its agent by id, so if that agent leaves it is never sent to someone else.
+ */
+export interface WatchThen {
+  agentId: string;
+  agentName: string;
+  text: string;
+}
+/**
+ * WatchFired tells the page a watch has just fired, once, with what to say in each place.
+ */
+export interface WatchFired {
+  watch: string;
+  outcome: WatchOutcome;
+  /**
+   * AgentID is the agent to open from a notification: the one watched, or on a project the one
+   * that hit an error. It is empty for a project that finished with no error.
+   */
+  agentId: string;
+  projectId: string;
+  /**
+   * Text is the sentence for the toast and for Home's chat. It may name the task.
+   */
+  text: string;
+  /**
+   * Notice is the short line for a desktop notification. It names the agent or project and
+   * nothing else: no task, command, path or error text.
+   */
+  notice: string;
 }

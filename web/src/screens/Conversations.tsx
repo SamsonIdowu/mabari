@@ -9,6 +9,7 @@ import { openAgent, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import { MESSAGE_KINDS } from '../office/talk.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 const KINDS = MESSAGE_KINDS;
 
@@ -283,7 +284,12 @@ function AgentChats() {
                 right={current ? message.fromName !== current.first : false}
               />
             ))}
-            {inProject.length === 0 ? <p className="help">Nothing yet.</p> : null}
+            {inProject.length === 0 ? (
+              <div className="emptycast">
+                <Cast who={2} act="think" />
+                <p className="help">Nothing yet.</p>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

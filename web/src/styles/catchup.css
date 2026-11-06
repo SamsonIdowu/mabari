@@ -1,0 +1,333 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Catch up: the "While you were away" card on Home and the day's timeline on Activity.
+   Flat colour, tokens only. Red is for approvals and errors, and nothing here is amber. */
+
+/* ---- While you were away ---- */
+.home2 {
+  position: relative;
+}
+.awaycard {
+  position: absolute;
+  left: 32px;
+  top: 20px;
+  z-index: 3;
+  width: min(380px, 32%);
+  /* Never taller than the space above the dock. */
+  max-height: calc(100% - 150px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  animation: rise 0.25s ease;
+}
+.awayhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.awayhead h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.recap .recapgroup h3 {
+  margin: 12px 0 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.recapcount {
+  color: var(--fg2);
+}
+.recapcount.red {
+  color: var(--red);
+}
+.recap .hclist {
+  margin: 0;
+  gap: 4px;
+}
+.recap .hclist li {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.recap .recaptext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg2);
+}
+/* In Mabari's bubble the text wraps after the name, since the bubble is narrow and scrolls. */
+.veesay2 .recap .hclist li {
+  display: block;
+}
+.veesay2 .recap .idot {
+  margin-right: 6px;
+}
+.veesay2 .recap .recaptext {
+  display: inline;
+  margin-left: 6px;
+  white-space: normal;
+}
+/* Narrower than this, the card has no room beside Mabari, so it sits above the stage. */
+@media (max-width: 1100px) {
+  .awaycard {
+    position: static;
+    width: min(560px, 100%);
+    max-height: 32vh;
+    flex: none;
+  }
+}
+
+/* ---- Today's timeline ---- */
+.tlcard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0 4px;
+}
+.tlhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tlhead h2 {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 17px;
+}
+.tl {
+  --tl-label: 150px;
+  --tl-pad: 16px;
+  --tl-gap: 12px;
+  position: relative;
+  padding: 12px var(--tl-pad) 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.tlrow {
+  display: grid;
+  grid-template-columns: var(--tl-label) minmax(0, 1fr);
+  gap: var(--tl-gap);
+  align-items: center;
+  min-height: 38px;
+}
+.tlaxis {
+  min-height: 22px;
+}
+.tlaxis .tltrack {
+  height: 18px;
+  background: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.tltick {
+  position: absolute;
+  bottom: 2px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tllabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 700;
+  font-size: 13.5px;
+  text-align: left;
+}
+button.tllabel {
+  cursor: pointer;
+}
+button.tllabel:hover .tlname {
+  text-decoration: underline;
+}
+.tllabel.gone {
+  color: var(--muted);
+}
+.tlname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Marks sit in a band along the top of the track and blocks below it, so a mark never covers a
+   block, and a block of a few seconds can always be clicked. */
+.tltrack {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--surface2);
+}
+.tlblock {
+  position: absolute;
+  top: 13px;
+  bottom: 3px;
+  /* A block of a few seconds is still there to see and to click. */
+  min-width: 6px;
+  border-radius: 4px;
+}
+.tlblock.clickable {
+  cursor: pointer;
+}
+.tlblock.clickable:hover {
+  filter: brightness(1.15);
+}
+/* Working is the calm one: a plain neutral bar. Waiting for you is outlined, since it is waiting
+   and not a failure, and only an error is solid red. A question waits quietly, so it is not red. */
+.tlblock.working {
+  background: var(--fg2);
+}
+.tlblock.approval {
+  background: var(--red-soft);
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+.tlblock.question {
+  background: var(--surface3);
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+.tlblock.error {
+  background: var(--red);
+}
+.tlmark {
+  position: absolute;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  background: var(--surface);
+  box-sizing: border-box;
+}
+.tlmark.instruction {
+  border-radius: 50%;
+  border: 2px solid var(--fg);
+}
+.tlmark.clickable,
+.tlmark[title] {
+  cursor: default;
+}
+.tlmark.approval {
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 2px solid var(--red);
+}
+.tlmark.static {
+  position: static;
+  display: inline-block;
+  vertical-align: -1px;
+  transform: none;
+}
+.tlmark.approval.static {
+  transform: rotate(45deg) scale(0.9);
+}
+/* The line at now runs over every row, aligned to the same column as the rows' tracks. */
+.tlplot {
+  position: absolute;
+  top: 12px;
+  bottom: 14px;
+  left: calc(var(--tl-pad) + var(--tl-label) + var(--tl-gap));
+  right: var(--tl-pad);
+  pointer-events: none;
+}
+.tlnow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid var(--fg);
+}
+.tllegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tlswatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  margin-right: 2px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  box-sizing: border-box;
+}
+.tlswatch.working {
+  background: var(--fg2);
+}
+.tlswatch.approval {
+  background: var(--red-soft);
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+.tlswatch.question {
+  background: var(--surface3);
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+.tlswatch.error {
+  background: var(--red);
+}
+.tlswatch.now {
+  width: 0;
+  height: 12px;
+  border-radius: 0;
+  border-left: 2px solid var(--fg);
+}
+@media (max-width: 700px) {
+  .tl {
+    --tl-label: 92px;
+    --tl-pad: 10px;
+    --tl-gap: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .awaycard {
+    animation: none;
+  }
+}
+
+/* ---- Export ---- */
+.exportwrap {
+  position: relative;
+  display: inline-flex;
+}
+.exportmenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.exportmenu .btn {
+  justify-content: flex-start;
+}
+.exportmenu .help {
+  margin: 2px 4px 0;
+}

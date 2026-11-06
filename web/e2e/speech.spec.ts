@@ -36,7 +36,8 @@ test('holding Space on Home does not crash the page, and says why nothing was he
   expect(crashed).toBe(false);
   // The page still answers.
   await expect(page.locator('#hcMic')).toBeVisible();
-  expect(await page.evaluate(() => document.title)).toBe('Home · Mabari');
+  // The demo has agents who need you, so the title leads with how many (features round 1, item 1).
+  expect(await page.evaluate(() => document.title)).toMatch(/^(\(\d+\) )?Home · Mabari$/);
 });
 
 test('holding the mic button does not crash the page either', async ({ page }) => {

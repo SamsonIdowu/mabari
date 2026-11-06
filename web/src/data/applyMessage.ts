@@ -61,6 +61,9 @@ export function applyMessage(state: Snapshot, message: ServerMessage): Snapshot 
       return message.settings ? { ...next, settings: message.settings } : next;
     case 'defs':
       return { ...next, defs: message.defs ?? [] };
+    case 'watches':
+      // The whole list, so a watch that fired or was cancelled simply isn't in it any more.
+      return { ...next, watches: message.watches ?? [] };
     default:
       return next;
   }

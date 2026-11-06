@@ -17,14 +17,18 @@ import { Settings } from '../screens/Settings.tsx';
 import { Library } from '../screens/Library.tsx';
 import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
-import { routeTitle } from '../routeTitles.ts';
+import { startOfficeSound } from '../office/officeSound.ts';
+import { listenForCompletions } from '../office/shipped.ts';
 import { useHashRoute } from '../useHashRoute.ts';
 import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
+import { QuickSwitcher } from './QuickSwitcher.tsx';
 import { Rail } from './Rail.tsx';
+import { ScreenSkeleton } from './Skeleton.tsx';
 import { useRailStore } from './railStore.ts';
 import { Toasts } from './Toasts.tsx';
 import { TrustDialog } from './TrustDialog.tsx';
 import { Topbar } from './Topbar.tsx';
+import { useTabAlerts } from './useTabAlerts.ts';
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
@@ -63,24 +67,25 @@ export function Shell() {
     screenRef.current?.scrollTo({ top: 0 });
   }, [route]);
 
-  // The title is what a screen reader reads when the page changes.
-  useEffect(() => {
-    document.title = routeTitle(route);
-  }, [route]);
+  // The tab's title and icon, which also say how many need you while the page is behind another.
+  useTabAlerts(route);
 
   useEffect(listenForApprovals, []);
+  useEffect(listenForCompletions, []);
+  useEffect(startOfficeSound, []);
 
   return (
     <div className={collapsed ? 'app collapsed' : 'app'}>
       <Topbar />
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef} tabIndex={-1}>
-        {route ? <Screen route={route} /> : null}
+        {route ? <Screen route={route} /> : <ScreenSkeleton />}
       </main>
       <NewAgentDialog />
       <DeskDialog />
       <NewProjectDialog />
       <TrustDialog />
+      <QuickSwitcher />
       <ApprovalAnnouncer />
       <Toasts />
     </div>

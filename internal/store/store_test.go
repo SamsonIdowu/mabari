@@ -32,7 +32,7 @@ func must(t *testing.T, err error) {
 func TestMigratesFromEmpty(t *testing.T) {
 	version, err := open(t).SchemaVersion(context.Background())
 	must(t, err)
-	if version != 2 {
+	if version != 3 {
 		t.Errorf("version = %d", version)
 	}
 }
@@ -142,6 +142,16 @@ func TestLogSearchAndFilter(t *testing.T) {
 		{LogQuery{Search: "%"}, []string{"1"}},
 		{LogQuery{Search: "_"}, nil},
 		{LogQuery{Limit: 1}, []string{"3"}},
+		{LogQuery{Agent: "Scout"}, []string{"2"}},
+		// The agent filter is the whole name, not a part of it.
+		{LogQuery{Agent: "Sco"}, nil},
+		{LogQuery{Outcome: "Denied"}, []string{"3"}},
+		{LogQuery{Since: 2}, []string{"3", "2"}},
+		{LogQuery{Until: 2}, []string{"2", "1"}},
+		{LogQuery{Since: 2, Until: 2}, []string{"2"}},
+		// The search box finds a type too, as the page's own filter does.
+		{LogQuery{Search: "approval"}, []string{"3"}},
+		{LogQuery{Search: "sco", Type: models.LogQuery, Agent: "Scout"}, []string{"2"}},
 	}
 	for _, tc := range cases {
 		entries, err := s.Log(ctx, tc.query)
@@ -215,6 +225,7 @@ func TestWipeEmptiesEverything(t *testing.T) {
 	must(t, s.SaveApproval(ctx, models.Approval{ID: "ap", Agent: "agent"}))
 	must(t, s.SaveLog(ctx, models.LogEntry{ID: "l", Agent: "Mori"}))
 	must(t, s.SaveConversationItem(ctx, models.ConversationItem{ID: "c", Agent: "agent", Seq: 1}))
+	must(t, s.AddStateChange(ctx, models.StateChange{AgentID: "agent", Agent: "Mori", Phase: models.PhaseWorking}))
 	must(t, s.SaveSettings(ctx, models.DefaultSettings()))
 	must(t, s.SetMeta(ctx, "k", "v"))
 

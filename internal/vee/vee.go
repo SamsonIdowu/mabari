@@ -34,6 +34,8 @@ const (
 	KindImprove Kind = "improve"
 	// KindBuilder opens the agent builder.
 	KindBuilder Kind = "builder"
+	// KindRecap is what happened while the person was away, in Reply.Recap.
+	KindRecap Kind = "recap"
 )
 
 // Line is one agent in a reply.
@@ -96,6 +98,8 @@ type Reply struct {
 	Target string `json:"target"`
 	// Relay is set when Mabari passed an instruction on and will relay the reply.
 	Relay *Relay `json:"relay"`
+	// Recap is set for a KindRecap reply: what happened in the period it covers.
+	Recap *models.Recap `json:"recap"`
 	// Project is the project a message went to.
 	Project *ProjectChoice `json:"project"`
 	// Projects are the choices when Mabari asks which project a message is for.
@@ -106,6 +110,8 @@ type Reply struct {
 	Send *Send `json:"-"`
 	// Dispatch is set when the message is a task for the dispatcher, not something Mabari answers.
 	Dispatch bool `json:"-"`
+	// Watch is set when the message asks Mabari to watch an agent or a project. See Watching.
+	Watch *WatchAsk `json:"-"`
 }
 
 // Gesture order matters: "star jump" is a jump, as in the prototype.
@@ -143,6 +149,15 @@ var (
 	whatFor   = regexp.MustCompile(`(?i)^.*?\bagent\b\s*(?:that|to|for|which|who|called|named)?\s*`)
 	builder   = regexp.MustCompile(`\b(builder|reusable agents|manage agents|my agents)\b`)
 	newProj   = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:start|create|begin|make)\s+(?:a\s+)?(?:new\s+)?project\b`)
+	// recapAsk is a request to hear what happened while the person was away: "what did I miss?",
+	// "catch me up", "what happened while I was out?". It is the whole message, so a task that
+	// shares words with it ("catch up on the tests", "recap the meeting") is still a task, and
+	// "catch me up on Ledger" is still a question about Ledger.
+	recapAsk = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:` +
+		`what (?:did|have) i (?:miss|missed)|what i missed|what(?:'s| has| have)? happened|` +
+		`did i miss (?:anything|something)|anything (?:happen|happened)|` +
+		`catch me up|catch up|bring me up to speed|fill me in|recap)` +
+		`(?:\s+(?:while|since|when) i\b.*)?(?:\s+please)?[\s.!?]*$`)
 	// overall is a question about how the whole office is doing, with no agent or topic named:
 	// "how is everything going?", "how are things going?", "how's it going", "is everything ok?".
 	overall = regexp.MustCompile(`\bhow(?:'s|s| is| are| goes)\s+(?:everything|everyone|everybody|things|it|we|all|work|` +
@@ -262,6 +277,10 @@ func Answer(text string, agents []*models.LiveAgent, now time.Time) Reply {
 // projects, a task for the dispatcher (Dispatch).
 func AnswerIn(text string, in Office, now time.Time) Reply {
 	office := look(in.Agents, now)
+	// "tell me when Ledger is done" is no instruction for anyone, and comes before "tell Ledger to …".
+	if reply, ok := office.watching(text, in); ok {
+		return reply
+	}
 	q := strings.TrimSpace(strings.ToLower(apostrophes.Replace(text)))
 	reply, ok := office.passOn(text, q)
 	project, body, nameLength := namedProject(text, open(in.Projects))
@@ -300,6 +319,8 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 		return office.greet()
 	case chat && has(q, "thank"):
 		return office.reply("Any time. Keeping an eye on things is my favourite job.", "bow", KindPlain)
+	case recapAsk.MatchString(q):
+		return office.recap(in, now)
 	case isQ && has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"),
 		deciding.MatchString(q):
 		return asked.needs()

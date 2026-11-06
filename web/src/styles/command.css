@@ -1,0 +1,163 @@
+/* Command many at once: the quick switcher, and a header fix that Pause everyone needs. */
+
+/*
+ * With the header stacked, its actions may shrink to the line they are on, so they wrap rather than
+ * run off the edge of a narrow window. A fifth action, Pause everyone, no longer fits one line at
+ * 390 px.
+ */
+.ohead.stack .ohact {
+  flex: 0 1 auto;
+}
+
+/* The top bar's Jump to button, with the shortcut beside its name. */
+.kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--fg2);
+  white-space: nowrap;
+}
+/* On a narrow window it is only its icon, like the other top bar buttons there. */
+@media (max-width: 760px) {
+  .tbtn.jump {
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+  /* The name stays for a screen reader. Only what is seen goes. */
+  .tbtn.jump .lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .tbtn.jump .kbd {
+    display: none;
+  }
+}
+
+/* The quick switcher: a search box over the page, and under it what it found. */
+.dialog.qs {
+  width: min(620px, 100%);
+  padding: 12px;
+  gap: 8px;
+}
+.qsbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 2px 12px;
+  border: 1px solid var(--line2);
+  background: var(--surface2);
+  border-radius: 12px;
+  color: var(--fg2);
+}
+.qsbar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.qsin {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 0;
+  text-overflow: ellipsis;
+}
+.qsin:focus {
+  outline: none;
+}
+.qsin::placeholder {
+  color: var(--muted);
+}
+.qslist {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.qsrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+/* Focus stays in the box, so the row the arrows are on shows it with colour and a bar at its edge. */
+.qsrow.on {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.qsmark {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.qsmark.dot {
+  border-radius: 50%;
+}
+.qsmark.icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  display: inline-flex;
+}
+.qsmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.qsname,
+.qsdet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qsname {
+  font-weight: 700;
+}
+.qsdet {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.qsrow .chip {
+  flex: none;
+}
+/* An agent with a question is asking, not alarmed: outlined, never red. */
+.chip.ask {
+  background: none;
+  border: 1px solid var(--line2);
+  color: var(--fg2);
+}
+.qsnone {
+  padding: 18px 10px;
+}
+.qsfoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 0;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 480px) {
+  .qsfoot [aria-hidden='true'] {
+    display: none;
+  }
+}

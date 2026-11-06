@@ -3,15 +3,21 @@ import type { Relay } from '../office/relay.ts';
 import type {
   AccountKind,
   Agent,
+  AgentCard,
   AgentDef,
   Conversation,
+  Changes,
   DiffLine,
   Estimate,
   LiveAgent,
   Project,
   QuestionAnswer,
+  Recap,
   Settings,
   Snapshot,
+  Watch,
+  WatchKind,
+  WatchOutcome,
   WhisperStatus,
 } from '../gen/models.ts';
 import { applyHeldChanges } from './heldChanges.ts';
@@ -65,6 +71,10 @@ export function unreachableMessage(path: string, method = 'GET'): string {
     /^\/api\/projects\/[^/]+\/send$/.test(path)
   ) {
     return "Can't reach Mabari. Your message was not sent.";
+  }
+  // A second opinion changes nothing in Mabari: it asks another agent.
+  if (/^\/api\/(agents|projects)\/[^/]+\/changes\/opinion$/.test(path)) {
+    return "Can't reach Mabari. Your request for a second opinion was not sent.";
   }
   return "Can't reach Mabari. Your change was not saved.";
 }
@@ -207,7 +217,8 @@ export interface VeeReply {
     | 'relayed'
     | 'improve'
     | 'builder'
-    | 'pickProject';
+    | 'pickProject'
+    | 'recap';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
@@ -223,6 +234,8 @@ export interface VeeReply {
   project?: ProjectChoice | null;
   /** The choices when Mabari asks which project a message is for. */
   projects?: ProjectChoice[] | null;
+  /** For a recap: what happened while you were away. */
+  recap?: Recap | null;
   /** What is read aloud, when it differs from the text. */
   spoken?: string;
   /** A relayed reply too long for the bubble names its agent, to read the rest there. */
@@ -368,12 +381,66 @@ export interface AccessInfo {
   token?: string;
 }
 
+/** What a watch is on, and the instruction it carries, if any. Mirrors internal/server watchBody. */
+export interface WatchRequest {
+  /** "agent" or "project". */
+  kind: WatchKind;
+  target: string;
+  then?: { agentId: string; text: string };
+}
+
+/**
+ * What setting a watch came to. Watch is null when the work had already ended, and Already says
+ * how; Text is Mabari's own sentence for it. Mirrors internal/server watchResult.
+ */
+export interface WatchResult {
+  watch: Watch | null;
+  already: WatchOutcome | '';
+  kept: boolean;
+  text: string;
+}
+
+/**
+ * What Pause everyone or Continue everyone did to one agent. Mirrors internal/server groupResult.
+ * `why` reads after the name, such as "is waiting for your approval", or is empty.
+ */
+export interface GroupResult {
+  id: string;
+  name: string;
+  outcome: 'paused' | 'resumed' | 'asked' | 'waiting' | 'skipped';
+  why: string;
+}
+
+/** The reply to POST /api/agents/interrupt and /continue. Mirrors internal/server groupReply. */
+export interface GroupReply {
+  results: GroupResult[];
+  paused: number;
+  resumed: number;
+  asked: number;
+  waiting: number;
+  skipped: number;
+  summary: string;
+}
+
 /** The reply to POST /api/desks/start. Mirrors internal/server deskStartResult. */
 export interface DeskStartResult {
   notice: string;
   opened: boolean;
   agentId: string;
 }
+
+/** The reply to a request for a second opinion. Mirrors internal/server opinionResult. */
+export interface OpinionResult {
+  notice: string;
+  /** The reviewer, and the instruction it was sent, so the reply can be found under it. */
+  agentId: string;
+  instructionId: string;
+  queued: boolean;
+}
+
+/** The review view's address: an agent's or a project's id, never a path. */
+const reviewPath = (target: { kind: 'agent' | 'project'; id: string }, rest: string) =>
+  `/api/${target.kind}s/${encodeURIComponent(target.id)}/changes${rest}`;
 
 export const api = {
   session: () => request<SessionInfo>('/api/session'),
@@ -408,6 +475,8 @@ export const api = {
     }),
   wipe: () => send<{ ok: boolean }>('POST', '/api/wipe', { confirm: true }),
   updateSettings: (patch: Partial<Settings>) => send<Settings>('PATCH', '/api/settings', patch),
+  /** The card shown over an agent's name: its role and what it did today, counted by the server. */
+  agentCard: (id: string) => request<AgentCard>(`/api/agents/${encodeURIComponent(id)}/card`),
   completeProject: (id: string) => send<Project>('POST', `/api/projects/${id}/complete`),
   reopenProject: (id: string) => send<Project>('POST', `/api/projects/${id}/reopen`),
   updateProject: (
@@ -433,6 +502,13 @@ export const api = {
   /** Takes back an instruction before it is delivered. */
   removeInstruction: (id: string) =>
     send<unknown>('DELETE', `/api/instructions/${encodeURIComponent(id)}`),
+  /** "Tell me when it's done": watches an agent or a project, with an instruction to send after. */
+  setWatch: (body: WatchRequest) => send<WatchResult>('POST', '/api/watches', body),
+  /** Turns a watch off, and with it any instruction it carried. */
+  cancelWatch: (id: string) => send<unknown>('DELETE', `/api/watches/${encodeURIComponent(id)}`),
+  /** Takes the instruction off a watch, which stays, so you are still told. */
+  cancelWatchThen: (id: string) =>
+    send<Watch>('DELETE', `/api/watches/${encodeURIComponent(id)}/then`),
   previewDispatch: (text: string, scope: Scope) =>
     send<{ decision: Decision | null }>('POST', '/api/dispatch/preview', { text, ...scope }),
   sendMessage: (text: string, mode: MessageMode, target: string, scope: Scope) =>
@@ -441,10 +517,18 @@ export const api = {
     send<{ applied: boolean }>('POST', `/api/approvals/${id}/decision`, { decision }),
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
-  /** projectId is the project picked next to the box, "any", or empty for Mabari to choose. */
-  vee: (text: string, projectId = '') => send<VeeResult>('POST', '/api/vee', { text, projectId }),
+  /**
+   * projectId is the project picked next to the box, "any", or empty for Mabari to choose. since is
+   * when you last looked, which "what did I miss?" counts from; leave it out for the last hour.
+   */
+  vee: (text: string, projectId = '', since = 0) =>
+    send<VeeResult>('POST', '/api/vee', { text, projectId, ...(since > 0 ? { since } : {}) }),
   agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
+  /** Pauses the working agents among the ones named. The server decides who can be paused. */
+  pauseEveryone: (ids: string[]) => send<GroupReply>('POST', '/api/agents/interrupt', { ids }),
+  /** Carries on the named agents that are still paused, which are the ones a pause stopped. */
+  continueEveryone: (ids: string[]) => send<GroupReply>('POST', '/api/agents/continue', { ids }),
   createAgent: (body: NewAgentBody) => send<StartedAgent>('POST', '/api/agents', body),
   conversation: (id: string, before?: number) =>
     request<Conversation>(
@@ -459,6 +543,15 @@ export const api = {
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),
+  /**
+   * What an agent or a project has changed in its folder, read by the server with Git. `version`
+   * is the one already held: the answer is then "unchanged", without the files, if nothing moved.
+   */
+  changes: (target: { kind: 'agent' | 'project'; id: string }, version = '') =>
+    request<Changes>(reviewPath(target, version ? `?version=${encodeURIComponent(version)}` : '')),
+  /** Sends the changes to another agent to review, as an ordinary instruction. */
+  secondOpinion: (target: { kind: 'agent' | 'project'; id: string }, reviewerId: string) =>
+    send<OpinionResult>('POST', reviewPath(target, '/opinion'), { reviewerId }),
   /** Answers the question the agent is asking; the server checks the answers fit it. */
   answerQuestion: (id: string, questionId: string, answers: QuestionAnswer[]) =>
     send<{ answered: boolean }>('POST', `/api/agents/${encodeURIComponent(id)}/answer`, {

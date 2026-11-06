@@ -243,6 +243,8 @@ type SessionState struct {
 	// Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
 	// each with the agent's reply once it gives one. At most AskedKept.
 	Asked []Instruction `json:"asked"`
+	// Ledger is what the agent did today, kept by the engine for the agent's card.
+	Ledger Ledger `json:"ledger"`
 }
 
 // AskedKept is how many instructions and replies an agent keeps for its panel.
@@ -517,6 +519,8 @@ type Snapshot struct {
 	Settings   Settings    `json:"settings"`
 	// Defs are the agent definitions found in the agent folders on this computer.
 	Defs []AgentDef `json:"defs"`
+	// Watches are the "tell me when it's done" waits, oldest first. See Watch.
+	Watches []Watch `json:"watches"`
 }
 
 // DefScope says where an agent definition's file lives.
@@ -589,6 +593,11 @@ const (
 	MsgConversation = "conversation"
 	// MsgConversationDelta adds Text to the streaming item ID of AgentID's conversation.
 	MsgConversationDelta = "conversation.delta"
+
+	// MsgWatches carries every watch, after one was set, cleared or fired.
+	MsgWatches = "watches"
+	// MsgWatchFired says a watch has just fired, with what to tell the person.
+	MsgWatchFired = "watch.fired"
 )
 
 // ServerMessage is one WebSocket message. Type says which of the other fields is set.
@@ -610,6 +619,9 @@ type ServerMessage struct {
 	Item *ConversationItem `json:"item,omitempty"`
 	// AgentID is whose conversation a MsgConversationDelta belongs to.
 	AgentID string `json:"agentId,omitempty"`
+
+	Watches []Watch     `json:"watches,omitempty"`
+	Fired   *WatchFired `json:"fired,omitempty"`
 }
 
 // WhisperStatus is what Settings shows about Local Whisper.

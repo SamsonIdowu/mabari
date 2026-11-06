@@ -24,6 +24,8 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 		Text string `json:"text"`
 		// ProjectID is the project picked next to the chat box, "any", or empty for Mabari to choose.
 		ProjectID string `json:"projectId"`
+		// Since is when the person last looked at Mabari, for "what did I miss?". Zero is the last hour.
+		Since int64 `json:"since"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -36,9 +38,16 @@ func (a *api) talkToVee(w http.ResponseWriter, r *http.Request) {
 	var result veeResult
 	var route *projectRoute
 	err := a.engine.Do(func() {
-		office := vee.Office{Agents: a.engine.Agents(), Projects: a.engine.Projects(), InView: body.ProjectID, Router: a.router}
+		office := vee.Office{
+			Agents: a.engine.Agents(), Projects: a.engine.Projects(), InView: body.ProjectID, Router: a.router,
+			Since: body.Since,
+			Recap: func(since, until int64) (models.Recap, error) { return a.recapOf(r.Context(), since, until) },
+		}
 		result.Reply = vee.AnswerIn(text, office, a.engine.Now())
 		switch send := result.Reply.Send; {
+		case result.Reply.Watch != nil:
+			// "tell me when Ledger is done" sets a watch. It is no instruction for any agent.
+			result.Reply = a.watchForVee(*result.Reply.Watch)
 		case result.Reply.Route != nil:
 			route = a.routeForVee(*result.Reply.Route)
 			if route == nil {

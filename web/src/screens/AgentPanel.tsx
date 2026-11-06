@@ -6,6 +6,7 @@ import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from 
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { send } from '../office/send.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
+import { agentWatchable } from '../office/watches.ts';
 import { openThread, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import {
   decisionColors,
@@ -19,12 +20,14 @@ import { Icon } from '../shell/Icon.tsx';
 import { useReturnFocus } from '../shell/useReturnFocus.ts';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { chatHash } from '../chat/chatRoute.ts';
+import { ChangesDialog, ChangesIcon } from './Changes.tsx';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
 import { LatestConversation, SessionSection } from './SessionSection.tsx';
+import { WatchControl, WatchesWaiting } from './WatchControl.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
-type Dialog = 'settings' | 'subagent' | null;
+type Dialog = 'settings' | 'subagent' | 'changes' | null;
 
 const colourOf = (kind: string): string =>
   (decisionColors as Record<string, string>)[kind] ?? decisionFallbackColor;
@@ -742,6 +745,15 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
             <button
               type="button"
               className="btn ghost sm"
+              title="See what this agent has changed in its folder"
+              onClick={() => setDialog('changes')}
+            >
+              <ChangesIcon />
+              Changes
+            </button>
+            <button
+              type="button"
+              className="btn ghost sm"
               aria-label="Agent settings"
               title="Agent settings"
               onClick={() => setDialog('settings')}
@@ -817,7 +829,11 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
             <SessionSection agent={agent} />
             <Section title="Current task">
               <p style={{ fontWeight: 700, fontSize: 15 }}>{agent.task}</p>
+              {agentWatchable(agent) ? (
+                <WatchControl office={office} kind="agent" target={agent.id} name={agent.name} />
+              ) : null}
             </Section>
+            <WatchesWaiting office={office} agentId={agent.id} />
             <OfficeSection
               agent={agent}
               subagents={subagents}
@@ -841,6 +857,9 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
           lead={lead}
           close={() => setDialog(null)}
         />
+      ) : null}
+      {dialog === 'changes' ? (
+        <ChangesDialog target={{ kind: 'agent', id: agent.id }} close={() => setDialog(null)} />
       ) : null}
       {dialog === 'subagent' ? (
         <AddSubagentDialog

@@ -910,7 +910,10 @@ func (s *Simulator) Interrupt(agent *models.LiveAgent) {
 	agent.State = models.StatePaused
 	state.stateLeft = waitForever
 	s.engine.AddEvent(agent, "interrupt", "Paused by you after the current tool call", nil)
-	s.engine.Log(agent.Name, models.LogInstruction, "Interrupt", "Paused", "amber")
+	// Pausing a whole group writes one row for the group, not one for each of them.
+	if !s.engine.Quiet() {
+		s.engine.Log(agent.Name, models.LogInstruction, "Interrupt", "Paused", "amber")
+	}
 }
 
 // Continue resumes an interrupted agent in exactly the state it was in, with the rest of its step.

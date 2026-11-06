@@ -236,6 +236,29 @@ function desk(
 /** Where the work area's two server racks stand, so scene.ts can blink their lights. */
 export const WORK_RACKS = [10, 40];
 
+/** What stands in the work area's back row after the server racks, and how wide each is. */
+export type BackRowKind = 'shelf' | 'cabinets' | 'printer';
+const BACK_ROW_KINDS: BackRowKind[] = ['shelf', 'cabinets', 'printer'];
+const BACK_ROW_WIDTHS = [56, 64, 52];
+
+/**
+ * Where the back row's furniture stands for a work area that ends at `end`: bookshelves, filing
+ * cabinets and one printer, in turn, for as long as there is room. The trophy shelf takes the
+ * bookshelves' places, so it asks for them here.
+ */
+export function backRow(end: number): { x: number; kind: BackRowKind }[] {
+  const places: { x: number; kind: BackRowKind }[] = [];
+  let x = 74;
+  for (let index = 0; x + BACK_ROW_WIDTHS[index % BACK_ROW_KINDS.length]! <= end - 20; index++) {
+    const kind = BACK_ROW_KINDS[index % BACK_ROW_KINDS.length]!;
+    // One printer is enough: after it, shelves and cabinets.
+    if (index >= BACK_ROW_KINDS.length && kind === 'printer') continue;
+    places.push({ x, kind });
+    x += BACK_ROW_WIDTHS[index % BACK_ROW_KINDS.length]! + 8;
+  }
+  return places;
+}
+
 /**
  * The work area, like an office: a carpet under the desks, a back row of server racks,
  * bookshelves, filing cabinets and a printer, and a front row with a water cooler, a whiteboard
@@ -306,14 +329,7 @@ function drawWorkArea(c: Ctx, floor: Floor, theme: 'dark' | 'light', P: Palette)
       },
     },
   ];
-  let x = 74;
-  for (let index = 0; x + row[index % row.length]!.w <= end - 20; index++) {
-    const item = row[index % row.length]!;
-    // One printer is enough: after it, shelves and cabinets.
-    if (index >= row.length && item.w === 52) continue;
-    item.draw(x);
-    x += item.w + 8;
-  }
+  for (const place of backRow(end)) row[BACK_ROW_KINDS.indexOf(place.kind)]!.draw(place.x);
 
   /* the walls round the work area: glass partitions on its right and along its front, with a
      doorway facing Mabari's desk; the back wall closes it at the top */

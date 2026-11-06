@@ -132,7 +132,7 @@ var gestures = []struct{ name, phrase, quip string }{
 }
 
 var (
-	message  = regexp.MustCompile(`(?i)^(?:please\s+)?(tell|ask)\s+([a-z ]+?)\s+(?:to\s+)?(.+)$`)
+	message  = regexp.MustCompile(`(?i)^(?:please\s+)?(tell|ask)\s+([\p{L}\p{N} ()'-]+?)\s+(?:to\s+)?(.+)$`)
 	opening  = regexp.MustCompile(`(?i)^(?:please\s+)?(?:tell|ask)\s+`)
 	leadTo   = regexp.MustCompile(`(?i)^to\s+`)
 	greeting = regexp.MustCompile(`^(hello|hi|hey)\b`)

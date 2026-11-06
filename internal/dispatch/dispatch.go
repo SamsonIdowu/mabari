@@ -7,6 +7,8 @@ package dispatch
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
@@ -63,11 +65,49 @@ func onTopic(text, profile string) bool {
 	return false
 }
 
-func score(text string, agent *models.LiveAgent, queued int) (int, int, []string) {
+// nameAt is where name stands as whole words in text, or -1: "worker" isn't named in "worker2".
+func nameAt(text, name string) int {
+	for from := 0; name != ""; {
+		at := strings.Index(text[from:], name)
+		if at < 0 {
+			break
+		}
+		at += from
+		before, _ := utf8.DecodeLastRuneInString(text[:at])
+		after, _ := utf8.DecodeRuneInString(text[at+len(name):])
+		if !wordRune(before) && !wordRune(after) {
+			return at
+		}
+		from = at + 1
+	}
+	return -1
+}
+
+func wordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// addressed is the agent the message names, or nil: the name that comes first, and of two that
+// start in the same place, the longer, so "atlas scribe" isn't Atlas.
+func addressed(text string, agents []*models.LiveAgent) *models.LiveAgent {
+	var named *models.LiveAgent
+	first := -1
+	for _, agent := range agents {
+		name := strings.ToLower(agent.Name)
+		at := nameAt(text, name)
+		if at < 0 {
+			continue
+		}
+		if named == nil || at < first || (at == first && len(name) > len(named.Name)) {
+			named, first = agent, at
+		}
+	}
+	return named
+}
+
+func score(text string, agent *models.LiveAgent, named bool, queued int) (int, int, []string) {
 	total := 0
 	var why []string
 	profile := strings.ToLower(agent.Task + " " + strings.Join(agent.Files, " "))
-	if text != "" && strings.Contains(text, strings.ToLower(agent.Name)) {
+	if named {
 		total += 100
 		why = append(why, "you named "+agent.Name)
 	}
@@ -97,17 +137,20 @@ func score(text string, agent *models.LiveAgent, queued int) (int, int, []string
 	return total, fit, why
 }
 
-// Route returns the best agent, or nil if nobody can take the message.
+// Route returns the best agent, or nil if nobody can take the message. A message that names an
+// agent goes to that agent or to nobody: it is never passed to someone else in its place.
 func (Rules) Route(text string, agents []*models.LiveAgent) *Decision {
 	lower := strings.ToLower(text)
+	named := addressed(lower, agents)
 	var best *models.LiveAgent
 	var bestScore, bestFit int
 	var bestWhy []string
 	for _, agent := range agents {
-		if agent.Leaving || agent.State == models.StateError || agent.State == models.StatePaused {
+		if agent.Leaving || agent.State == models.StateError || agent.State == models.StatePaused ||
+			(named != nil && agent != named) {
 			continue
 		}
-		total, fit, why := score(lower, agent, len(agent.Queued))
+		total, fit, why := score(lower, agent, agent == named, len(agent.Queued))
 		if best == nil || total > bestScore {
 			best, bestScore, bestFit, bestWhy = agent, total, fit, why
 		}

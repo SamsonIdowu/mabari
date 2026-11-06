@@ -190,6 +190,32 @@ func TestPassingMessagesOn(t *testing.T) {
 	}
 }
 
+// A name is the whole name, whatever it is made of, and the agent named is the only one it reaches.
+func TestPassingMessagesOnToNamesThatShareAStart(t *testing.T) {
+	agents := append(office(), agent("Worker", models.StateIdle), agent("Worker2", models.StateEditing),
+		agent("Phraser", models.StateIdle), agent("Phraser2", models.StateDone), agent("Atlas (demo)", models.StateEditing),
+		agent("Mary-Jo", models.StateIdle))
+	tests := []struct{ text, agent, body string }{
+		{"tell Worker2 to review the work", "id-worker2", "review the work"},
+		{"tell worker2 review the work", "id-worker2", "review the work"},
+		{"tell Phraser2 to review the work", "id-phraser2", "review the work"},
+		{"tell Worker to review the work", "id-worker", "review the work"},
+		{"tell Atlas (demo) to rest", "id-atlas (demo)", "rest"},
+		{"tell Mary-Jo to rest", "id-mary-jo", "rest"},
+	}
+	for _, test := range tests {
+		reply := Answer(test.text, agents, now)
+		if reply.Send == nil || reply.Send.AgentID != test.agent || reply.Send.Text != test.body || reply.Dispatch {
+			t.Errorf("%q: got %+v, %q", test.text, reply.Send, reply.Text)
+		}
+	}
+	// Nobody has this name, so it must not fall through to the dispatcher and reach Worker.
+	reply := Answer("tell Worker3 to review the work", agents, now)
+	if reply.Send != nil || reply.Dispatch || !strings.Contains(reply.Text, "I couldn't find an agent called worker3") {
+		t.Errorf("got %+v, dispatch %v, %q", reply.Send, reply.Dispatch, reply.Text)
+	}
+}
+
 func TestPassed(t *testing.T) {
 	agents := office()
 	ledger := agents[2]

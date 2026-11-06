@@ -42,6 +42,50 @@ func TestRoutesByMeaning(t *testing.T) {
 	}
 }
 
+// A name is whole words. A longer name that starts with a shorter one is its own agent, whichever
+// comes first in the office and however busy either is.
+func TestANameIsMatchedWhole(t *testing.T) {
+	agents := func() []*models.LiveAgent {
+		return []*models.LiveAgent{
+			agent("Worker", "Waiting", models.StateIdle),
+			agent("Worker2", "Waiting", models.StateEditing),
+			agent("Atlas", "Waiting", models.StateIdle),
+			agent("Atlas scribe", "Waiting", models.StateEditing),
+			agent("Atlas (demo)", "Waiting", models.StateEditing),
+			agent("Björk", "Waiting", models.StateEditing),
+			agent("Bolt", "Waiting", models.StateEditing),
+		}
+	}
+	cases := map[string]string{
+		"tell Worker2 to review the work":  "Worker2",
+		"tell worker to review the work":   "Worker",
+		"Worker2, please look":             "Worker2",
+		"have Atlas scribe check it":       "Atlas scribe",
+		"have atlas check it":              "Atlas",
+		"Atlas (demo) can do it":           "Atlas (demo)",
+		"bolt, are you there?":             "Bolt",
+		"björk, look":                      "Björk",
+		"Worker, look at what Worker2 did": "Worker",
+	}
+	for text, want := range cases {
+		if got := (Rules{}).Route(text, agents()); got == nil || got.Name != want {
+			t.Errorf("%q went to %+v, want %s", text, got, want)
+		}
+	}
+	// A word that only contains a name doesn't name anyone.
+	if got := (Rules{}).Route("the thunderbolted door", agents()); got == nil || got.Fit >= 100 {
+		t.Errorf("got %+v", got)
+	}
+}
+
+// With the agent it names unable to take it, a message stays unsent rather than reaching another.
+func TestAMessageForAnAgentThatCannotTakeItGoesToNobody(t *testing.T) {
+	agents := []*models.LiveAgent{agent("Worker", "Waiting", models.StateIdle), agent("Worker2", "Waiting", models.StatePaused)}
+	if got := (Rules{}).Route("Worker2, please look", agents); got != nil {
+		t.Errorf("got %+v", got)
+	}
+}
+
 func TestExplainsTheDecision(t *testing.T) {
 	cases := map[string]string{
 		"Sage, please look": "you named Sage",

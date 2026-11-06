@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
 import { crowd, hub, hubToken, overlapping, tagBoxes } from './support/hubOffice.ts';
+import { wipe } from './support/page.ts';
 
 // Mabari on a phone, 390 by 844: the office with 22 agents, Home's catch-up card and an open chat
 // thread. Each took more of the screen than it should and left the rest too small to use.
 
 test.beforeEach(async ({ page, request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await page.setViewportSize({ width: 390, height: 844 });
 });
 

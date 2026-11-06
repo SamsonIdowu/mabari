@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { crowd, hub, hubToken } from './support/hubOffice.ts';
+import { wipe } from './support/page.ts';
 
 // Three things that were easy to miss or to lose: "Tell me when it's done" in a working agent's
 // panel, the Activity log and its Export under a crowd's timeline, and the Changes dialog's top.
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 test.describe("Tell me when it's done", () => {

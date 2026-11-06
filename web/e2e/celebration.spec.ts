@@ -12,13 +12,14 @@ import {
   shippable,
   tagBoxes,
 } from './support/hubOffice.ts';
+import { fromPage, wipe } from './support/page.ts';
 
 // The ship it party, the trophy display, the tags and the camera in the meeting room, the welcome
 // office and the picture of the office: what makes the floor worth opening. Each test wipes the
 // office first, so they don't depend on one another.
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 const floorOf = (page: Page) => page.locator('#floor');
@@ -40,6 +41,7 @@ async function settleApprovals(request: APIRequestContext) {
         for (const approval of waiting) {
           await request.post(`/api/approvals/${approval.id}/decision`, {
             data: { decision: 'denied' },
+            headers: fromPage,
           });
         }
         return waiting.length;

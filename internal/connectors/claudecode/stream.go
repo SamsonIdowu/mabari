@@ -436,6 +436,8 @@ func (c *Connector) handleResult(r *run, line streamLine) {
 		c.closeLive(r, agent)
 		c.markDenied(r, agent, line.PermissionDenials)
 		r.pending = max(0, r.pending-1)
+		lastSaid := r.lastSaid
+		r.lastSaid = ""
 		// total_cost_usd is a running total, resumed sessions included. usage covers one turn.
 		agent.Cost = max(agent.Cost, line.TotalCost)
 		agent.TokensIn += line.Usage.InputTokens
@@ -455,7 +457,7 @@ func (c *Connector) handleResult(r *run, line streamLine) {
 		if r.pending > 0 {
 			return
 		}
-		c.turnFinished(agent, line.Result)
+		c.turnFinished(agent, orDefault(line.Result, lastSaid))
 	})
 }
 

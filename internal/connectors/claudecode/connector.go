@@ -840,6 +840,17 @@ func (c *Connector) observe(in input) []byte {
 		if reply := c.deliverAtStop(agent); reply != nil {
 			return reply
 		}
+		// A session Mabari runs finishes on its stream's result, which comes after all of the turn's
+		// text. This hook comes by another road and can get here while that text is still in the
+		// pipe, and Done would let the process go before it is read. An interrupted turn is left
+		// out, as the docs don't say a result always follows one; its text waits on pending anyway.
+		c.mu.Lock()
+		r := c.runs[agent.ID]
+		c.mu.Unlock()
+		if r != nil && !r.interrupted {
+			r.lastSaid = redact.Text(in.LastAssistantMessage)
+			return nil
+		}
 		agent.State = models.StateDone
 		agent.Progress = 1
 		full := redact.Text(in.LastAssistantMessage)

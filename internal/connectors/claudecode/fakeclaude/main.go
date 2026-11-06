@@ -23,6 +23,9 @@
 //	fake:read <path>        a Read call that needs no approval
 //	fake:slow <words>       streams that many words, slowly
 //	fake:hang               works until interrupted
+//	fake:late <text>        reports Stop, then writes its reply once $FAKE_HOOK_DIR/gate exists
+//	fake:trail <text>       works until interrupted, then writes that once the gate exists
+//	fake:stall              says half a reply, then never finishes, whatever it is told
 //	fake:big <bytes>        says that many bytes in one message
 //	fake:silent             sends a message with no text in it
 //	fake:secret             says a secret split across two deltas
@@ -565,6 +568,28 @@ func (f *fake) turn(text string) {
 		case <-time.After(10 * time.Minute):
 		}
 		return
+	case "fake:late":
+		id := "msg_" + newUUID()
+		f.open(id)
+		f.fire(context.Background(), "Stop", map[string]any{"stop_hook_active": false, "last_assistant_message": rest})
+		waitForGate()
+		f.finish(id, strings.SplitAfter(rest, " "), rest, 5*time.Millisecond)
+		f.result("success", rest, false)
+		return
+	case "fake:trail":
+		f.say("Working on it.", 0)
+		<-f.interrupted
+		id := "msg_" + newUUID()
+		f.open(id)
+		waitForGate()
+		f.finish(id, strings.SplitAfter(rest, " "), rest, 5*time.Millisecond)
+		f.result("error_during_execution", "", true)
+		return
+	case "fake:stall":
+		f.say("Working on it.", 0)
+		f.open("msg_" + newUUID())
+		f.delta("Half a reply ")
+		select {}
 	case "fake:silent":
 		f.stream("msg_"+newUUID(), nil, "", 0)
 	case "fake:big":
@@ -630,26 +655,52 @@ func (f *fake) sayPieces(pieces []string, text string) {
 }
 
 func (f *fake) stream(id string, pieces []string, text string, gap time.Duration) {
-	event := func(body map[string]any) {
-		f.emit(map[string]any{"type": "stream_event", "uuid": newUUID(), "session_id": f.session, "parent_tool_use_id": nil, "event": body})
-	}
-	event(map[string]any{"type": "message_start", "message": map[string]any{"id": id, "role": "assistant", "model": f.model}})
-	event(map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}})
+	f.open(id)
+	f.finish(id, pieces, text, gap)
+}
+
+func (f *fake) event(body map[string]any) {
+	f.emit(map[string]any{"type": "stream_event", "uuid": newUUID(), "session_id": f.session, "parent_tool_use_id": nil, "event": body})
+}
+
+func (f *fake) delta(piece string) {
+	f.event(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": piece}})
+}
+
+// open starts a message, before any of its text.
+func (f *fake) open(id string) {
+	f.event(map[string]any{"type": "message_start", "message": map[string]any{"id": id, "role": "assistant", "model": f.model}})
+	f.event(map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}})
+}
+
+// finish writes the text of a message already opened, then sends it whole.
+func (f *fake) finish(id string, pieces []string, text string, gap time.Duration) {
 	for _, piece := range pieces {
-		event(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": piece}})
+		f.delta(piece)
 		if gap > 0 {
 			time.Sleep(gap)
 		}
 	}
-	event(map[string]any{"type": "content_block_stop", "index": 0})
-	event(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"}})
-	event(map[string]any{"type": "message_stop"})
+	f.event(map[string]any{"type": "content_block_stop", "index": 0})
+	f.event(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"}})
+	f.event(map[string]any{"type": "message_stop"})
 	message := map[string]any{
 		"id": id, "type": "message", "role": "assistant", "model": f.model,
 		"content": []any{map[string]any{"type": "text", "text": text}},
 	}
 	f.emit(map[string]any{"type": "assistant", "uuid": newUUID(), "session_id": f.session, "parent_tool_use_id": nil, "message": message})
 	f.record("assistant", message)
+}
+
+// waitForGate holds a reply back until the test lets it go, so what happens meanwhile doesn't depend
+// on how fast anything runs.
+func waitForGate() {
+	gate := filepath.Join(os.Getenv("FAKE_HOOK_DIR"), "gate")
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
+		if _, err := os.Stat(gate); err == nil { // #nosec G703 -- a test double, using paths its test gave it
+			return
+		}
+	}
 }
 
 // tool makes one tool call and follows the documented order of hooks and rules, then says how it

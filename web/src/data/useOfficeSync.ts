@@ -5,6 +5,7 @@ import { useOfficeUi } from '../office/uiStore.ts';
 import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { api } from './api.ts';
+import { useConversations } from './conversation.ts';
 import { flushBeforeInput, frameBatch } from './frameBatch.ts';
 import { holdChangesWith } from './heldChanges.ts';
 import { useOfficeStore } from './officeStore.ts';
@@ -71,8 +72,12 @@ export function useOfficeSync(): void {
           if (message.seq !== 0 && message.seq <= seen) return;
           if (message.type === 'reset') forgetView();
           reloadUntilItWorks();
+          // Conversations aren't in the snapshot, so what is open reloads by itself.
+          useConversations.getState().reloadAll();
           return;
         }
+        // Not batched: text streaming a word at a time should show as it arrives.
+        useConversations.getState().apply(message);
         if (!hold(message)) arrived.add(message);
       };
       socket.onclose = () => {

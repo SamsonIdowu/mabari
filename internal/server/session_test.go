@@ -487,3 +487,121 @@ func TestStopEndsASessionThroughTheAPI(t *testing.T) {
 		t.Fatal("the conversation went with it")
 	}
 }
+
+// claudePlan asks the planner for a plan on Claude Code, which needs no attaching.
+func (o *runOffice) claudePlan(t *testing.T) string {
+	t.Helper()
+	reply := decode[planReply](t, o.do(t, http.MethodPost, "/api/planner", `{"said":["Build a coffee shop site, use Claude"]}`))
+	if reply.Plan.Account != models.AccountClaudeCode {
+		t.Fatalf("the planner chose %s", reply.Plan.Account)
+	}
+	plan, _ := json.Marshal(reply.Plan)
+	return string(plan)
+}
+
+func TestNewProjectStartsItsLeadWithNoTerminal(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"go","folder":"`+o.folder+`","brief":"Sell beans"}`)
+	result := decode[struct {
+		LeadID  string         `json:"leadId"`
+		Notice  string         `json:"notice"`
+		Project models.Project `json:"project"`
+	}](t, response)
+	if response.Code != http.StatusCreated || result.LeadID == "" || result.Notice != "" {
+		t.Fatalf("start = %d %+v", response.Code, result)
+	}
+	if len(o.launcher.requests) != 0 {
+		t.Fatal("a terminal opened")
+	}
+	lead := o.state(result.LeadID)
+	if lead.Project == nil || *lead.Project != result.Project.ID || lead.Session == nil || lead.Session.Mode != "default" {
+		t.Fatalf("lead = %+v, session %+v", lead.Agent, lead.Session)
+	}
+	o.until(t, "the brief", func() bool {
+		for _, item := range o.conversation(t, result.LeadID).Items {
+			if item.Kind == models.ConversationUser && strings.Contains(item.Text, "Sell beans") {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func TestPlanFirstStartsTheLeadInPlanMode(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"plan","folder":"`+o.folder+`"}`)
+	result := decode[map[string]any](t, response)
+	lead := o.state(result["leadId"].(string))
+	if lead.Session == nil || lead.Session.Mode != "plan" {
+		t.Fatalf("session = %+v", lead.Session)
+	}
+}
+
+func TestNewProjectInATerminalIsStillAChoice(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"go","folder":"`+o.folder+`","where":"terminal"}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("start = %d %s", response.Code, response.Body.String())
+	}
+	if request := o.launcher.last(t); request.Folder != o.folder {
+		t.Fatalf("request = %+v", request)
+	}
+	if entries, _ := os.ReadDir(o.logs); len(entries) != 0 {
+		t.Fatal("a session ran here as well")
+	}
+}
+
+// Asked before anything is made, so saying no leaves no project behind.
+func TestNewProjectAsksAboutAFolderBeforeMakingAnything(t *testing.T) {
+	o := newRunOffice(t)
+	if err := os.WriteFile(filepath.Join(o.folder, ".mcp.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"go","folder":"`+o.folder+`"}`)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"trust"`) {
+		t.Fatalf("start = %d %s", response.Code, response.Body.String())
+	}
+	if projects := o.engine.Snapshot().Projects; len(projects) != 0 {
+		t.Fatalf("made %+v", projects)
+	}
+}
+
+func TestStartingAnAgentFileAtTheDeskRunsItHere(t *testing.T) {
+	o := newRunOffice(t)
+	withDefs(o.office, plannerFile)
+	created := decode[models.Project](t, o.do(t, http.MethodPost, "/api/projects", `{"name":"Shop","color":"#48DBFB"}`))
+	if response := o.do(t, http.MethodPatch, "/api/projects/"+created.ID, `{"folder":"`+o.folder+`"}`); response.Code != http.StatusOK {
+		t.Fatalf("attach = %d %s", response.Code, response.Body.String())
+	}
+	response := o.do(t, http.MethodPost, "/api/desks/start",
+		`{"defId":"account:planner","projectId":"`+created.ID+`","task":"Plan the checkout page"}`)
+	result := decode[deskStartResult](t, response)
+	if response.Code != http.StatusCreated || result.AgentID == "" {
+		t.Fatalf("start = %d %+v", response.Code, result)
+	}
+	agent := o.state(result.AgentID)
+	if agent.DefID != plannerFile.ID || agent.Session.AgentFile != "planner" {
+		t.Fatalf("agent = %+v, session %+v", agent.Agent, agent.Session)
+	}
+	o.until(t, "the reply", func() bool { return o.said(t, result.AgentID, "Done: Plan the checkout page") })
+	if len(o.launcher.requests) != 0 {
+		t.Fatal("a terminal opened")
+	}
+	args, err := os.ReadFile(filepath.Join(o.logs, agent.Session.ID+".args")) // #nosec G304 -- a test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), `"--agent","planner"`) {
+		t.Fatalf("args = %s", args)
+	}
+	// No terminal session reports, so nothing is left waiting for one.
+	_ = o.engine.Do(func() {
+		if project := o.engine.Project(created.ID); len(project.Opening) != 0 {
+			t.Errorf("opening = %+v", project.Opening)
+		}
+	})
+}

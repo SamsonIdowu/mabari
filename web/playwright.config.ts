@@ -51,10 +51,14 @@ export default defineConfig({
         MABARI_TEST_FAKE_LAN: '1',
         // Never open real terminal windows running Claude Code.
         MABARI_NO_TERMINAL: '1',
+        // Never run the real claude, which would spend the account. session.spec.ts has its own
+        // server, with a fake claude first on PATH.
+        MABARI_NO_SESSIONS: '1',
         MABARI_MASTER_KEY: masterKey,
       },
       url: `http://127.0.0.1:${apiPort}/api/health`,
-      reuseExistingServer: true,
+      // A server already there has none of the settings above, and could start the real claude.
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {

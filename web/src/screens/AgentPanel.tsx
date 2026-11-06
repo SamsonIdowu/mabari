@@ -20,6 +20,7 @@ import { useReturnFocus } from '../shell/useReturnFocus.ts';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
+import { LatestConversation, SessionSection } from './SessionSection.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
 type Dialog = 'settings' | 'subagent' | null;
@@ -803,7 +804,9 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
         <AnswerCard agent={agent} />
         {tab === 'live' ? (
           <>
+            <LatestConversation agent={agent} />
             <Replies agent={agent} />
+            <SessionSection agent={agent} />
             <Section title="Current task">
               <p style={{ fontWeight: 700, fontSize: 15 }}>{agent.task}</p>
             </Section>

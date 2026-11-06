@@ -561,7 +561,7 @@ function FloorMessage({ office }: { office: Snapshot }) {
           <>
             <h2>Connected. No agents running yet.</h2>
             <p className="muted">
-              Start a session in your terminal, or run one from the agent builder. It will walk in
+              Start one with New agent, in your terminal, or from the agent builder. It will walk in
               and take a desk.
             </p>
           </>

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -1718,12 +1719,9 @@ func TestTakingOverASessionStartedElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The fake finds a session by the folder it runs in, as Claude Code searches.
-	// It sees the folder's real path, which on a Mac isn't the temporary path it was given.
-	real, err := filepath.EvalSymlinks(b.folder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fakeFile := filepath.Join(b.config, "projects", strings.ReplaceAll(strings.ReplaceAll(real, "/", "-"), ".", "-"), session+".jsonl")
+	// Every character but a letter or digit becomes a dash, and a Mac's temporary folder has more
+	// of them than slashes and dots.
+	fakeFile := filepath.Join(b.config, "projects", regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(b.folder, "-"), session+".jsonl")
 	if err := os.MkdirAll(filepath.Dir(fakeFile), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -1742,6 +1740,7 @@ func TestTakingOverASessionStartedElsewhere(t *testing.T) {
 	if saved := b.read(id); len(saved.Queued) != 1 {
 		t.Fatalf("queued = %+v", saved.Queued)
 	}
+	var err error
 	_ = b.engine.Do(func() { err = b.c.ResumeSession(b.engine.Agent(id)) })
 	if err != nil {
 		t.Fatal(err)

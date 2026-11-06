@@ -164,7 +164,14 @@ func (b *bench) start(prompt string, change ...func(*SessionSpec)) *models.LiveA
 	}
 	var agent *models.LiveAgent
 	var err error
-	_ = b.engine.Do(func() { agent, err = b.c.StartSession(spec) })
+	_ = b.engine.Do(func() {
+		var started *models.LiveAgent
+		if started, err = b.c.StartSession(spec); err == nil {
+			// A copy: the agent itself is only for reading inside Do.
+			copied := *started
+			agent = &copied
+		}
+	})
 	if err != nil {
 		b.t.Fatal(err)
 	}
@@ -1222,6 +1229,7 @@ func TestASessionCarriedOnInATerminalIsFollowed(t *testing.T) {
 	pid := b.read(agent.ID).Session.PID
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return processGone(pid) })
+	b.until("Mabari to see it end", func() bool { return b.read(agent.ID).Session.TranscriptEnd != nil })
 	body, _ := json.Marshal(map[string]any{
 		"session_id": agent.Session.ID, "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
 	})

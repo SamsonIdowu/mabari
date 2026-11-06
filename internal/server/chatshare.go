@@ -104,6 +104,7 @@ func (a *api) askEveryone(w http.ResponseWriter, body chatBody) {
 		ask = Ask{ID: hex.EncodeToString(raw), ProjectID: project.ID, Text: strings.TrimSpace(body.Text), Time: a.engine.Now().UnixMilli()}
 		for _, agent := range agents {
 			known := a.instructionIDs()
+			a.allowAttached(agent, sent.files)
 			if connector := a.engine.ConnectorFor(agent); connector != nil {
 				connector.Instruct(agent, sent.text)
 			}

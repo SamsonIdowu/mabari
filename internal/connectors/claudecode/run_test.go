@@ -554,6 +554,66 @@ func (b *bench) attach() {
 	}
 }
 
+// A file the person attached for a session is read with no click. That is all that is opened: the
+// next file along, another session and every other tool still ask.
+func TestAnAttachedFileIsReadWithNoClickAndNothingElseIs(t *testing.T) {
+	b := newBench(t)
+	folder := filepath.Join(b.config, "..", "attachments", "abc123")
+	if err := os.MkdirAll(folder, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	folder, err := filepath.EvalSymlinks(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, beside := filepath.Join(folder, "notes.txt"), filepath.Join(folder, "beside.txt")
+	for _, path := range []string{attached, beside} {
+		if err := os.WriteFile(path, []byte("words"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := b.start("hello")
+	b.untilState(first.ID, models.StateDone)
+	second := b.start("hello", func(spec *SessionSpec) { spec.Name = "Pepper" })
+	b.untilState(second.ID, models.StateDone)
+	b.c.AllowAttached(first.ID, []string{attached})
+
+	b.instruct(first.ID, "fake:read "+attached)
+	b.until("the read", func() bool { return b.actions() == 1 })
+	b.untilState(first.ID, models.StateDone)
+	if approval := b.read(first.ID).Approval; approval != nil {
+		t.Fatalf("it asked: %+v", approval)
+	}
+
+	// The file next to it, another session and another tool on the same path all still stop.
+	b.instruct(first.ID, "fake:read "+beside)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	b.instruct(second.ID, "fake:read "+attached)
+	b.decide(second.ID, models.DecisionDenied)
+	b.untilState(second.ID, models.StateDone)
+	b.instruct(first.ID, "fake:edit "+attached)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	if b.actions() != 1 {
+		t.Fatalf("%d actions ran", b.actions())
+	}
+
+	// A path that has come to land somewhere else is no longer the file the person attached.
+	if err := os.Remove(attached); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(beside, attached); err != nil {
+		t.Fatal(err)
+	}
+	b.instruct(first.ID, "fake:read "+attached)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	if b.actions() != 1 {
+		t.Fatalf("%d actions ran", b.actions())
+	}
+}
+
 func TestAnAttachedAccountDoesNotAskTwice(t *testing.T) {
 	b := newBench(t)
 	b.attach()

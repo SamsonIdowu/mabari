@@ -73,6 +73,8 @@ type chatResult struct {
 // composed is a message with everything the box added to it, ready to send.
 type composed struct {
 	text string
+	// files are the attached files named in text.
+	files []string
 	// problem is why it can't go, worded for the person.
 	problem string
 }
@@ -99,7 +101,8 @@ func (a *api) compose(body chatBody, self string) composed {
 		}
 		blocks = append(blocks, "Context, "+agent.Name+"'s latest reply:\n"+quote(ellipsize(reply, mentionKept)))
 	}
-	if files := a.attachmentPaths(body.Attachments); len(files) > 0 {
+	files := a.attachmentPaths(body.Attachments)
+	if len(files) > 0 {
 		blocks = append(blocks, "Attached files, read them by path:\n- "+strings.Join(files, "\n- "))
 	}
 	if len(blocks) > 0 {
@@ -111,7 +114,15 @@ func (a *api) compose(body chatBody, self string) composed {
 	if len(text) > maxPrompt*2 {
 		return composed{problem: "That's too long to send with what is attached. Cut it down."}
 	}
-	return composed{text: text}
+	return composed{text: text, files: files}
+}
+
+// allowAttached lets this agent's session read the files sent to it with no click, before it hears
+// of them. Other sessions, and everything else, still ask. Call inside Do.
+func (a *api) allowAttached(agent *models.LiveAgent, files []string) {
+	if a.claude != nil && len(files) > 0 && agent.Source == claudecode.Source {
+		a.claude.Connector.AllowAttached(agent.ID, files)
+	}
 }
 
 // quote marks each line as quoted, so an agent reads it as someone else's words.
@@ -183,6 +194,7 @@ func (a *api) chatToAgent(w http.ResponseWriter, body chatBody) {
 			status, problem = http.StatusBadRequest, sent.problem
 			return
 		}
+		a.allowAttached(agent, sent.files)
 		result, status, problem = a.sendTo(agent, sent.text, body)
 	}); err != nil {
 		internalError(w, err)
@@ -283,7 +295,7 @@ func (a *api) chatToProject(w http.ResponseWriter, body chatBody) {
 	case sent.problem != "":
 		writeError(w, http.StatusBadRequest, sent.problem)
 	default:
-		a.sendProject(w, body.ProjectID, sent.text)
+		a.sendProject(w, body.ProjectID, sent.text, sent.files)
 	}
 }
 

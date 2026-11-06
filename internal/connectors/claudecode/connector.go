@@ -135,6 +135,9 @@ type Connector struct {
 	tails map[string]*tail
 	// noPlace are the agents holding a message only because every place for a process was taken.
 	noPlace map[string]bool
+	// attached are the files each agent's session may read with no click, as the path it was given
+	// to where that path landed. See attached.go.
+	attached map[string]map[string]string
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -159,6 +162,7 @@ func New(engine *events.Engine) *Connector {
 		sessions: map[string]string{},
 		tails:    map[string]*tail{},
 		noPlace:  map[string]bool{},
+		attached: map[string]map[string]string{},
 	}
 }
 
@@ -237,7 +241,9 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	_ = c.engine.Do(func() {
 		reply = c.observe(in)
 		if reply == nil && fromRun && in.Event == "PreToolUse" {
-			reply = c.gate(in)
+			if reply = c.attachedRead(in); reply == nil {
+				reply = c.gate(in)
+			}
 		}
 	})
 	if !fromRun {

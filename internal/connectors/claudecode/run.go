@@ -913,6 +913,7 @@ func (c *Connector) endAll() {
 	clear(c.sessions)
 	clear(c.tails)
 	clear(c.noPlace)
+	clear(c.attached)
 	c.mu.Unlock()
 	for _, r := range ending {
 		c.retire(r)

@@ -152,11 +152,13 @@ var (
 	// recapAsk is a request to hear what happened while the person was away: "what did I miss?",
 	// "catch me up", "what happened while I was out?". It is the whole message, so a task that
 	// shares words with it ("catch up on the tests", "recap the meeting") is still a task, and
-	// "catch me up on Ledger" is still a question about Ledger.
+	// "catch me up on Ledger" is still a question about Ledger. "while I was away" on its own, as the
+	// card on Home words it, is the same request.
 	recapAsk = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:` +
 		`what (?:did|have) i (?:miss|missed)|what i missed|what(?:'s| has| have)? happened|` +
 		`did i miss (?:anything|something)|anything (?:happen|happened)|` +
-		`catch me up|catch up|bring me up to speed|fill me in|recap)` +
+		`catch me up|catch up|bring me up to speed|fill me in|recap|` +
+		`(?:while|since|when) (?:i|you)(?:'ve| have)?(?: was| were| been)? (?:away|out|gone|offline|afk|asleep|left))` +
 		`(?:\s+(?:while|since|when) i\b.*)?(?:\s+please)?[\s.!?]*$`)
 	// overall is a question about how the whole office is doing, with no agent or topic named:
 	// "how is everything going?", "how are things going?", "how's it going", "is everything ok?".

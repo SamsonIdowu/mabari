@@ -58,6 +58,16 @@ func TestRecapPhrases(t *testing.T) {
 		"what's happened since I left?",
 		"what’s happened?", // A curly apostrophe, as a phone or a paste brings.
 		"what has happened",
+		"while I was away",
+		"While I was away?",
+		"while I was out",
+		"while you were away",
+		"since I was away",
+		"since I left",
+		"when I was away",
+		"while I've been away",
+		"while I have been gone",
+		"while i was offline",
 		"anything happen while I was gone?",
 	}
 	for _, phrase := range phrases {

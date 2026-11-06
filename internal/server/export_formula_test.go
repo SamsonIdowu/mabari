@@ -53,6 +53,18 @@ func TestSafeCell(t *testing.T) {
 		{"small equals sign", "﹦1", "'﹦1"},
 		{"mathematical minus", "−1", "'−1"},
 		{"full-width letters are only letters", "ＡＢＣ＝", "ＡＢＣ＝"},
+
+		// A quote in front doesn't hide it: a reader that takes the quote for the start of a field
+		// still reads the formula after it.
+		{"a quote then a formula after a semicolon", `x;"=cmd();y`, `x;'"=cmd();y`},
+		{"two quotes then a formula", `x;""=1+1`, `x;'""=1+1`},
+		{"a space and a quote then a formula", `x; "+1`, `x;' "+1`},
+		{"a quote at the start", `"=1+1`, `'"=1+1`},
+		{"many quotes and spaces at the start", ` " "  ""-1`, `' " "  ""-1`},
+		{"a full-width quote", "x;＂=1", "x;'＂=1"},
+		{"a quote around a tab", "x;\"\t\"=1", "x;'\"\t'\"=1"},
+		{"a quote that hides nothing", `say "hello", then =done`, `say "hello", then =done`},
+		{"a quoted word", `x;"word"`, `x;"word"`},
 	}
 	for _, test := range cases {
 		if got := safeCell(test.in); got != test.want {
@@ -61,10 +73,10 @@ func TestSafeCell(t *testing.T) {
 	}
 }
 
-// startsLikeAFormula is what a spreadsheet would run: after any leading space, = + - or @, in
-// their ordinary or full-width forms.
+// startsLikeAFormula is what a spreadsheet would run: after any number of leading spaces and
+// quotes, = + - or @, in their ordinary or full-width forms.
 func startsLikeAFormula(piece string) bool {
-	piece = strings.TrimLeftFunc(piece, unicode.IsSpace)
+	piece = strings.TrimLeftFunc(piece, func(r rune) bool { return unicode.IsSpace(r) || r == '"' || r == '＂' })
 	if piece == "" {
 		return false
 	}

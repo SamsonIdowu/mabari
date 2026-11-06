@@ -246,9 +246,15 @@ func TestExportCSVNeutralisesFormulas(t *testing.T) {
 		byAgent[record[1]] = record
 	}
 	for _, cell := range cells {
-		record := byAgent["'"+cell]
-		if record == nil || record[3] != "'"+cell || record[4] != "'"+cell {
-			t.Errorf("%q came out as %q", cell, record)
+		want := "'" + cell
+		// A tab, carriage return or line feed also separates cells for a spreadsheet set to split
+		// on it, so what follows it gets its own quote.
+		if strings.ContainsAny(cell[:1], "\t\r\n") {
+			want = "'" + cell[:1] + "'" + cell[1:]
+		}
+		record := byAgent[want]
+		if record == nil || record[3] != want || record[4] != want {
+			t.Errorf("%q came out as %q, want %q", cell, record, want)
 		}
 	}
 	// What was harmless is left exactly as it was.

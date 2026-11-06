@@ -4,11 +4,11 @@ package server
 
 import (
 	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/redact"
@@ -45,18 +45,74 @@ func exportRows(entries []models.LogEntry) []exportRow {
 	return rows
 }
 
-// spreadsheetTriggers start a cell a spreadsheet would read as a formula: = + - and @, and a tab,
-// carriage return or line feed in front of one.
-const spreadsheetTriggers = "=+-@\t\r\n"
+// A spreadsheet reads a cell as a formula when it begins with = + - or @. A cell begins at the start
+// of a field, and also after any separator the person's own settings may split the file on: a
+// comma, a semicolon (the list separator of Excel in many languages), a tab or a pipe, or a line
+// break. So a field such as x;=cmd() is a formula in a spreadsheet that splits on semicolons.
+const (
+	formulaStarts = "=+-@"
+	// cellSeparators are what a cell can begin after, besides the start of its field.
+	cellSeparators = ";,|\t\r\n"
+	// leadingBreaks in front of anything count as a trigger too, as spreadsheets advise.
+	leadingBreaks = "\t\r\n"
+)
 
-// safeCell makes a cell harmless in a spreadsheet. One that starts the way a formula does gets a
-// quote in front, which spreadsheets show as plain text, so a row an agent or a person wrote can't
-// run anything when the file is opened.
-func safeCell(text string) string {
-	if text != "" && strings.ContainsRune(spreadsheetTriggers, rune(text[0])) {
-		return "'" + text
+// plainForm folds the look-alikes of the characters this cares about to the ordinary ones, one
+// character for one character, so positions stay the same. It is what Unicode's compatibility
+// normalisation does to the full-width forms, which is all that matters here: ＝ ＋ － ＠ and the
+// full-width separators, the small forms ﹦ ﹢ ﹣ ﹫, the mathematical minus, and any kind of space.
+// A tab, carriage return and line feed stay as they are, because they separate cells.
+func plainForm(r rune) rune {
+	switch {
+	case r >= 0xFF01 && r <= 0xFF5E: // Full-width ASCII.
+		return r - 0xFEE0
+	case r == 0xFE66:
+		return '='
+	case r == 0xFE62:
+		return '+'
+	case r == 0xFE63, r == 0x2212:
+		return '-'
+	case r == 0xFE6B:
+		return '@'
+	case r == '\t', r == '\r', r == '\n':
+		return r
+	case unicode.IsSpace(r):
+		return ' '
 	}
-	return text
+	return r
+}
+
+// dangerousAt reports whether a cell could begin at runes[at] and run as a formula: after any
+// blanks, a character that starts one. At the start of the text, a tab, carriage return or line
+// feed is enough on its own.
+func dangerousAt(runes []rune, at int, first bool) bool {
+	next := at
+	for next < len(runes) && unicode.IsSpace(runes[next]) {
+		next++
+	}
+	if next < len(runes) && strings.ContainsRune(formulaStarts, plainForm(runes[next])) {
+		return true
+	}
+	return first && at < len(runes) && strings.ContainsRune(leadingBreaks, runes[at])
+}
+
+// safeCell makes a cell harmless in a spreadsheet. Wherever one could begin, at the start of the
+// text and after each separator, if a formula could start there, even after spaces or in full-width
+// forms, a quote is put in front, which spreadsheets show as plain text. So a row an agent or a
+// person wrote can't run anything when the file is opened, however the file is read. Text that
+// can't begin a formula is returned as it was.
+func safeCell(text string) string {
+	runes := []rune(text)
+	var safe strings.Builder
+	atCell := true
+	for index, r := range runes {
+		if atCell && dangerousAt(runes, index, index == 0) {
+			safe.WriteByte('\'')
+		}
+		atCell = strings.ContainsRune(cellSeparators, plainForm(r))
+		safe.WriteRune(r)
+	}
+	return safe.String()
 }
 
 // exportName is the file's name, with the date it was made.
@@ -91,7 +147,7 @@ func (a *api) exportActivity(w http.ResponseWriter, r *http.Request) {
 		err = encoder.Encode(rows)
 	default:
 		contentType = "text/csv; charset=utf-8"
-		err = writeCSV(&body, rows)
+		writeCSV(&body, rows)
 	}
 	if err != nil {
 		internalError(w, err)
@@ -104,20 +160,24 @@ func (a *api) exportActivity(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body.Bytes())
 }
 
-func writeCSV(body *bytes.Buffer, rows []exportRow) error {
-	writer := csv.NewWriter(body)
-	if err := writer.Write([]string{"Time", "Agent", "Type", "Message", "Outcome"}); err != nil {
-		return err
-	}
-	for _, row := range rows {
-		if err := writer.Write([]string{
-			row.Time, safeCell(row.Agent), safeCell(string(row.Type)), safeCell(row.Message), safeCell(row.Outcome),
-		}); err != nil {
-			return err
+// writeCSV writes the rows with every field in double quotes, so a reader that respects quoting
+// keeps each cell whole whatever separator it is set to, and the cells made safe never meet one.
+func writeCSV(body *bytes.Buffer, rows []exportRow) {
+	record := func(fields ...string) {
+		for index, field := range fields {
+			if index > 0 {
+				body.WriteByte(',')
+			}
+			body.WriteByte('"')
+			body.WriteString(strings.ReplaceAll(field, `"`, `""`))
+			body.WriteByte('"')
 		}
+		body.WriteByte('\n')
 	}
-	writer.Flush()
-	return writer.Error()
+	record("Time", "Agent", "Type", "Message", "Outcome")
+	for _, row := range rows {
+		record(row.Time, safeCell(row.Agent), safeCell(string(row.Type)), safeCell(row.Message), safeCell(row.Outcome))
+	}
 }
 
 // logQueryOf reads the log's filters from a request: q, type and agent.

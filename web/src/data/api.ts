@@ -60,6 +60,8 @@ export function unreachableMessage(path: string, method = 'GET'): string {
   if (
     path === '/api/vee' ||
     path === '/api/messages' ||
+    path === '/api/chat/send' ||
+    /^\/api\/agents\/[^/]+\/hand$/.test(path) ||
     /^\/api\/projects\/[^/]+\/send$/.test(path)
   ) {
     return "Can't reach Mabari. Your message was not sent.";
@@ -67,7 +69,7 @@ export function unreachableMessage(path: string, method = 'GET'): string {
   return "Can't reach Mabari. Your change was not saved.";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   for (const [name, value] of Object.entries(sessionHeaders())) headers.set(name, value);
   let response: Response;
@@ -112,7 +114,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-function send<T>(method: string, path: string, body?: unknown): Promise<T> {
+export function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   return request<T>(path, {
     method,
     ...(body === undefined

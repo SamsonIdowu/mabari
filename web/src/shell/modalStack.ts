@@ -161,6 +161,15 @@ function focusMain() {
   main.focus({ preventScroll: true });
 }
 
+/** Moves focus to the side panel, if one is open, unless something in it already has it. */
+export function focusPanel() {
+  const panel = document.querySelector<HTMLElement>('.panel');
+  if (!panel || panel.contains(document.activeElement)) return;
+  panel.setAttribute('tabindex', '-1');
+  panel.style.outline = 'none';
+  panel.focus({ preventScroll: true });
+}
+
 /** How long to wait to see whether the control focus went back to is taken away by what was decided. */
 const SETTLE_MS = 500;
 
@@ -170,7 +179,12 @@ const SETTLE_MS = 500;
  * same if the control goes a moment later, as an approval's Review does once it is answered.
  */
 export function returnFocus(opener: HTMLElement | null) {
-  if (!opener) return;
+  if (!opener) {
+    // Opened from nothing, as a keyboard shortcut can be. Focus must not be left on the body.
+    const active = document.activeElement;
+    if (!stack.length && (!active || active === document.body)) focusMain();
+    return;
+  }
   if (opener.isConnected) opener.focus();
   if (document.activeElement !== opener) {
     focusMain();
@@ -193,6 +207,8 @@ export function holdModal(scrim: HTMLElement, opener: HTMLElement | null): () =>
     if (at >= 0) stack.splice(at, 1);
     if (!stack.length) document.removeEventListener('keydown', trapTab);
     syncInert();
-    returnFocus(opener);
+    // Opened from nothing, as a keyboard shortcut can be: focus is still on what is leaving.
+    if (!opener && !stack.length) focusMain();
+    else returnFocus(opener);
   };
 }

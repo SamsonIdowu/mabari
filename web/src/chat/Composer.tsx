@@ -189,6 +189,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [found, setFound] = useState<{ at: number; files: ChatFile[] }>({ at: -1, files: [] });
   const commands = useRef<ChatCommand[] | null>(null);
   const [commandList, setCommandList] = useState<ChatCommand[]>([]);
+  const [commandsRead, setCommandsRead] = useState(false);
   const savedItems = useSaved((state) => state.items);
   const picked = useRef<{ id: string; name: string }[]>([]);
   const recalling = useRef<RecallState>({ cursor: null, draft: '' });
@@ -218,6 +219,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       .then((reply) => {
         commands.current = reply.commands;
         setCommandList(reply.commands);
+        setCommandsRead(true);
       })
       .catch(() => {
         commands.current = null;
@@ -259,6 +261,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     ];
   }, [trigger, commandList, savedItems, found, wantAt, target, office.agents, agent?.id]);
   const open = suggestions.length > 0 && marked !== dismissed;
+  // A "/" that finds nothing says so, once it has looked, rather than doing nothing at all.
+  const noCommands =
+    trigger?.kind === 'slash' && commandsRead && !suggestions.length && marked !== dismissed;
 
   // The first suggestion is the one ready to choose, until the arrows or the mouse move it.
   const active =
@@ -562,6 +567,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             ))}
           </ul>
         ) : null}
+        {noCommands ? (
+          <p className="cpop help" data-testid="noCommands" style={{ padding: '10px 12px' }}>
+            {trigger.query
+              ? 'No command matches that.'
+              : 'No commands here. Save an instruction to see it in this list.'}
+          </p>
+        ) : null}
         <label className="sr" htmlFor={`${id}-text`}>
           Message {name}
         </label>
@@ -584,7 +596,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         <span className="sr" role="status">
           {open
             ? `${suggestions.length} ${suggestions.length === 1 ? 'suggestion' : 'suggestions'}. Up and down to move, Enter to choose, Escape to close.`
-            : ''}
+            : noCommands
+              ? 'No commands here.'
+              : ''}
         </span>
       </div>
       <div className="cbar">

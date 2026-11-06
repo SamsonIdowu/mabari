@@ -334,10 +334,29 @@ test.describe('small moments', () => {
     await page.goto('/#office');
     await page.getByRole('button', { name: 'Explore a demo office' }).click();
     await expect(page.locator('.tag .nt')).toHaveCount(10);
-    const tag = page.locator('[data-o]', { hasText: 'Ledger' }).locator('.nt');
-    const at = await tag.boundingBox();
+    // Nobody is on the way in from the door at the bottom of the floor: the agents at their desks
+    // keep their places in relation to each other from the first moment, which a walk would not.
+    // Both are read in one go, so the view easing into place can't come between the two.
+    const apart = () =>
+      page.evaluate(() => {
+        const box = (name: string) =>
+          [...document.querySelectorAll('[data-o]')]
+            .find((element) => element.textContent?.includes(name))!
+            .querySelector('.nt')!
+            .getBoundingClientRect();
+        const ledger = box('Ledger');
+        const scout = box('Scout');
+        return { x: scout.x - ledger.x, y: scout.y - ledger.y };
+      });
+    const at = await apart();
     await page.waitForTimeout(600);
-    expect(sameSpot(await tag.boundingBox(), at)).toBe(true);
+    expect(sameSpot(await apart(), at)).toBe(true);
+    // And none of them is down at the door.
+    const stage = (await page.locator('.stage').boundingBox())!;
+    const lowest = await page
+      .locator('[data-o]:not([hidden]) .nt')
+      .evaluateAll((all) => Math.max(...all.map((tag) => tag.getBoundingClientRect().bottom)));
+    expect(lowest).toBeLessThan(stage.y + stage.height - 20);
   });
 });
 

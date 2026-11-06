@@ -325,8 +325,9 @@ section[data-screen]:not([data-screen='office']) {
 /* ---------- office sound ---------- */
 input[type='range'].volume {
   width: 220px;
-  /* A control is at least 24 by 24 px to hit, whatever the browser draws inside it. */
-  height: 24px;
+  /* A control is at least 24 by 24 px to hit, whatever the browser draws inside it, and Settings
+     is drawn at 0.88 of its size. */
+  height: 28px;
   accent-color: var(--accent);
   cursor: pointer;
 }

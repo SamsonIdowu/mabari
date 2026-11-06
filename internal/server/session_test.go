@@ -711,3 +711,73 @@ func TestStartingAnAgentFileAtTheDeskRunsItHere(t *testing.T) {
 		}
 	})
 }
+
+// A file sent to one session, through the one send, is readable there with no click, and only there.
+func TestAnAttachmentIsReadableByTheSessionItWasSentTo(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	o.until(t, "the first turn", func() bool { return o.state(agent.ID).State == models.StateDone })
+	other := o.do(t, http.MethodPost, "/api/agents", strings.Replace(o.agentBody(""), "Juniper", "Pepper", 1))
+	if other.Code != http.StatusCreated && other.Code != http.StatusOK {
+		t.Fatalf("second agent: %d %s", other.Code, other.Body.String())
+	}
+	second := decode[models.LiveAgent](t, other)
+	o.until(t, "the second agent's turn", func() bool { return o.state(second.ID).State == models.StateDone })
+	uploaded := o.do(t, http.MethodPost, "/api/attachments?name=notes.txt", "words")
+	if uploaded.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	file := decode[Attachment](t, uploaded)
+	sent := o.do(t, http.MethodPost, "/api/chat/send", asJSON(map[string]any{
+		"agentId": agent.ID, "text": "look at this", "attachments": []string{file.ID},
+	}))
+	if sent.Code != http.StatusOK {
+		t.Fatalf("send: %d %s", sent.Code, sent.Body.String())
+	}
+	answer := func(session, path string) string {
+		body, _ := json.Marshal(map[string]any{
+			"session_id": session, "cwd": o.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
+			"tool_input": map[string]any{"file_path": path},
+		})
+		return string(o.connector.HandleRun(context.Background(), body))
+	}
+	if got := answer(agent.Session.ID, file.Path); !strings.Contains(got, `"permissionDecision":"allow"`) {
+		t.Errorf("the session it was sent to: %s", got)
+	}
+	if got := answer(second.Session.ID, file.Path); !strings.Contains(got, `"permissionDecision":"ask"`) {
+		t.Errorf("another session: %s", got)
+	}
+	if got := answer(agent.Session.ID, filepath.Join(filepath.Dir(file.Path), "other.txt")); !strings.Contains(got, `"permissionDecision":"ask"`) {
+		t.Errorf("another file: %s", got)
+	}
+}
+
+// The lead finishing alone is not the whole project: the agents still to come hold it down, and
+// each one that arrives takes its share up.
+func TestAProjectDoesNotReadAsDoneWithAgentsStillToCome(t *testing.T) {
+	o := newRunOffice(t)
+	response := o.do(t, http.MethodPost, "/api/projects/start",
+		`{"plan":`+o.claudePlan(t)+`,"name":"Coffee shop","mode":"go","folder":"`+o.folder+`","brief":"Sell beans"}`)
+	result := decode[struct {
+		LeadID  string         `json:"leadId"`
+		Project models.Project `json:"project"`
+	}](t, response)
+	if response.Code != http.StatusCreated || result.Project.Planned < 2 {
+		t.Fatalf("start = %d %+v", response.Code, result)
+	}
+	members := result.Project.Planned - 1
+	o.until(t, "the lead to finish", func() bool { return o.state(result.LeadID).State == models.StateDone })
+	project := func() models.Project {
+		var found models.Project
+		_ = o.engine.Do(func() {
+			if saved := o.engine.Project(result.Project.ID); saved != nil {
+				found = *saved
+			}
+		})
+		return found
+	}
+	o.until(t, "the percentage", func() bool { return project().Status == models.ProjectReady })
+	if got := project(); got.Planned != members || got.Progress > 1.0/float64(members+1)+0.01 {
+		t.Fatalf("project = planned %d, progress %v", got.Planned, got.Progress)
+	}
+}

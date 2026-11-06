@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/redact"
 )
 
 func open(t *testing.T) *Store {
@@ -32,7 +34,7 @@ func must(t *testing.T, err error) {
 func TestMigratesFromEmpty(t *testing.T) {
 	version, err := open(t).SchemaVersion(context.Background())
 	must(t, err)
-	if version != 3 {
+	if version != 4 {
 		t.Errorf("version = %d", version)
 	}
 }
@@ -209,16 +211,17 @@ func TestSettingsFillInDefaults(t *testing.T) {
 	}
 }
 
-// Clearing the office takes the messages sent to everyone with the projects they were for, and
-// leaves what isn't the office's.
-func TestClearingTheOfficeForgetsAsks(t *testing.T) {
+// Clearing the demo takes what was said to everyone on its projects, and only that.
+func TestClearingTheDemoForgetsItsAsks(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	must(t, s.SetMeta(ctx, MetaAsks, `[{"id":"a"}]`))
+	must(t, s.SetMeta(ctx, MetaAsks, `[{"id":"a","projectId":"demo-p"},{"id":"b","projectId":"real"}]`))
 	must(t, s.SetMeta(ctx, MetaTrusted, `{}`))
-	must(t, s.ClearOffice(ctx))
-	if got, err := s.Meta(ctx, MetaAsks); err != nil || got != "" {
-		t.Errorf("asks = %q, %v", got, err)
+	must(t, s.ClearDemo(ctx, nil, []string{"demo-p"}))
+	got, err := s.Meta(ctx, MetaAsks)
+	must(t, err)
+	if strings.Contains(got, `"a"`) || !strings.Contains(got, `"real"`) {
+		t.Errorf("asks = %q", got)
 	}
 	if got, err := s.Meta(ctx, MetaTrusted); err != nil || got != "{}" {
 		t.Errorf("trusted = %q, %v", got, err)
@@ -278,5 +281,40 @@ func TestWipeEmptiesEverything(t *testing.T) {
 	}
 	if value, err := s.Meta(ctx, "k"); err != nil || value != "" {
 		t.Errorf("meta = %q, %v", value, err)
+	}
+}
+
+// Rows written before the log was masked have their secrets masked in place, and the rest of the
+// row stays as it was.
+func TestRedactLogMasksOldRowsOnce(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	const secret = "ghp_abcdefghijklmnopqrstuvwxyz"
+	must(t, s.SaveLog(ctx, models.LogEntry{
+		ID: "old", Time: 5, Agent: "Atlas", Type: models.LogInstruction, Message: "push with " + secret,
+		Outcome: "Failed: " + secret, Chip: "red",
+	}))
+	must(t, s.SaveLog(ctx, models.LogEntry{ID: "plain", Time: 6, Agent: "Atlas", Type: models.LogQuery, Message: "Nothing here", Outcome: "Fine"}))
+	must(t, s.RedactLog(ctx))
+	rows, err := s.Log(ctx, LogQuery{})
+	must(t, err)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	plain, old := rows[0], rows[1]
+	if old.Message != "push with "+redact.Mask || old.Outcome != "Failed: "+redact.Mask || old.Chip != "red" || old.Time != 5 {
+		t.Errorf("old row = %+v", old)
+	}
+	if plain.Message != "Nothing here" || plain.Outcome != "Fine" {
+		t.Errorf("plain row = %+v", plain)
+	}
+	if found, err := s.Log(ctx, LogQuery{Search: secret}); err != nil || len(found) != 0 {
+		t.Errorf("searching for the secret found %+v, %v", found, err)
+	}
+	// It is a one time pass over what was already there, not a cost on every start.
+	must(t, s.SaveLog(ctx, models.LogEntry{ID: "later", Time: 7, Agent: "Atlas", Type: models.LogQuery, Message: secret}))
+	must(t, s.RedactLog(ctx))
+	if rows, err := s.Log(ctx, LogQuery{Search: secret}); err != nil || len(rows) != 1 {
+		t.Errorf("the pass ran twice: %+v, %v", rows, err)
 	}
 }

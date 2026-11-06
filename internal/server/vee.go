@@ -92,7 +92,7 @@ func (a *api) routeForVee(to vee.Route) *projectRoute {
 		return &projectRoute{sent: vee.ProjectSent{Project: project, Problem: problem}, result: messageResult{Agents: []string{}}}
 	}
 	copied := *project
-	route := a.toProject(&copied, to.Text, to.Why)
+	route := a.toProject(&copied, to.Text, to.Why, nil)
 	return &route
 }
 

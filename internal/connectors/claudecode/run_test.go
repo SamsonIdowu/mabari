@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/simulator"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/store"
@@ -164,7 +165,14 @@ func (b *bench) start(prompt string, change ...func(*SessionSpec)) *models.LiveA
 	}
 	var agent *models.LiveAgent
 	var err error
-	_ = b.engine.Do(func() { agent, err = b.c.StartSession(spec) })
+	_ = b.engine.Do(func() {
+		var started *models.LiveAgent
+		if started, err = b.c.StartSession(spec); err == nil {
+			// A copy: the agent itself is only for reading inside Do.
+			copied := *started
+			agent = &copied
+		}
+	})
 	if err != nil {
 		b.t.Fatal(err)
 	}
@@ -539,17 +547,84 @@ func TestLowRiskAutoApproveStillStopsARiskyAction(t *testing.T) {
 }
 
 // Attached and running here, a session fires both sets of hooks. The person is asked once.
-func TestAnAttachedAccountDoesNotAskTwice(t *testing.T) {
-	b := newBench(t)
+// attach puts Mabari's hooks in Claude Code's settings file, as Attach Claude Code does, so a
+// process Mabari runs fires them as well as its own.
+func (b *bench) attach() {
+	b.t.Helper()
 	settings, err := Hook{Binary: b.c.Hook.Binary, Port: 1}.SessionSettings()
 	if err != nil {
-		t.Fatal(err)
+		b.t.Fatal(err)
 	}
 	// The same hooks in the settings file, without the mark of a session's own.
 	settings = strings.ReplaceAll(settings, `"--run",`, "")
 	if err := os.WriteFile(filepath.Join(b.config, "settings.json"), []byte(settings), 0o600); err != nil {
+		b.t.Fatal(err)
+	}
+}
+
+// A file the person attached for a session is read with no click. That is all that is opened: the
+// next file along, another session and every other tool still ask.
+func TestAnAttachedFileIsReadWithNoClickAndNothingElseIs(t *testing.T) {
+	b := newBench(t)
+	folder := filepath.Join(b.config, "..", "attachments", "abc123")
+	if err := os.MkdirAll(folder, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	folder, err := filepath.EvalSymlinks(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, beside := filepath.Join(folder, "notes.txt"), filepath.Join(folder, "beside.txt")
+	for _, path := range []string{attached, beside} {
+		if err := os.WriteFile(path, []byte("words"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := b.start("hello")
+	b.untilState(first.ID, models.StateDone)
+	second := b.start("hello", func(spec *SessionSpec) { spec.Name = "Pepper" })
+	b.untilState(second.ID, models.StateDone)
+	b.c.AllowAttached(first.ID, []string{attached})
+
+	b.instruct(first.ID, "fake:read "+attached)
+	b.until("the read", func() bool { return b.actions() == 1 })
+	b.untilState(first.ID, models.StateDone)
+	if approval := b.read(first.ID).Approval; approval != nil {
+		t.Fatalf("it asked: %+v", approval)
+	}
+
+	// The file next to it, another session and another tool on the same path all still stop.
+	b.instruct(first.ID, "fake:read "+beside)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	b.instruct(second.ID, "fake:read "+attached)
+	b.decide(second.ID, models.DecisionDenied)
+	b.untilState(second.ID, models.StateDone)
+	b.instruct(first.ID, "fake:edit "+attached)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	if b.actions() != 1 {
+		t.Fatalf("%d actions ran", b.actions())
+	}
+
+	// A path that has come to land somewhere else is no longer the file the person attached.
+	if err := os.Remove(attached); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(beside, attached); err != nil {
+		t.Fatal(err)
+	}
+	b.instruct(first.ID, "fake:read "+attached)
+	b.decide(first.ID, models.DecisionDenied)
+	b.untilState(first.ID, models.StateDone)
+	if b.actions() != 1 {
+		t.Fatalf("%d actions ran", b.actions())
+	}
+}
+
+func TestAnAttachedAccountDoesNotAskTwice(t *testing.T) {
+	b := newBench(t)
+	b.attach()
 	agent := b.start("fake:bash rm -rf build")
 	b.until("the approval", func() bool { return b.read(agent.ID).Approval != nil })
 	first := b.read(agent.ID).Approval.ID
@@ -1009,6 +1084,32 @@ func TestTheCapStopsANewSessionAndSaysSo(t *testing.T) {
 }
 
 // Sitting idle shouldn't take a place from work that is waiting. It resumes with nothing lost.
+// A message to a Done agent while every place is taken waits in amber. It goes as soon as a place
+// comes free, with nobody having to send anything else.
+func TestAMessageHeldBackByTheCapGoesWhenAPlaceComesFree(t *testing.T) {
+	b := newBench(t)
+	_ = b.engine.Do(func() {
+		settings := b.engine.Settings()
+		settings.MaxSessions = 1
+		b.engine.SaveSettings(settings)
+	})
+	done := b.start("first")
+	b.untilState(done.ID, models.StateDone)
+	busy := b.start("fake:slow 40", func(spec *SessionSpec) { spec.Name = "Pepper" })
+	b.until("work to start", func() bool { return b.read(busy.ID).State.Active() })
+	b.instruct(done.ID, "while the other one works")
+	if queued := b.read(done.ID).Queued; len(queued) != 1 {
+		t.Fatalf("queued = %+v", queued)
+	}
+	b.untilState(busy.ID, models.StateDone)
+	b.until("the held message", func() bool {
+		return slices.Contains(b.said(done.ID), "assistant: Done: while the other one works")
+	})
+	if queued := b.read(done.ID).Queued; len(queued) != 0 {
+		t.Fatalf("queued = %+v", queued)
+	}
+}
+
 func TestAnIdleSessionGivesUpItsPlace(t *testing.T) {
 	b := newBench(t)
 	_ = b.engine.Do(func() {
@@ -1193,19 +1294,134 @@ func TestAWipeEndsSessionsAndNothingIsWrittenAfterIt(t *testing.T) {
 	}
 }
 
-// Loading the demo clears the office. Sessions leaving with it mustn't work on unseen.
-func TestClearingTheOfficeEndsSessionsThatLeaveAndKeepsThoseThatStay(t *testing.T) {
+// The demo joins the office and leaves it. Real sessions, the one Mabari runs and the one reporting
+// through its hooks, stay on the floor and work on throughout, with everything they had.
+func TestTheDemoLeavesRealSessionsAndTheirHistoryAlone(t *testing.T) {
 	b := newBench(t)
-	going := b.start("fake:hang")
-	staying := b.start("fake:hang", func(spec *SessionSpec) { spec.Name = "Pepper" })
-	b.until("work to start", func() bool {
-		return b.read(going.ID).State.Active() && b.read(staying.ID).State.Active()
+	sim := simulator.New(b.engine, nil, 0)
+	running := b.start("fake:hang")
+	b.until("work to start", func() bool { return b.read(running.ID).State.Active() })
+	pid := b.read(running.ID).Session.PID
+	const terminal = "22222222-2222-4222-8222-222222222222"
+	body, _ := json.Marshal(map[string]any{
+		"session_id": terminal, "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
 	})
-	goingPID, stayingPID := b.read(going.ID).Session.PID, b.read(staying.ID).Session.PID
-	_ = b.engine.Do(func() { b.c.OfficeCleared([]string{staying.ID}) })
-	b.until("the process to end", func() bool { return processGone(goingPID) })
-	if processGone(stayingPID) {
-		t.Fatal("ended a session that stays")
+	b.c.Handle(context.Background(), body)
+	hooked := agentID(terminal)
+	said := b.said(running.ID)
+	seen := func() []string {
+		var names []string
+		for _, agent := range b.engine.Snapshot().Agents {
+			if agent.Source != simulator.Source {
+				names = append(names, agent.ID)
+			}
+		}
+		slices.Sort(names)
+		return names
+	}
+	before := seen()
+	if len(before) != 2 {
+		t.Fatalf("agents before the demo = %q", before)
+	}
+	if err := sim.LoadDemo(); err != nil {
+		t.Fatal(err)
+	}
+	if during := seen(); !slices.Equal(during, before) {
+		t.Fatalf("while the demo runs the real agents are %q, were %q", during, before)
+	}
+	if count := len(b.engine.Snapshot().Agents); count != 12 {
+		t.Fatalf("agents during the demo = %d", count)
+	}
+	if err := b.engine.Do(sim.StopDemo); err != nil {
+		t.Fatal(err)
+	}
+	if after := seen(); !slices.Equal(after, before) || len(b.engine.Snapshot().Agents) != 2 {
+		t.Fatalf("after the demo = %q, were %q", after, before)
+	}
+	if processGone(pid) {
+		t.Fatal("the demo ended a real session")
+	}
+	if saved := b.read(running.ID); !saved.RunsHere() || !saved.State.Active() || saved.Session.PID != pid {
+		t.Fatalf("session after the demo = %+v", saved.Session)
+	}
+	if got := b.said(running.ID); len(got) < len(said) || !slices.Equal(got[:len(said)], said) {
+		t.Fatalf("conversation = %q, was %q", got, said)
+	}
+	stored, err := b.engine.Store().Agents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 2 {
+		t.Fatalf("%d agents stored after the demo", len(stored))
+	}
+	if b.read(hooked).Session == nil {
+		t.Fatal("the session reporting through hooks lost its session")
+	}
+	// It is still the same session to its process: a message reaches it, and Mabari's hook answers.
+	b.instruct(running.ID, "while you work")
+	if queued := b.read(running.ID).Queued; len(queued) != 1 {
+		t.Fatalf("queued = %+v", queued)
+	}
+}
+
+// A denied call says Denied in the stored conversation, the one a reload reads, and reading its
+// result again from the transcript doesn't turn it into a failure.
+func TestADenialStaysADenial(t *testing.T) {
+	b := newBench(t)
+	b.attach()
+	agent := b.start("fake:bash rm -rf build")
+	b.decide(agent.ID, models.DecisionDenied)
+	b.until("the denial", func() bool { return slices.Contains(b.said(agent.ID), "tool: Bash denied") })
+	b.untilState(agent.ID, models.StateDone)
+	var call models.ConversationItem
+	for _, item := range b.conversation(agent.ID) {
+		if item.Tool != nil {
+			call = item
+		}
+	}
+	block := contentBlock{ToolUseID: call.ID, IsError: true, Content: json.RawMessage(`"It was denied"`)}
+	if got := withResult(call, block, false); got.Tool.State != models.ToolDenied {
+		t.Fatalf("after reading the result again: %+v", got.Tool)
+	}
+}
+
+// A session given "No project" stays out of a project in the same folder. One started elsewhere
+// joins it, as it always has, and now says so.
+func TestJoiningAProjectByItsFolder(t *testing.T) {
+	b := newBench(t)
+	chosen := b.start("first")
+	b.untilState(chosen.ID, models.StateDone)
+	_ = b.engine.Do(func() {
+		b.engine.SaveProject(models.Project{ID: "shop", Name: "Shop", Repository: &models.Repository{Path: b.folder}})
+	})
+	b.instruct(chosen.ID, "second")
+	b.until("the reply", func() bool { return slices.Contains(b.said(chosen.ID), "assistant: Done: second") })
+	b.untilState(chosen.ID, models.StateDone)
+	if project := b.read(chosen.ID).Project; project != nil {
+		t.Fatalf("a session set to no project joined %q", *project)
+	}
+	const terminal = "11111111-1111-4111-8111-111111111111"
+	elsewhere := func(event string) {
+		body, _ := json.Marshal(map[string]any{
+			"session_id": terminal, "cwd": "/somewhere/else", "hook_event_name": event, "tool_name": "Read",
+		})
+		b.c.Handle(context.Background(), body)
+	}
+	elsewhere("PreToolUse")
+	id := agentID(terminal)
+	_ = b.engine.Do(func() {
+		agent := b.engine.Agent(id)
+		agent.Folder = b.folder
+	})
+	elsewhere("PostToolUse")
+	saved := b.read(id)
+	if saved.Project == nil || *saved.Project != "shop" {
+		t.Fatalf("project = %v", saved.Project)
+	}
+	if log := b.engine.Snapshot().Log; !slices.ContainsFunc(log, func(entry models.LogEntry) bool {
+		return strings.Contains(entry.Message, "joined Shop, because it works in that project's folder")
+	}) {
+		t.Fatalf("log = %+v", log)
 	}
 }
 
@@ -1233,6 +1449,7 @@ func TestASessionCarriedOnInATerminalIsFollowed(t *testing.T) {
 	pid := b.read(agent.ID).Session.PID
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return processGone(pid) })
+	b.until("Mabari to see it end", func() bool { return b.read(agent.ID).Session.TranscriptEnd != nil })
 	body, _ := json.Marshal(map[string]any{
 		"session_id": agent.Session.ID, "cwd": b.folder, "hook_event_name": "PreToolUse", "tool_name": "Read",
 	})

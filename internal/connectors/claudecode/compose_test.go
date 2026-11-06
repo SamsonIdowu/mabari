@@ -133,6 +133,7 @@ func TestASessionOnlySwitchesToAModelItsAccountOffers(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("hello")
 	b.untilState(agent.ID, models.StateDone)
+	before := b.read(agent.ID).Model
 	for _, model := range []string{"not-a-model", "--dangerously-skip-permissions", "gpt-5"} {
 		var err error
 		_ = b.engine.Do(func() {
@@ -143,7 +144,7 @@ func TestASessionOnlySwitchesToAModelItsAccountOffers(t *testing.T) {
 			t.Fatalf("%s: %v", model, err)
 		}
 	}
-	if got := b.read(agent.ID); got.Model != agent.Model || got.Session.Status != models.SessionRunning {
+	if got := b.read(agent.ID); got.Model != before || got.Session.Status != models.SessionRunning {
 		t.Fatalf("model %q, session %q", got.Model, got.Session.Status)
 	}
 	if runs := b.argsOf(agent.Session.ID); len(runs) != 1 {

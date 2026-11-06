@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import type { Answer, MessageMode, TeamLine } from '../data/api.ts';
-import type { LiveAgent } from '../gen/models.ts';
+import type { AccountKind, LiveAgent } from '../gen/models.ts';
 import { hashWith } from '../routes.ts';
 import { nextZoom } from './camera.ts';
 import { onFloor } from './layout.ts';
@@ -35,7 +35,7 @@ interface OfficeUi extends OfficeFilters {
   /** The auto approve banner, shown briefly after it is turned on. */
   autoBanner: boolean;
   /** The Create a new agent dialog, with the desk or project it was opened for. */
-  newAgent: { desk?: number; project?: string } | null;
+  newAgent: { desk?: number; project?: string; account?: AccountKind } | null;
   /** The free desk someone clicked, to put an agent file's agent at it with a task. */
   startAtDesk: number | null;
   /** The New project chat. */

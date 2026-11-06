@@ -373,3 +373,52 @@ func TestAnOpinionMentionsNoFiles(t *testing.T) {
 		t.Errorf("the hunk header changed:\n%s", text)
 	}
 }
+
+// A small file renamed and edited is too unlike what it was for git diff to call it a rename. It is
+// still one renamed file with a real diff, not a deleted one and an all new one.
+func TestARenameWithEditsShowsItsRealDiff(t *testing.T) {
+	dir := newRepo(t)
+	put(t, dir, "a.txt", "keep this line\n")
+	put(t, dir, "plain.txt", "alone\n")
+	commitAll(t, dir)
+	gitIn(t, dir, "mv", "a.txt", "renamed a.txt")
+	put(t, dir, "renamed a.txt", "keep this line\nand one\nand two\nand three\nand four\n")
+	changes := read(t, New(), dir)
+	if changes.FileCount != 1 {
+		t.Fatalf("files = %+v", changes.Files)
+	}
+	file := fileOf(t, changes, "renamed a.txt")
+	if file.Status != models.ChangeRenamed || file.OldPath != "a.txt" || file.Added != 4 || file.Removed != 0 || !file.Counted {
+		t.Fatalf("file = %+v", file)
+	}
+	kinds := map[string]int{}
+	for _, hunk := range file.Hunks {
+		for _, line := range hunk.Lines {
+			kinds[line.Kind]++
+		}
+	}
+	if kinds["ctx"] != 1 || kinds["add"] != 4 {
+		t.Fatalf("lines = %v in %+v", kinds, file.Hunks)
+	}
+	if changes.Added != 4 || changes.Removed != 0 {
+		t.Fatalf("totals +%d -%d", changes.Added, changes.Removed)
+	}
+}
+
+// The same through a subfolder, under a name Git could misread: the old file is read as an object
+// and the new one stays a path.
+func TestARenameWithEditsInAFolderAndAHostileName(t *testing.T) {
+	dir := newRepo(t)
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	put(t, dir, "sub/-rf old.txt", "keep this line\n")
+	commitAll(t, dir)
+	gitIn(t, filepath.Join(dir, "sub"), "mv", "--", "-rf old.txt", "--new name.txt")
+	put(t, dir, "sub/--new name.txt", "keep this line\nand one\nand two\nand three\nand four\n")
+	changes := read(t, New(), filepath.Join(dir, "sub"))
+	file := fileOf(t, changes, "--new name.txt")
+	if changes.FileCount != 1 || file.OldPath != "-rf old.txt" || file.Added != 4 || file.Removed != 0 {
+		t.Fatalf("files = %+v", changes.Files)
+	}
+}

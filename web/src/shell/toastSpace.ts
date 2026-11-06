@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Where toasts go while a side panel is open, and which toasts it makes pointless.
+import type { LiveAgent } from '../gen/models.ts';
 
 /** The widest a toast is, plus the space either side of it. */
 const TOAST_ROOM = 340 + 2 * 16;
@@ -33,4 +34,17 @@ export function clearOfPanel(
  */
 export function repeatsOpenPanel(text: string, openAgent: string | null): boolean {
   return openAgent !== null && text.startsWith(`${openAgent} replied.`);
+}
+
+/** The same for a chat on screen: the agent's own thread, or the project's it works in. */
+export function repeatsOpenChat(
+  text: string,
+  place: { agent: string | null; project: string | null },
+  agents: readonly Pick<LiveAgent, 'id' | 'name' | 'projectId'>[],
+): boolean {
+  return agents.some(
+    (agent) =>
+      (agent.id === place.agent || (place.project !== null && agent.projectId === place.project)) &&
+      repeatsOpenPanel(text, agent.name),
+  );
 }

@@ -153,6 +153,11 @@ type Connector struct {
 	runKeys map[string]string
 	// tails are how far each followed session's transcript has been read, by agent.
 	tails map[string]*tail
+	// noPlace are the agents holding a message only because every place for a process was taken.
+	noPlace map[string]bool
+	// attached are the files each agent's session may read with no click, as the path it was given
+	// to where that path landed. See attached.go.
+	attached map[string]map[string]string
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -178,6 +183,8 @@ func New(engine *events.Engine) *Connector {
 		sessions: map[string]string{},
 		runKeys:  map[string]string{},
 		tails:    map[string]*tail{},
+		noPlace:  map[string]bool{},
+		attached: map[string]map[string]string{},
 	}
 }
 
@@ -233,10 +240,12 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	c.lastEvent = time.Now()
 	stopped := c.stopped[in.SessionID]
 	_, live := c.runs[c.sessions[in.SessionID]]
+	leaving := c.leavingNow(c.sessions[in.SessionID])
 	c.mu.Unlock()
 	// With Claude Code attached, a session Mabari runs fires settings.json's hooks as well as its
-	// own, so that copy is ignored: both firing would ask the person twice.
-	if !fromRun && live {
+	// own, so that copy is ignored, as is one from a process on its way out, which hasn't been
+	// carried on anywhere: both firing would ask the person twice.
+	if !fromRun && (live || leaving) {
 		return nil
 	}
 	// A process Mabari no longer speaks for has nobody to ask.
@@ -268,7 +277,9 @@ func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byt
 	_ = c.engine.Do(func() {
 		reply = c.observe(in)
 		if reply == nil && fromRun && in.Event == "PreToolUse" {
-			reply = c.gate(in)
+			if reply = c.attachedRead(in); reply == nil {
+				reply = c.gate(in)
+			}
 		}
 	})
 	if !fromRun {
@@ -497,10 +508,14 @@ func (c *Connector) recognise(agent *models.LiveAgent, in input) {
 	if agent.Lead != nil {
 		return
 	}
-	if agent.Project == nil {
+	// "No project" on a session started here was the person's choice.
+	if agent.Project == nil && !agent.RunsHere() {
 		if project := c.projectFor(agent.Folder); project != "" {
 			agent.Project = &project
 			c.engine.Touch(agent)
+			said := agent.Name + " joined " + c.engine.Project(project).Name + ", because it works in that project's folder."
+			c.engine.Log(agent.Name, models.LogSession, said, "Joined", "")
+			c.engine.Toast(said)
 		}
 	}
 	if !agent.Workflow || in.AgentID != "" || in.AgentType == "" {
@@ -1234,7 +1249,7 @@ func (c *Connector) Start() {}
 
 // Stop ends the sessions Mabari runs, because the office they belong to is going. Waiting
 // permission hooks of other sessions fall back to Claude Code's prompt on their own. Call inside Do.
-func (c *Connector) Stop() { c.endAll(nil) }
+func (c *Connector) Stop() { c.endAll() }
 
 // Instruct passes a message on. A session Mabari runs that isn't working gets it at once, starting
 // its process again if it needs one. Otherwise it is queued, and Claude Code reads it at the next
@@ -1268,6 +1283,7 @@ func (c *Connector) instructRun(agent *models.LiveAgent, text string) {
 	if err := c.deliverNow(agent, text); err != nil {
 		c.engine.Queue(agent, text)
 		c.engine.Toast(err.Error())
+		c.waitForPlace(agent, err)
 	}
 }
 

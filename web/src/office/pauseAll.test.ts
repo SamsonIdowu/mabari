@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import type { GroupReply } from '../data/api.ts';
-import type { LiveAgent } from '../gen/models.ts';
+import type { AgentSession, LiveAgent } from '../gen/models.ts';
 import {
   groupFrom,
   keepOnly,
@@ -110,6 +110,8 @@ describe('what the view is called', () => {
   });
 });
 
+const session = (status: AgentSession['status']) => ({ status }) as AgentSession;
+
 describe('pauseNotes', () => {
   it('has nothing to say about the demo, which stops at once', () => {
     expect(pauseNotes([agent(), agent({ name: 'Bo' })])).toEqual([]);
@@ -117,20 +119,24 @@ describe('pauseNotes', () => {
 
   it('says plainly what each connector can only do', () => {
     const notes = pauseNotes([
-      agent({ name: 'Quill', source: 'claude' }),
-      agent({ name: 'Bolt', source: 'claude' }),
+      agent({ name: 'Quill', source: 'claude', session: session('running') }),
+      agent({ name: 'Bolt', source: 'claude', session: session('resumable') }),
+      agent({ name: 'Term', source: 'claude', session: session('elsewhere') }),
       agent({ name: 'Codey', source: 'codex' }),
       agent({ name: 'Botty', source: 'hub' }),
       agent({ name: 'Demo', source: 'sim' }),
     ]);
-    expect(notes).toHaveLength(3);
+    expect(notes).toHaveLength(4);
     expect(notes[0]).toBe(
-      "Quill and Bolt are in Claude Code, which stops at its next step. Mabari can't restart a session once it has stopped: type in it to carry on.",
+      'Quill and Bolt are in Claude Code, which stops at its next step. Continue everyone carries on from where it stopped.',
     );
     expect(notes[1]).toBe(
-      'Codey is in Codex, which ends its turn. Continue starts a new turn from where it stopped.',
+      "Term is in Claude Code, which stops at its next step. That session runs outside Mabari, which can't restart it: type in it to carry on.",
     );
     expect(notes[2]).toBe(
+      'Codey is in Codex, which ends its turn. Continue starts a new turn from where it stopped.',
+    );
+    expect(notes[3]).toBe(
       'Botty is a hub app, so Mabari can only ask. It queues "Please pause." and the app decides.',
     );
   });

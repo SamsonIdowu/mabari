@@ -127,9 +127,9 @@ func (r *Reader) Read(ctx context.Context, folder, have string) models.Changes {
 	hash.Write(raw)
 	var stats []stat
 	var chunks []chunk
+	base := ""
 	if len(tracked) > 0 {
-		base, err := g.base(ctx, status.oid)
-		if err != nil {
+		if base, err = g.base(ctx, status.oid); err != nil {
 			return fail(models.ChangesFailed, trouble(err))
 		}
 		var numstats, patch []byte
@@ -146,7 +146,7 @@ func (r *Reader) Read(ctx context.Context, folder, have string) models.Changes {
 		cut = cut || numCut || patchCut
 	}
 
-	files, untrackedCut := g.assemble(ctx, tracked, untracked, stats, chunks, hash)
+	files, untrackedCut := g.assemble(ctx, base, tracked, untracked, stats, chunks, hash)
 	cut = cut || untrackedCut
 	changes.Version = hex.EncodeToString(hash.Sum(nil))[:16]
 	if have != "" && have == changes.Version {
@@ -376,10 +376,37 @@ func (g *repo) untrackedDiff(ctx context.Context, name string) (chunk, bool, err
 	return chunks[0], res.cut, nil
 }
 
+// renamedDiff compares a renamed file with what it was. git diff decides for itself what counts as a
+// rename, by how alike the two are, so a small file that was renamed and edited comes back as one
+// file deleted and another added. Git knows it was renamed, from status, so the two are compared
+// directly. The old file is named as an object, so it is only ever read from the repository, and the
+// new one goes after "--", behind "./". It runs with the same switches as every other read.
+func (g *repo) renamedDiff(ctx context.Context, base string, entry statusEntry) (chunk, bool, error) {
+	res, err := g.run(ctx, newFileLimit, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "-U3",
+		"--src-prefix=a/", "--dst-prefix=b/", "--inter-hunk-context=0", base+":./"+entry.orig, "--", "./"+entry.path)
+	if err != nil {
+		return chunk{}, false, err
+	}
+	if res.code > 1 {
+		return chunk{}, false, errors.New(firstLine(res.stderr))
+	}
+	chunks := parsePatch(res.out, res.cut)
+	if len(chunks) != 1 {
+		return chunk{}, res.cut, errors.New("the rename couldn't be compared")
+	}
+	return chunks[0], res.cut, nil
+}
+
+// splitRename reports whether status says a file was renamed and the diff saw it as two files.
+func splitRename(entry statusEntry, stats []stat, byPath map[string]int) bool {
+	index, ok := byPath[entry.path]
+	return ok && entry.kind == "2" && strings.Contains(entry.xy, "R") && entry.orig != "" && !stats[index].hasOrig
+}
+
 // assemble makes one entry for each changed file, from status, the counts and the patch. Counts
 // and patch come in the same order, so the nth chunk is the nth count; when the two don't agree the
 // text is left out rather than put on the wrong file.
-func (g *repo) assemble(ctx context.Context, tracked, untracked []statusEntry,
+func (g *repo) assemble(ctx context.Context, base string, tracked, untracked []statusEntry,
 	stats []stat, chunks []chunk, hash io.Writer,
 ) ([]models.ChangedFile, bool) {
 	var files []models.ChangedFile
@@ -391,6 +418,19 @@ func (g *repo) assemble(ctx context.Context, tracked, untracked []statusEntry,
 	seen := map[string]bool{}
 	for _, entry := range tracked {
 		file := models.ChangedFile{Path: entry.path, OldPath: entry.orig, Status: statusOf(entry)}
+		if splitRename(entry, stats, byPath) {
+			if piece, big, err := g.renamedDiff(ctx, base, entry); err == nil && !big && !piece.binary {
+				seen[entry.path], seen[entry.orig] = true, true
+				file.Counted, file.Added, file.Removed, file.Hunks = true, piece.added, piece.removed, piece.hunks
+				for _, hunk := range piece.hunks {
+					for _, line := range hunk.Lines {
+						_, _ = hash.Write([]byte(line.Text))
+					}
+				}
+				files = append(files, file)
+				continue
+			}
+		}
 		if index, ok := byPath[entry.path]; ok {
 			seen[entry.path] = true
 			applyStat(&file, stats[index])

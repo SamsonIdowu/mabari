@@ -24,7 +24,7 @@ import (
 )
 
 // Source is the value of Agent.Source for simulated agents.
-const Source = "sim"
+const Source = models.SourceDemo
 
 // DemoLength is how long the demo office runs before it turns itself off, so simulated agents
 // never keep running in the background.
@@ -208,7 +208,9 @@ func (s *Simulator) Resume(active bool) error {
 func (s *Simulator) Models() []string { return models.Models[models.AccountClaudeCode] }
 
 type agentSpec struct {
-	name      string
+	name string
+	// shown is its name on the floor, when a real agent already goes by name.
+	shown     string
 	provider  models.Provider
 	model     string
 	account   models.AccountKind
@@ -321,7 +323,7 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 		state = models.StateThinking
 	}
 	agent := &models.LiveAgent{}
-	agent.Name, agent.Provider, agent.Model = spec.name, spec.provider, spec.model
+	agent.Name, agent.Provider, agent.Model = orElse(spec.shown, func() string { return spec.name }), spec.provider, spec.model
 	agent.Account, agent.Source = spec.account, Source
 	agent.Task, agent.State, agent.Desk = task, state, desk
 	agent.Progress = orElse(spec.progress, func() float64 { return s.between(0.1, 0.6) })
@@ -1003,7 +1005,9 @@ func (s *Simulator) StopAgent(agent *models.LiveAgent) {
 
 func intPointer(value int) *int { return &value }
 
-// LoadDemo replaces the office with the prototype's demo and starts it ticking.
+// LoadDemo brings the prototype's demo into the office and starts it ticking. Whatever is real
+// stays as it is, working, on the floor and in the log: the demo only ever adds to the office, and
+// takes away only what it added.
 func (s *Simulator) LoadDemo() error {
 	return s.engine.Do(func() {
 		s.loadDemo()
@@ -1019,11 +1023,19 @@ func (s *Simulator) loadDemo() {
 	s.demoMode = true
 	s.demoEnds = s.now() + s.demoLength.Milliseconds()
 	s.engine.SetDemoEnds(s.demoEnds)
-	s.engine.ClearOffice()
+	// Loading it again starts it afresh.
+	s.clearDemo()
 	s.engine.SetFirstRun(false)
 	s.engine.SetMeta(store.MetaDemo, "1")
 	now := s.now()
+	// A real project can have the id of one of the demo's. It keeps it, and the demo's takes another.
+	projectIDs := map[string]string{}
 	for _, project := range demoProjects(now) {
+		seed := project.ID
+		if s.engine.Project(seed) != nil {
+			project.ID = demoProjectPrefix + seed
+		}
+		projectIDs[seed] = project.ID
 		s.engine.SaveProject(project)
 	}
 	const (
@@ -1063,34 +1075,46 @@ func (s *Simulator) loadDemo() {
 			desk: intPointer(10), progress: 0.45},
 	}
 	for _, spec := range specs {
+		// Real agents keep their desks and their names. The demo sits around them.
+		if slices.ContainsFunc(s.engine.Agents(), func(agent *models.LiveAgent) bool { return agent.Desk == *spec.desk }) {
+			spec.desk = nil
+		}
+		spec.shown = s.freeName(spec.name)
 		s.makeAgent(spec)
 	}
-	s.runtimeOf(s.engine.AgentByName("Rune")).doneUntil = now + 25000
-	for _, agent := range s.engine.Agents() {
+	if writer := s.demoAgent("Rune"); writer != nil {
+		s.runtimeOf(writer).doneUntil = now + 25000
+	}
+	for _, agent := range s.demoAgents() {
 		agent.Rate = float64(agent.Rate / demoSlowdown)
 	}
-	s.runtimeOf(s.engine.AgentByName("Pixel")).nextTask = now + 60000
-	for _, agent := range s.engine.Agents() {
-		project := demoProjectOf[agent.Name]
+	if pixel := s.demoAgent("Pixel"); pixel != nil {
+		s.runtimeOf(pixel).nextTask = now + 60000
+	}
+	for _, agent := range s.demoAgents() {
+		project := projectIDs[demoProjectOf[strings.TrimSuffix(agent.Name, demoMark)]]
 		agent.Project = &project
 	}
-	atlas := s.engine.AgentByName("Atlas")
-	s.engine.RequestApprovalQuietly(atlas, demoApproval)
-	atlas.SubModel = "claude-haiku-4-5"
-	s.makeAgent(agentSpec{
-		name: "Atlas scribe", provider: claude, model: "claude-haiku-4-5", account: code,
-		task: "Draft the migration notes for the release", state: models.StateEditing,
-		near: &atlas.Desk, lead: atlas, project: "checkout", progress: 0.3,
-	})
-	sage := s.engine.AgentByName("Sage")
-	s.engine.Queue(sage, "Also add a changelog entry when you finish")
-	s.engine.Log("Ledger", models.LogInstruction, "Use the money helper instead of toFixed",
+	if atlas := s.demoAgent("Atlas"); atlas != nil {
+		s.engine.RequestApprovalQuietly(atlas, demoApproval)
+		atlas.SubModel = "claude-haiku-4-5"
+		s.makeAgent(agentSpec{
+			name: "Atlas scribe", shown: s.freeName("Atlas scribe"), provider: claude,
+			model: "claude-haiku-4-5", account: code,
+			task: "Draft the migration notes for the release", state: models.StateEditing,
+			near: &atlas.Desk, lead: atlas, project: projectIDs["checkout"], progress: 0.3,
+		})
+	}
+	if sage := s.demoAgent("Sage"); sage != nil {
+		s.engine.Queue(sage, "Also add a changelog entry when you finish")
+	}
+	s.demoLog("Ledger", models.LogInstruction, "Use the money helper instead of toFixed",
 		"Delivered", "ok")
-	s.engine.Log("Rune", models.LogApproval, `git commit -m "docs: update install steps"`,
+	s.demoLog("Rune", models.LogApproval, `git commit -m "docs: update install steps"`,
 		"Allowed", "ok")
-	s.engine.Log("Scout", models.LogQuery, "Which library are you leaning towards?",
+	s.demoLog("Scout", models.LogQuery, "Which library are you leaning towards?",
 		"Answered from the log", "")
-	s.engine.Log("Atlas", models.LogApproval, "rm -rf ./tmp/fixtures", "Denied", "red")
+	s.demoLog("Atlas", models.LogApproval, "rm -rf ./tmp/fixtures", "Denied", "red")
 	s.seedConversations()
 	if s.questionAfter > 0 {
 		s.after(s.questionAfter.Milliseconds(), func() { s.askDemoQuestion(0) })
@@ -1098,12 +1122,45 @@ func (s *Simulator) loadDemo() {
 	s.engine.Reset()
 }
 
+// freeName is a demo agent's name on the floor: its own, or marked when a real agent has that name.
+func (s *Simulator) freeName(name string) string {
+	if s.engine.AgentByName(name) != nil {
+		return name + demoMark
+	}
+	return name
+}
+
+// demoAgents are the demo's own agents.
+func (s *Simulator) demoAgents() []*models.LiveAgent {
+	return slices.DeleteFunc(slices.Clone(s.engine.Agents()), func(agent *models.LiveAgent) bool {
+		return agent.Source != Source
+	})
+}
+
+// demoAgent finds the demo's own agent by the name its script calls it, or nil. A real agent can
+// go by the same name, and the script never touches one of those.
+func (s *Simulator) demoAgent(name string) *models.LiveAgent {
+	for _, agent := range s.demoAgents() {
+		if agent.Name == name || agent.Name == name+demoMark {
+			return agent
+		}
+	}
+	return nil
+}
+
+// demoLog writes a row of the demo's made up history, under its agent's name on the floor.
+func (s *Simulator) demoLog(name string, kind models.LogType, message, outcome, chip string) {
+	if agent := s.demoAgent(name); agent != nil {
+		s.engine.Log(agent.Name, kind, message, outcome, chip)
+	}
+}
+
 // askDemoQuestion has the demo's Claude agent ask its question, so the journey of being asked,
 // and answering in the agent's panel, can be seen without a real session (FIRST-11). It waits
 // until the agent is at work, not already waiting on you, and has read the message the demo opens
 // with waiting for it, so the two don't muddle each other. It gives up after a minute.
 func (s *Simulator) askDemoQuestion(attempt int) {
-	agent := s.engine.AgentByName(demoAsker)
+	agent := s.demoAgent(demoAsker)
 	if agent == nil || agent.Source != Source || agent.Leaving {
 		return
 	}
@@ -1139,8 +1196,10 @@ func (s *Simulator) seedConversations() {
 	ordered := append([]seededMessage{}, seededMessages...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ago > ordered[j].ago })
 	for _, message := range ordered {
-		from, to := s.engine.AgentByName(message.from), s.engine.AgentByName(message.to)
-		s.engine.AddMessage(from, to, message.text, message.kind, message.ago)
+		from, to := s.demoAgent(message.from), s.demoAgent(message.to)
+		if from != nil && to != nil {
+			s.engine.AddMessage(from, to, message.text, message.kind, message.ago)
+		}
 	}
 }
 
@@ -1224,10 +1283,9 @@ func (s *Simulator) StopDemo() {
 	s.endDemo("Stopped the demo office", "")
 }
 
-// endDemo takes the simulated agents and the demo's projects, messages and log away. The demo's
-// pretend sign ins were only ever shown, so the accounts are as they really are. Loading the demo cleared the office,
-// so every project now belongs to the demo, including ones made while it ran, unless a real agent
-// works in it. The demo's own projects always go. Every real agent stays. Call inside Do.
+// endDemo takes away what the demo added. Everything real stays as it was: its agents, what they
+// were doing, their history and the log. The demo's pretend sign ins were only ever shown, so the
+// accounts are as they really are. Call inside Do.
 func (s *Simulator) endDemo(why, toast string) {
 	s.Stop()
 	s.timers = nil
@@ -1237,45 +1295,45 @@ func (s *Simulator) endDemo(why, toast string) {
 	s.demoEnds = 0
 	s.approvalTimer, s.convTimer = 0, 0
 	s.engine.SetDemoEnds(0)
-	seeded := map[string]bool{}
-	for _, project := range demoProjects(s.now()) {
-		seeded[project.ID] = true
-	}
-	var kept []*models.LiveAgent
-	used := map[string]bool{}
-	for _, agent := range s.engine.Agents() {
-		if agent.Source != Source {
-			// A real agent placed in one of the demo's own projects leaves it: those always go.
-			if agent.Project != nil && seeded[*agent.Project] {
-				agent.Project = nil
-			}
-			kept = append(kept, agent)
-			if agent.Project != nil {
-				used[*agent.Project] = true
-			}
-		}
-	}
-	var projects []models.Project
-	for _, project := range s.engine.Projects() {
-		if used[project.ID] {
-			projects = append(projects, *project)
-		}
-	}
-	keptIDs := make([]string, 0, len(kept))
-	for _, agent := range kept {
-		keptIDs = append(keptIDs, agent.ID)
-	}
-	s.engine.ClearOffice(keptIDs...)
-	for _, project := range projects {
-		s.engine.SaveProject(project)
-	}
-	for _, agent := range kept {
-		s.engine.KeepAgent(agent)
-	}
+	s.clearDemo()
 	s.engine.SetMeta(store.MetaDemo, "0")
 	s.engine.Log("Everyone", models.LogSession, why, "Only real agents from now on", "")
 	if toast != "" {
 		s.engine.Toast(toast)
 	}
 	s.engine.Reset()
+}
+
+// clearDemo takes the simulated agents and the demo's projects out. A project the demo brought
+// always goes, and a real agent placed in one leaves it. One made while the demo ran goes unless a
+// real agent works in it. Call inside Do.
+func (s *Simulator) clearDemo() {
+	seeds := map[string]models.Project{}
+	for _, project := range demoProjects(s.now()) {
+		seeds[project.ID] = project
+	}
+	// An earlier version didn't mark the demo's projects, so one is also known by its id and name.
+	brought := func(project *models.Project) bool {
+		seed, ok := seeds[strings.TrimPrefix(project.ID, demoProjectPrefix)]
+		return ok && (project.Demo || (seed.ID == project.ID && seed.Name == project.Name))
+	}
+	used := map[string]bool{}
+	for _, agent := range s.engine.Agents() {
+		if agent.Source == Source || agent.Project == nil {
+			continue
+		}
+		if project := s.engine.Project(*agent.Project); project != nil && brought(project) {
+			agent.Project = nil
+			s.engine.Touch(agent)
+			continue
+		}
+		used[*agent.Project] = true
+	}
+	var going []string
+	for _, project := range s.engine.Projects() {
+		if brought(project) || (project.Demo && !used[project.ID]) {
+			going = append(going, project.ID)
+		}
+	}
+	s.engine.ClearDemo(going...)
 }

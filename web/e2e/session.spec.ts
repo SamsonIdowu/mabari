@@ -113,6 +113,7 @@ test.afterAll(async () => {
 interface Agent {
   id: string;
   name: string;
+  state: string;
   session: { id: string; status: string; pid: number; resume: string } | null;
 }
 
@@ -138,6 +139,14 @@ async function openAgent(page: Page, name: string) {
   const { id } = await agentCalled(page, name);
   await page.goto(`${web}/#office?agent=${id}`);
   await expect(page.getByRole('complementary', { name: 'Agent details' })).toBeVisible();
+}
+
+/**
+ * Waits for the turn to end. A message sent while it is ending waits for a checkpoint and arrives
+ * as words for the same turn, which the fake doesn't act on as a new one.
+ */
+async function turnEnded(page: Page, name: string) {
+  await expect.poll(async () => (await agentCalled(page, name)).state).toBe('done');
 }
 
 async function instruct(page: Page, text: string) {
@@ -187,6 +196,7 @@ test('with no terminal, a session starts, streams, stops for a click and survive
   await card.getByRole('button', { name: 'Deny' }).click();
   await expect(thread.getByTestId('threadTool').last()).toContainText('Denied');
   expect(actions()).toBe(0);
+  await turnEnded(page, 'Juniper');
 
   await instruct(page, 'fake:bash rm -rf dist');
   // The approvals board has an item named after the same word, so the banner's button is the exact one.
@@ -218,6 +228,83 @@ test('with no terminal, a session starts, streams, stops for a click and survive
     .split('\n');
   expect(lines).toHaveLength(2);
   expect(lines[1]).toContain('--resume');
+});
+
+test('Start a Claude Code session on Accounts opens New agent, set to Claude Code', async ({
+  page,
+  request,
+}) => {
+  expect(
+    (await request.post(`${api}/api/accounts/claude/connect`, { data: { confirm: true } })).ok(),
+  ).toBe(true);
+  await page.goto(`${web}/#accounts`);
+  const card = page.locator('article.card', { hasText: 'Attach Claude Code' });
+  await card.getByRole('button', { name: 'Start a Claude Code session' }).click();
+  const form = page.getByRole('dialog', { name: 'Create a new agent' });
+  await expect(form.getByLabel('Account')).toHaveValue('claude_code');
+  await expect(form.getByLabel('Runs')).toHaveValue('here');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  // The terminal is still there for those who want it.
+  await card.getByRole('button', { name: 'Or run it in a terminal' }).click();
+  await expect(card.getByTestId('claudeCommand')).toContainText('claude');
+  expect((await request.post(`${api}/api/accounts/claude/disconnect`)).ok()).toBe(true);
+});
+
+test('what a session shows is true: a call waiting, a denial, its time, the toasts', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await newAgent(page, 'Marlow', 'say hello');
+  await expect(page.getByRole('dialog', { name: 'Create a new agent' })).toBeHidden();
+  await openAgent(page, 'Marlow');
+  const thread = page.getByTestId('thread');
+  await expect(thread.getByTestId('threadAgent').last()).toContainText('Done: say hello');
+  // Not the "0m 00s" every agent used to show, once it has been here a while.
+  await expect(page.locator('.panel .meta', { hasText: 'Running for' })).not.toContainText(
+    'Running for 0m 00s',
+    {
+      timeout: 5_000,
+    },
+  );
+
+  await instruct(page, 'fake:bash rm -rf build');
+  await expect(thread.getByTestId('threadTool').last()).toContainText('Waiting for you');
+  const { id } = await agentCalled(page, 'Marlow');
+  await page.goto(`${web}/#conversations?agent=${id}`);
+  const line = page.getByTestId('chatTool').last();
+  await expect(line).toContainText('Waiting for you');
+  await page.getByRole('button', { name: 'Deny' }).click();
+  await expect(line).toContainText('Denied');
+  await page.reload();
+  await expect(page.getByTestId('chatTool').last()).toContainText('Denied');
+  await turnEnded(page, 'Marlow');
+
+  // A reply lands in the thread on screen, so no toast points to it. Nor is a command clipped.
+  const toasts = page.locator('.toast');
+  const box = page.getByRole('textbox', { name: 'Message Marlow' });
+  await box.fill('one more');
+  await box.press('Enter');
+  await expect(page.getByTestId('thread').getByText('Done: one more')).toBeVisible();
+  await page.waitForTimeout(1_000);
+  await expect(toasts.filter({ hasText: 'Marlow replied' })).toHaveCount(0);
+
+  // A "/" with nothing to list says so.
+  await box.fill('/');
+  await expect(page.getByTestId('noCommands')).toContainText('No commands here');
+  await box.fill('');
+
+  await openAgent(page, 'Marlow');
+  await page.getByRole('button', { name: 'Continue in terminal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Continue in a terminal' });
+  const command = page.getByTestId('continueCommand');
+  await expect(command).toBeVisible();
+  expect(await command.evaluate((box) => box.scrollWidth <= box.clientWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: 'Continue in terminal' }).click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(4, 4);
+  await expect(dialog).toBeHidden();
 });
 
 test('a folder that brings its own code needs a click first', async ({ page }) => {

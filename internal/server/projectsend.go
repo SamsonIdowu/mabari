@@ -54,7 +54,7 @@ func (a *api) takers(projectID string) (now, later []*models.LiveAgent) {
 }
 
 // toProject sends a message to a project. Call inside Do.
-func (a *api) toProject(project *models.Project, text, why string) projectRoute {
+func (a *api) toProject(project *models.Project, text, why string, files []string) projectRoute {
 	route := projectRoute{sent: vee.ProjectSent{Project: project, Why: why}, result: messageResult{Agents: []string{}}}
 	hasFolder := project.Repository != nil && project.Repository.Path != ""
 	now, later := a.takers(project.ID)
@@ -70,6 +70,7 @@ func (a *api) toProject(project *models.Project, text, why string) projectRoute 
 		agent = later[0]
 	}
 	if agent != nil {
+		a.allowAttached(agent, files)
 		known := a.instructionIDs()
 		route.result, _ = a.deliver(messageBody{
 			scope: scope{Project: project.ID}, Text: text, Mode: string(models.ModeInstruct), Target: agent.ID, quiet: true,
@@ -86,6 +87,9 @@ func (a *api) toProject(project *models.Project, text, why string) projectRoute 
 	}
 	if a.runsClaude() {
 		a.startForProject(project, text, &route)
+		if route.sent.Agent != nil {
+			a.allowAttached(route.sent.Agent, files)
+		}
 		return route
 	}
 	// Only here does the text become part of a command line.
@@ -151,12 +155,12 @@ func (a *api) sendToProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
-	a.sendProject(w, r.PathValue("id"), text)
+	a.sendProject(w, r.PathValue("id"), text, nil)
 }
 
 // sendProject routes a message to a project and writes what happened. The Chats screen and the
 // project's chat both come here.
-func (a *api) sendProject(w http.ResponseWriter, id, text string) {
+func (a *api) sendProject(w http.ResponseWriter, id, text string, files []string) {
 	var route projectRoute
 	var found bool
 	if err := a.engine.Do(func() {
@@ -166,7 +170,7 @@ func (a *api) sendProject(w http.ResponseWriter, id, text string) {
 		}
 		found = true
 		copied := *project
-		route = a.toProject(&copied, text, "")
+		route = a.toProject(&copied, text, "", files)
 	}); err != nil {
 		internalError(w, err)
 		return

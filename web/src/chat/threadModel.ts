@@ -76,7 +76,16 @@ export type Row =
       parts: UserParts;
     }
   | { kind: 'assistant'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
-  | { kind: 'tool'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
+  | {
+      kind: 'tool';
+      key: string;
+      time: number;
+      seq: number;
+      item: ConversationItem;
+      who: Who;
+      /** The approval waiting now is for this call, so it hasn't run. */
+      waiting?: boolean;
+    }
   | { kind: 'notice'; key: string; time: number; seq: number; item: ConversationItem; who: Who }
   | {
       kind: 'pending';
@@ -152,6 +161,18 @@ function column(ask: Ask, agent: LiveAgent | undefined, who: Who, items: Convers
   };
 }
 
+/**
+ * The id of the call an approval is holding up, or "". Claude Code stops at one call to ask, the
+ * newest. It hasn't run, so it isn't "Running". A plan's approval isn't about a call.
+ */
+export function waitingCall(
+  items: readonly ConversationItem[],
+  approval: LiveAgent['approval'],
+): string {
+  if (!approval || approval.type === 'plan') return '';
+  return items.findLast((item) => item.tool?.state === 'running' && !item.parent)?.id ?? '';
+}
+
 /** The rows of a thread, oldest first, with anything still waiting for delivery at the end. */
 export function buildRows(input: RowInput): Row[] {
   const byId = new Map(input.agents.map((agent) => [agent.id, agent]));
@@ -179,7 +200,9 @@ export function buildRows(input: RowInput): Row[] {
   }
   for (const agent of input.agents) {
     const who = whoOf(agent);
-    for (const item of input.threads[agent.id]?.items ?? []) {
+    const items = input.threads[agent.id]?.items ?? [];
+    const waiting = waitingCall(items, agent.approval);
+    for (const item of items) {
       if (hidden.has(item.id)) continue;
       const base = { key: item.id, time: item.time, seq: item.seq, item };
       switch (item.kind) {
@@ -195,7 +218,7 @@ export function buildRows(input: RowInput): Row[] {
           if (item.text.trim() || item.streaming) rows.push({ ...base, kind: 'assistant', who });
           break;
         case 'tool':
-          if (item.tool) rows.push({ ...base, kind: 'tool', who });
+          if (item.tool) rows.push({ ...base, kind: 'tool', who, waiting: item.id === waiting });
           break;
         default:
           rows.push({ ...base, kind: 'notice', who });

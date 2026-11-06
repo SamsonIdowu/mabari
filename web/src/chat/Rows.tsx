@@ -308,7 +308,10 @@ function ToolRow({ row }: { row: Extract<Row, { kind: 'tool' }> }) {
   const tool = item.tool!;
   const id = `tool-${item.id}`;
   return (
-    <div className={`mtool ${tool.state}${item.parent ? ' sub' : ''}`} data-testid="chatTool">
+    <div
+      className={`mtool ${row.waiting ? 'waiting' : tool.state}${item.parent ? ' sub' : ''}`}
+      data-testid="chatTool"
+    >
       <button
         type="button"
         className="mtoolbtn"
@@ -321,7 +324,9 @@ function ToolRow({ row }: { row: Extract<Row, { kind: 'tool' }> }) {
         </svg>
         <span className="mtoolname mono">{tool.name}</span>
         <span className="mtoolsum">{tool.summary || tool.name}</span>
-        <span className="mtoolstate">{TOOL_WORDS[tool.state]}</span>
+        <span className="mtoolstate">
+          {row.waiting ? 'Waiting for you' : TOOL_WORDS[tool.state]}
+        </span>
       </button>
       {open ? (
         <div className="mtooldetail" id={id}>

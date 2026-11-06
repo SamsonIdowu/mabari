@@ -92,7 +92,17 @@ function startableAccounts(office: Snapshot): Account[] {
 /** Where the server's own refusals about the name belong: beside the Name field. */
 const NAME_PROBLEM = /^(Give the agent a name|There is already an agent called)/;
 
-function Form({ office, desk, project }: { office: Snapshot; desk?: number; project?: string }) {
+function Form({
+  office,
+  desk,
+  project,
+  account: wanted,
+}: {
+  office: Snapshot;
+  desk?: number;
+  project?: string;
+  account?: AccountKind;
+}) {
   const set = useOfficeUi((state) => state.set);
   const toast = useOfficeStore((state) => state.toast);
   const scope = useOfficeUi((state) => state.project);
@@ -109,7 +119,9 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   // A role fills a box only if it is empty or still holds what a role put there.
   const [filled, setFilled] = useState({ name: false, task: false });
   const [role, setRole] = useState('');
-  const [account, setAccount] = useState<AccountKind | ''>(accounts[0]?.kind ?? '');
+  const [account, setAccount] = useState<AccountKind | ''>(
+    accounts.find((item) => item.kind === wanted)?.kind ?? accounts[0]?.kind ?? '',
+  );
   const [model, setModel] = useState('');
   const [cap, setCap] = useState(String(DEFAULT_CAP));
   const [where, setWhere] = useState<'here' | 'terminal'>('here');

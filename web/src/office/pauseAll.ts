@@ -56,14 +56,23 @@ function listed(names: string[]): string {
  * what it does (see the connectors' Interrupt in internal/connectors). The server's reply says
  * what really happened to each agent.
  */
-export function pauseNotes(agents: Pick<LiveAgent, 'name' | 'source'>[]): string[] {
+export function pauseNotes(agents: Pick<LiveAgent, 'name' | 'source' | 'session'>[]): string[] {
   const named = (source: string) => agents.filter((agent) => agent.source === source);
   const notes: string[] = [];
-  const claude = named('claude').map((agent) => agent.name);
-  if (claude.length) {
+  const claude = named('claude');
+  // Mabari runs its own sessions, so it can carry them on. One started elsewhere is the person's.
+  const here = claude.filter((agent) => agent.session?.status !== 'elsewhere');
+  const away = claude.filter((agent) => agent.session?.status === 'elsewhere');
+  if (here.length) {
     notes.push(
-      `${listed(claude)} ${claude.length === 1 ? 'is' : 'are'} in Claude Code, which stops at its next step. ` +
-        "Mabari can't restart a session once it has stopped: type in it to carry on.",
+      `${listed(here.map((agent) => agent.name))} ${here.length === 1 ? 'is' : 'are'} in Claude Code, ` +
+        'which stops at its next step. Continue everyone carries on from where it stopped.',
+    );
+  }
+  if (away.length) {
+    notes.push(
+      `${listed(away.map((agent) => agent.name))} ${away.length === 1 ? 'is' : 'are'} in Claude Code, ` +
+        "which stops at its next step. That session runs outside Mabari, which can't restart it: type in it to carry on.",
     );
   }
   const codex = named('codex').map((agent) => agent.name);

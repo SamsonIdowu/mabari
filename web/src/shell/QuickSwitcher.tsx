@@ -11,7 +11,7 @@ import { useVoice } from '../office/voiceStore.ts';
 import { useThemeStore } from '../theme/themeStore.ts';
 import { Icon } from './Icon.tsx';
 import { Modal } from './Modal.tsx';
-import { openDialogList } from './modalStack.ts';
+import { focusPanel, openDialogList } from './modalStack.ts';
 import {
   boxUsesKey,
   countText,
@@ -222,6 +222,10 @@ function Dialog() {
     window.setTimeout(() => {
       if (result.run) result.run();
       else if (result.href) window.location.hash = result.href;
+      // An agent's panel opens beside the page, so focus has to be taken there. A dialog takes it.
+      requestAnimationFrame(() => {
+        if (!openDialogList().length) focusPanel();
+      });
     }, 0);
   };
 

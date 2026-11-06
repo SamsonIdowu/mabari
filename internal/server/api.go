@@ -270,21 +270,24 @@ func (a *api) deleteProject(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) completeProject(w http.ResponseWriter, r *http.Request) {
 	var saved *models.Project
-	var notReady bool
+	notReady := ""
 	err := a.engine.Do(func() {
 		existing := a.engine.Project(r.PathValue("id"))
 		if existing == nil {
 			return
 		}
-		if existing.Status != models.ProjectReady && existing.Status != models.ProjectIdle {
-			notReady = true
-			return
+		switch existing.Status {
+		case models.ProjectReady, models.ProjectIdle:
+			result := a.engine.CompleteProject(*existing)
+			saved = &result
+		case models.ProjectNew:
+			notReady = "Nothing has run in this project yet, so there's nothing to complete."
+		default:
+			notReady = "This project still has work in progress."
 		}
-		result := a.engine.CompleteProject(*existing)
-		saved = &result
 	})
-	if notReady {
-		writeError(w, http.StatusConflict, "this project still has work in progress")
+	if notReady != "" {
+		writeError(w, http.StatusConflict, notReady)
 		return
 	}
 	respond(w, saved, err, "no such project")

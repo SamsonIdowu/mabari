@@ -5,6 +5,8 @@ import { api } from '../data/api.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { ConversationItem, LiveAgent, ToolCallState } from '../gen/models.ts';
 import { Modal } from '../shell/Modal.tsx';
+import { waitingCall } from '../chat/threadModel.ts';
+import { useEscape } from '../shell/useEscape.ts';
 
 /** How many of the newest entries the panel shows. The Chats screen has the whole conversation. */
 const SHOWN = 20;
@@ -16,12 +18,13 @@ const TOOL_WORDS: Record<ToolCallState, string> = {
   denied: 'Denied',
 };
 
-function Entry({ item, agent }: { item: ConversationItem; agent: LiveAgent }) {
+function Entry(props: { item: ConversationItem; agent: LiveAgent; waiting: boolean }) {
+  const { item, agent, waiting } = props;
   if (item.kind === 'tool' && item.tool) {
     return (
       <li className="feeditem" data-testid="threadTool">
         <span className="mono">{item.tool.summary || item.tool.name}</span>{' '}
-        <span className="help">{TOOL_WORDS[item.tool.state]}</span>
+        <span className="help">{waiting ? 'Waiting for you' : TOOL_WORDS[item.tool.state]}</span>
       </li>
     );
   }
@@ -49,6 +52,7 @@ export function LatestConversation({ agent }: { agent: LiveAgent }) {
   }, [agent.id, open]);
   const newest = thread.items.slice(-SHOWN);
   if (!newest.length) return null;
+  const waiting = waitingCall(newest, agent.approval);
   return (
     <div className="sect">
       <h3>Conversation</h3>
@@ -60,7 +64,7 @@ export function LatestConversation({ agent }: { agent: LiveAgent }) {
         style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}
       >
         {newest.map((item) => (
-          <Entry item={item} agent={agent} key={item.id} />
+          <Entry item={item} agent={agent} waiting={item.id === waiting} key={item.id} />
         ))}
       </ul>
     </div>
@@ -72,6 +76,7 @@ function ContinueDialog({ agent, close }: { agent: LiveAgent; close: () => void 
   const toast = useOfficeStore((state) => state.toast);
   const demo = useOfficeStore((state) => state.office?.demo ?? false);
   const session = agent.session;
+  useEscape(close);
   if (!session) return null;
   const running = session.status === 'running' && !demo;
   const release = () => {
@@ -81,7 +86,7 @@ function ContinueDialog({ agent, close }: { agent: LiveAgent; close: () => void 
       .catch((failure: Error) => toast(failure.message));
   };
   return (
-    <Modal>
+    <Modal onBackdrop={close}>
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="continueTitle">
         <h2 id="continueTitle">Continue in a terminal</h2>
         <p className="help">
@@ -89,7 +94,12 @@ function ContinueDialog({ agent, close }: { agent: LiveAgent; close: () => void 
             ? 'This is what you would run. In the demo there is no real session, so it is only an example.'
             : 'Run this in any terminal. The conversation carries on from where it is.'}
         </p>
-        <div className="codebox" data-testid="continueCommand">
+        {/* Wrapped, not clipped: this is a command to read and check before running. */}
+        <div
+          className="codebox"
+          data-testid="continueCommand"
+          style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+        >
           <span className="ctx">{session.resume}</span>
         </div>
         {running ? (

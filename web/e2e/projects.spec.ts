@@ -77,6 +77,8 @@ test('the project can start right away, and a bad folder is explained', async ({
     .locator('#briefText')
     .fill('Build an internal dashboard that shows weekly sales by region');
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+  // The team is checked first, and the page says so: "right away" means no plan to approve.
+  await expect(dialog.getByTestId('startNote')).toContainText('Nothing has started yet');
   await dialog
     .locator('.plancard')
     .getByRole('button', { name: /Start project with 3 agents/ })

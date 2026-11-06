@@ -317,3 +317,49 @@ describe('what it is doing now', () => {
     expect(doingNow([agent()], 'project')).toBeNull();
   });
 });
+
+describe('a tool call waiting on an approval', () => {
+  const tool = (
+    id: string,
+    seq: number,
+    state: 'running' | 'done',
+    parent = '',
+  ): ConversationItem =>
+    ({
+      id,
+      seq,
+      time: seq,
+      kind: 'tool',
+      text: '',
+      parent,
+      tool: { name: 'Bash', summary: 'rm -rf build', state, input: '', output: '' },
+    }) as ConversationItem;
+  const rowsFor = (approval: unknown, items: ConversationItem[]) => {
+    const agent = {
+      id: 'a1',
+      name: 'Mira',
+      hue: '#000',
+      queued: [],
+      approval,
+    } as unknown as LiveAgent;
+    return buildRows({
+      mode: 'agent',
+      agents: [agent],
+      threads: { a1: { items, loaded: true, hasMore: false } as never },
+    }).filter((row) => row.kind === 'tool');
+  };
+  it('marks the newest running call, and only that one', () => {
+    const rows = rowsFor({ type: 'command' }, [tool('t1', 1, 'done'), tool('t2', 2, 'running')]);
+    expect(rows.map((row) => row.kind === 'tool' && Boolean(row.waiting))).toEqual([false, true]);
+  });
+  it('leaves a running call alone with nothing to approve, or only a plan', () => {
+    for (const approval of [null, { type: 'plan' }]) {
+      const rows = rowsFor(approval, [tool('t1', 1, 'running')]);
+      expect(rows.map((row) => row.kind === 'tool' && Boolean(row.waiting))).toEqual([false]);
+    }
+  });
+  it("never marks a subagent's call", () => {
+    const rows = rowsFor({ type: 'command' }, [tool('t1', 1, 'running', 'parent')]);
+    expect(rows.map((row) => row.kind === 'tool' && Boolean(row.waiting))).toEqual([false]);
+  });
+});

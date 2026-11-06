@@ -221,6 +221,12 @@ export interface AgentSession {
    * PID is the running process, or zero. It lets a restart after a crash end what was left.
    */
   pid: number /* int */;
+  /**
+   * TranscriptEnd is how many bytes of the session's transcript were there when Mabari's process
+   * last ended, or null if Mabari has never counted. Mabari heard all of that as it happened, so
+   * only what comes after it was written elsewhere, as by someone carrying on in a terminal.
+   */
+  transcriptEnd: number /* int64 */ | null;
 }
 
 //////////
@@ -487,6 +493,14 @@ export interface Project {
    * The first session to start there takes the oldest, as if it had been sent to it.
    */
   opening: Instruction[];
+  /**
+   * Planned is how many of the agents in the project's plan haven't arrived yet.
+   */
+  planned: number /* int */ | null;
+  /**
+   * Demo marks a project that came with the demo or was made while it ran.
+   */
+  demo: boolean | null;
 }
 /**
  * ProjectStatus says where a project stands.
@@ -553,6 +567,16 @@ export interface Account {
    */
   missing: string;
 }
+/**
+ * SourceDemo is the Agent.Source of the demo's simulated agents. Their ids start with DemoIDPrefix,
+ * which is what ties everything they leave behind to the demo, and to nothing real.
+ */
+export const SourceDemo = "sim";
+/**
+ * SourceDemo is the Agent.Source of the demo's simulated agents. Their ids start with DemoIDPrefix,
+ * which is what ties everything they leave behind to the demo, and to nothing real.
+ */
+export const DemoIDPrefix = "sim-";
 /**
  * Agent is an agent's identity and settings.
  */

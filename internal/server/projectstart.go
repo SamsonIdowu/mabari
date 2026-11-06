@@ -445,7 +445,7 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 	}
 	*project = a.engine.SaveProject(models.Project{
 		Name: name, Color: plan.Color, Instructions: strings.TrimSpace(body.Instructions),
-		Files: files, Repository: repo,
+		Files: files, Repository: repo, Planned: len(team) + 1,
 	})
 	a.engine.SetFirstRun(false)
 	a.engine.SetMeta(metaRecentFolder, mustJSON(rememberFolder(a.recent(), body.Folder)))

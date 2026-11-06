@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { clearOfPanel, repeatsOpenPanel } from './toastSpace.ts';
+import { clearOfPanel, repeatsOpenChat, repeatsOpenPanel } from './toastSpace.ts';
 
 describe('clearOfPanel', () => {
   const wide = { width: 1440, height: 900 };
@@ -43,5 +43,22 @@ describe('repeatsOpenPanel', () => {
 
   it('keeps the confirmation that something was sent', () => {
     expect(repeatsOpenPanel('Sent to Bolt', 'Bolt')).toBe(false);
+  });
+});
+
+describe('repeatsOpenChat', () => {
+  const agents = [
+    { id: 'a1', name: 'Mira', projectId: 'shop' },
+    { id: 'a2', name: 'Quill', projectId: null },
+  ];
+  const text = 'Mira replied. Open Mira to read it.';
+  it("is true in the agent's own chat, and in its project's", () => {
+    expect(repeatsOpenChat(text, { agent: 'a1', project: null }, agents)).toBe(true);
+    expect(repeatsOpenChat(text, { agent: null, project: 'shop' }, agents)).toBe(true);
+  });
+  it('is false anywhere else', () => {
+    expect(repeatsOpenChat(text, { agent: 'a2', project: null }, agents)).toBe(false);
+    expect(repeatsOpenChat(text, { agent: null, project: 'other' }, agents)).toBe(false);
+    expect(repeatsOpenChat(text, { agent: null, project: null }, agents)).toBe(false);
   });
 });

@@ -40,6 +40,33 @@ async function activeOption(page: Page): Promise<string> {
 
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Agent details' });
 
+test('focus is never left on the page after a jump, or after a dialog a jump opened', async ({
+  page,
+}) => {
+  await loadDemo(page);
+  const onBody = () => page.evaluate(() => document.activeElement === document.body);
+
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await open(page);
+  await box(page).fill('Ledger');
+  await page.keyboard.press('Enter');
+  await expect(panel(page)).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('.panel'))))
+    .toBe(true);
+
+  await page.getByRole('button', { name: 'Close panel' }).click();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await open(page);
+  await box(page).fill('New agent');
+  await page.keyboard.press('Enter');
+  const form = page.getByRole('dialog', { name: 'Create a new agent' });
+  await expect(form).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(form).toBeHidden();
+  await expect.poll(onBody).toBe(false);
+});
+
 test('Ctrl K opens on every screen, Escape closes it, and focus goes back to where it was', async ({
   page,
 }) => {

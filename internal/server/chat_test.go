@@ -675,15 +675,35 @@ func TestAWipeRemovesSavedInstructionsAndAsks(t *testing.T) {
 	}
 }
 
-// The demo clears the office, so a project's asks go with the project.
-func TestLoadingTheDemoForgetsAsks(t *testing.T) {
+// The demo joins the office, so a real project's asks stay through it, and a demo project's go when
+// the demo does.
+func TestTheDemoTakesOnlyItsOwnAsks(t *testing.T) {
 	o := newChatOffice(t)
-	_ = o.engine.Do(func() { o.engine.SetMeta(store.MetaAsks, `[{"id":"a","projectId":"p","text":"secret plans"}]`) })
 	if response := o.do(t, http.MethodPost, "/api/demo/load", ""); response.Code != http.StatusOK {
 		t.Fatalf("demo = %d", response.Code)
 	}
-	if asks := decode[[]Ask](t, o.do(t, http.MethodGet, "/api/projects/p/asks", "")); len(asks) != 0 {
-		t.Fatalf("asks = %+v", asks)
+	demo := ""
+	for _, project := range decode[models.Snapshot](t, o.do(t, http.MethodGet, "/api/snapshot", "")).Projects {
+		if project.Demo {
+			demo = project.ID
+		}
+	}
+	if demo == "" {
+		t.Fatal("no demo project")
+	}
+	_ = o.engine.Do(func() {
+		o.engine.SetMeta(store.MetaAsks, `[{"id":"a","projectId":"p","text":"real plans"},`+
+			`{"id":"b","projectId":"`+demo+`","text":"demo plans"}]`)
+	})
+	if response := o.do(t, http.MethodPost, "/api/demo/stop", ""); response.Code != http.StatusOK {
+		t.Fatalf("stop = %d", response.Code)
+	}
+	if asks := decode[[]Ask](t, o.do(t, http.MethodGet, "/api/projects/p/asks", "")); len(asks) != 1 {
+		t.Fatalf("real asks = %+v", asks)
+	}
+	raw, err := o.engine.Store().Meta(context.Background(), store.MetaAsks)
+	if err != nil || strings.Contains(raw, "demo plans") {
+		t.Fatalf("asks = %q, %v", raw, err)
 	}
 }
 

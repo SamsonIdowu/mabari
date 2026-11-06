@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Icon } from './Icon.tsx';
 import { LocalStatus } from './LocalStatus.tsx';
+import { SwitcherButton } from './QuickSwitcher.tsx';
 import { RailToggle } from './RailToggle.tsx';
 import { ThemeButton } from './ThemeButton.tsx';
 
@@ -13,6 +14,7 @@ export function Topbar() {
       </a>
       <div className="topright">
         <LocalStatus />
+        <SwitcherButton />
         <label className="tbtn" title="Show notes that explain interactions">
           <input
             type="checkbox"

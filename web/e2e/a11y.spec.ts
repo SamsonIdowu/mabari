@@ -57,7 +57,9 @@ test('the keyboard reaches the menu, shows where it is, and opens a page', async
   await page.getByRole('button', { name: 'Explore a demo office' }).click();
   await expect(page.locator('h1')).toHaveText('Agents');
   const reached: string[] = [];
-  for (let step = 0; step < 40; step++) {
+  // The page has a few dozen stops before the menu: the header's, the floor's tools and list, and
+  // then the top bar, whose Jump to button and the header's Pause everyone are two of them.
+  for (let step = 0; step < 60; step++) {
     await page.keyboard.press('Tab');
     const focused = await page.evaluate(() => {
       const element = document.activeElement as HTMLElement | null;
@@ -324,4 +326,79 @@ test('only red and amber ask for attention: the live badge is neutral, question 
   expect([...classes.questionIn]).toEqual(['mchip mc-out']);
   expect([...classes.otherIn]).toEqual(['mchip mc-in']);
   for (const className of classes.questionOut) expect(className).toBe('mchip mc-out');
+});
+
+// The quick switcher (Ctrl K) is a dialog like the others: focus goes in, Tab stays in, the page
+// behind cannot be reached, and Escape puts focus back. Its list is announced with its count.
+for (const theme of ['light', 'dark'] as const) {
+  test(`the quick switcher passes WCAG 2.1 AA checks in the ${theme} theme`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript((name) => window.localStorage.setItem('mabari.theme', name), theme);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Explore a demo office' }).click();
+    await expect(page.locator('h1')).toHaveText('Agents');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.keyboard.press('Control+K');
+    const dialog = page.getByRole('dialog', { name: 'Jump to' });
+    await expect(dialog).toBeVisible();
+    // With everything listed, with a query that narrows it, and with one that finds nothing.
+    await expect(dialog.getByRole('option').first()).toBeVisible();
+    expect(await audit(page), 'everything listed').toEqual([]);
+    await page.keyboard.type('docs');
+    await expect(dialog.getByRole('group', { name: 'Projects' })).toBeVisible();
+    expect(await audit(page), 'a query').toEqual([]);
+    await page.keyboard.type('zzzz');
+    await expect(dialog.getByRole('status')).toContainText('No results');
+    expect(await audit(page), 'no results').toEqual([]);
+  });
+}
+
+test('the quick switcher holds focus, shuts the page out, and gives focus back', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Explore a demo office' }).click();
+  await expect(page.locator('h1')).toHaveText('Agents');
+  const opener = page.getByRole('link', { name: 'Projects', exact: true });
+  await opener.focus();
+  await page.keyboard.press('Control+K');
+  const dialog = page.getByRole('dialog', { name: 'Jump to' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  // Focus is in the box without a click, and the page behind is inert.
+  await expect(dialog.getByRole('combobox')).toBeFocused();
+  expect(await page.evaluate(() => document.getElementById('root')?.hasAttribute('inert'))).toBe(
+    true,
+  );
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(
+    true,
+  );
+  // The live regions stay outside what is inert.
+  expect(await page.evaluate(() => !!document.querySelector('.toasts')?.closest('[inert]'))).toBe(
+    false,
+  );
+  // Tab and Shift+Tab go round, more times than there are stops, and never get out.
+  for (const key of ['Tab', 'Shift+Tab']) {
+    for (let step = 0; step < 5; step++) {
+      await page.keyboard.press(key);
+      expect(
+        await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')),
+        `${key} ${step + 1} left the dialog`,
+      ).toBe(true);
+    }
+  }
+  // The list is a listbox of options with a count, and the box points at the one the arrows are on.
+  await dialog.getByRole('combobox').focus();
+  const list = dialog.getByRole('listbox', { name: 'Results' });
+  await expect(list).toBeVisible();
+  const total = await list.getByRole('option').count();
+  await expect(dialog.getByRole('status')).toHaveText(`${total} results`);
+  const pointed = await dialog.getByRole('combobox').getAttribute('aria-activedescendant');
+  await expect(page.locator(`[id="${pointed}"]`)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.getElementById('root')?.hasAttribute('inert'))).toBe(
+    false,
+  );
+  await expect(opener).toBeFocused();
 });

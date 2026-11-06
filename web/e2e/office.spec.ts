@@ -36,7 +36,7 @@ test('draws the office in both themes', async ({ page }) => {
   await loadDemo(page);
   expect(await colours(page)).toBeGreaterThan(40);
   const dark = await page.locator('#floor').screenshot();
-  await page.locator('.topright button.tbtn').click();
+  await page.getByRole('button', { name: /^Switch to (dark|light) theme$/ }).click();
   await page.waitForTimeout(200);
   const light = await page.locator('#floor').screenshot();
   expect(dark.equals(light)).toBe(false);
@@ -208,7 +208,8 @@ test('full screen hides only the top bar and the menu, and every control keeps w
     'aria-pressed',
     'true',
   );
-  await head.getByRole('button', { name: 'Everyone' }).click();
+  // Exactly: Pause everyone is a button in the header too.
+  await head.getByRole('button', { name: 'Everyone', exact: true }).click();
   // The wall bar, filters, bell and zoom tools work too.
   await page.getByRole('button', { name: 'Speech bubbles' }).click();
   await expect(page.getByRole('button', { name: 'Speech bubbles' })).toHaveAttribute(

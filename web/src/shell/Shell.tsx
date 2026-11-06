@@ -19,6 +19,7 @@ import { Welcome } from '../screens/Welcome.tsx';
 import { listenForApprovals } from '../office/ding.ts';
 import { useHashRoute } from '../useHashRoute.ts';
 import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
+import { QuickSwitcher } from './QuickSwitcher.tsx';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
 import { Toasts } from './Toasts.tsx';
@@ -79,6 +80,7 @@ export function Shell() {
       <DeskDialog />
       <NewProjectDialog />
       <TrustDialog />
+      <QuickSwitcher />
       <ApprovalAnnouncer />
       <Toasts />
     </div>

@@ -24,6 +24,7 @@ import { RestingPanel } from './RestingPanel.tsx';
 import { FloorList } from './FloorList.tsx';
 import { ApprovalCard, AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './OfficeWall.tsx';
+import { PauseEveryone } from './PauseEveryone.tsx';
 import { PromptTray } from './PromptTray.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
 
@@ -1041,6 +1042,7 @@ function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] 
       <FilterBar office={office} scoped={scoped} />
       <div className="ohact">
         <AutoApproveButton settings={office.settings} />
+        <PauseEveryone office={office} />
         <MabariUpdatesButton />
         <button
           type="button"

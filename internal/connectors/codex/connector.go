@@ -19,8 +19,8 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/redact"
-	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/risk"
+	"github.com/SamsonIdowu/mabari/internal/secrets"
 )
 
 // Source marks agents that run in Codex threads.

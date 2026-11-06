@@ -487,7 +487,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   return (
     <form
-      className={dragging ? 'composer dragging' : 'composer'}
+      className={dragging ? 'msgbox dragging' : 'msgbox'}
       aria-label={`Message ${name}`}
       autoComplete="off"
       onSubmit={(event: FormEvent) => {

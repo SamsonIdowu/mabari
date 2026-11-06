@@ -14,6 +14,7 @@ import { emptyThread, useConversations, type Thread } from '../data/conversation
 import { useOfficeStore } from '../data/officeStore.ts';
 import type { LiveAgent, Project } from '../gen/models.ts';
 import { QuestionCard } from '../screens/QuestionCard.tsx';
+import { Cast } from '../shell/Cast.tsx';
 import type { ComposerHandle } from './Composer.tsx';
 import { ApprovalInline, ThreadRow } from './Rows.tsx';
 import { buildRows, doingNow, type Row } from './threadModel.ts';
@@ -194,7 +195,12 @@ export function ThreadView({ mode, label, agents, project, composer, empty }: Pr
             Loading the conversation…
           </p>
         ) : null}
-        {loaded && rows.length === 0 ? <p className="help mempty">{empty}</p> : null}
+        {loaded && rows.length === 0 ? (
+          <div className="emptycast mempty">
+            <Cast who={2} act="think" />
+            <p className="help">{empty}</p>
+          </div>
+        ) : null}
         {agents.map((agent) =>
           agent.approval || agent.question ? (
             <div className="mwaiting" key={agent.id}>

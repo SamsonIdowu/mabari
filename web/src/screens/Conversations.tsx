@@ -340,7 +340,7 @@ export function Conversations() {
             </div>
           ) : null}
         </PageHead>
-        <div className="seg chtabs" role="group" aria-label="Conversation views">
+        <div className="seg wytabs" role="group" aria-label="Conversation views">
           {tabs.map(([id, label, href]) => (
             <button
               type="button"

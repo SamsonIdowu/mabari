@@ -401,7 +401,9 @@ function Column({ column }: { column: RoundColumn }) {
           {column.who.name}
         </a>
         <span className={column.state === 'waiting' ? 'pcmq' : 'help'}>
-          {COLUMN_WORDS[column.state]}
+          {column.state === 'working' && column.replies.length
+            ? 'Replied, still working'
+            : COLUMN_WORDS[column.state]}
         </span>
       </header>
       {text ? (

@@ -279,6 +279,35 @@ describe('what it is doing now', () => {
     });
   });
 
+  it('says only each agent’s state for a project, and is never red', () => {
+    const line = doingNow(
+      [
+        agent({
+          id: 'a',
+          name: 'Ana',
+          state: 'reading',
+          working: true,
+          feed: [{ summary: 'Read a very long path/to/a/file.ts' } as never],
+        }),
+        agent({
+          id: 'b',
+          name: 'Bo',
+          state: 'error',
+          error: 'Lost connection to the embedding service, retrying forever',
+        }),
+      ],
+      'project',
+    );
+    expect(line).toEqual({ text: 'Ana: Reading files · Bo: Hit an error', tone: 'working' });
+    expect(doingNow([agent({ name: 'Cy', state: 'approval' })], 'project')).toEqual({
+      text: 'Cy: Waiting for your approval',
+      tone: 'waiting',
+    });
+    expect(doingNow([agent({ name: 'Di', question: {} as never })], 'project')?.tone).toBe(
+      'waiting',
+    );
+  });
+
   it('sums up a project in a few words', () => {
     const agents = ['A', 'B', 'C', 'D', 'E'].map((name) =>
       agent({ id: name, name, state: 'thinking', working: true }),

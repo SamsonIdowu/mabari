@@ -6,6 +6,7 @@ import { useOfficeStore } from '../data/officeStore.ts';
 import { STATE_CHIPS, stateLabel } from '../format.ts';
 import type { LiveAgent, Project, Snapshot } from '../gen/models.ts';
 import { useOfficeUi } from '../office/uiStore.ts';
+import { Cast } from '../shell/Cast.tsx';
 import { hashWith } from '../routes.ts';
 import { chatEntries, entryMatches, type ChatEntry } from './chatList.ts';
 import { chatHash, chatPlace, useChatHash } from './chatRoute.ts';
@@ -33,7 +34,7 @@ function Row({ entry, on }: { entry: ChatEntry; on: boolean }) {
   return (
     <a
       href={href}
-      className={`chrow ${entry.tone}${on ? ' on' : ''}`}
+      className={`wyrow ${entry.tone}${on ? ' on' : ''}`}
       aria-current={on ? 'true' : undefined}
       data-entry={`${entry.kind}:${entry.id}`}
     >
@@ -44,9 +45,9 @@ function Row({ entry, on }: { entry: ChatEntry; on: boolean }) {
         }
         aria-hidden="true"
       />
-      <span className="chmain">
-        <span className="chname">{entry.name}</span>
-        <span className="chdet">{entry.detail}</span>
+      <span className="wymain">
+        <span className="wyname">{entry.name}</span>
+        <span className="wydet">{entry.detail}</span>
       </span>
       {entry.tone === 'red' ? <span className="chip red">Needs you</span> : null}
       {entry.tone !== 'red' && entry.needs ? <span className="chip">Asking you</span> : null}
@@ -62,7 +63,7 @@ function List({ office, selected }: { office: Snapshot; selected: string }) {
   // Counted by agent, as the badge and Home count: a project only holds some of the same agents.
   const needs = entries.agents.filter((entry) => entry.needs).length;
   return (
-    <div className="card chlist">
+    <div className="card wylist">
       <div className="cardhd">
         <label className="sr" htmlFor="chatQ">
           Search agents and projects
@@ -76,8 +77,8 @@ function List({ office, selected }: { office: Snapshot; selected: string }) {
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
-      <nav className="chbody" aria-label="Who to talk to">
-        <p className="help chhint" role="status">
+      <nav className="wybody" aria-label="Who to talk to">
+        <p className="help wyhint" role="status">
           {needs
             ? `${needs} need${needs === 1 ? 's' : ''} you, listed first.`
             : 'Nobody needs you right now.'}
@@ -105,11 +106,14 @@ function List({ office, selected }: { office: Snapshot; selected: string }) {
           </section>
         ) : null}
         {!agents.length && !projects.length ? (
-          <p className="help chempty">
-            {search
-              ? 'Nothing matches.'
-              : 'Nobody to talk to yet. Start an agent or a project from the Agents page.'}
-          </p>
+          <div className="emptycast">
+            {search ? null : <Cast who={0} act="wave" />}
+            <p className="help wyempty">
+              {search
+                ? 'Nothing matches.'
+                : 'Nobody to talk to yet. Start an agent or a project from the Agents page.'}
+            </p>
+          </div>
         ) : null}
       </nav>
     </div>
@@ -120,9 +124,9 @@ function AgentHeader({ agent, office }: { agent: LiveAgent; office: Snapshot }) 
   const project = office.projects.find((item) => item.id === agent.projectId);
   const chip = STATE_CHIPS[agent.state];
   return (
-    <div className="cardhd chhead">
-      <div className="chtitle">
-        <a className="btn ghost sm chback" href={chatHash.with()}>
+    <div className="cardhd wyhead">
+      <div className="wytitle">
+        <a className="btn ghost sm wyback" href={chatHash.with()}>
           All chats
         </a>
         <span className="idot" style={{ ['--ac' as string]: agent.hue }} aria-hidden="true" />
@@ -142,7 +146,7 @@ function AgentHeader({ agent, office }: { agent: LiveAgent; office: Snapshot }) 
           </span>
         ) : null}
       </div>
-      <div className="chtools">
+      <div className="wytools">
         <a className="btn sm" href={hashWith('office', 'agent', agent.id)}>
           Open in office
         </a>
@@ -159,9 +163,9 @@ function ProjectHeader({ project, agents }: { project: Project; agents: LiveAgen
     ? `${live.map((agent) => agent.name).join(', ')} ${live.length === 1 ? 'works' : 'work'} here`
     : 'Nobody works here yet';
   return (
-    <div className="cardhd chhead">
-      <div className="chtitle">
-        <a className="btn ghost sm chback" href={chatHash.with()}>
+    <div className="cardhd wyhead">
+      <div className="wytitle">
+        <a className="btn ghost sm wyback" href={chatHash.with()}>
           All chats
         </a>
         <span className="pdot" style={{ background: project.color }} aria-hidden="true" />
@@ -175,7 +179,7 @@ function ProjectHeader({ project, agents }: { project: Project; agents: LiveAgen
           <span className="help">No folder yet</span>
         )}
       </div>
-      <div className="chtools">
+      <div className="wytools">
         {folder ? (
           <button
             type="button"
@@ -308,17 +312,18 @@ export function WithYou({ office }: { office: Snapshot }) {
   }, [stale]);
 
   return (
-    <div className={`convwrap chwrap${open ? ' open' : ''}`}>
+    <div className={`convwrap wywrap${open ? ' open' : ''}`}>
       <List office={office} selected={selected} />
-      <div className="card chcard">
+      <div className="card wycard">
         {agent ? (
           <AgentChat agent={agent} office={office} key={agent.id} />
         ) : project ? (
           <ProjectChat project={project} office={office} key={project.id} />
         ) : (
-          <p className="help chempty" style={{ padding: 18 }}>
-            Pick an agent or a project to talk to.
-          </p>
+          <div className="emptycast">
+            <Cast who={0} act="wave" />
+            <p className="help">Pick an agent or a project to talk to.</p>
+          </div>
         )}
       </div>
     </div>

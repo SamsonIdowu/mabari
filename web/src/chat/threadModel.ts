@@ -259,21 +259,32 @@ function doingOf(agent: LiveAgent): DoingNow | null {
   return { text: step ? `${label}: ${step}` : label, tone: 'working' };
 }
 
-/** The "what it's doing now" line: one agent's phrase, or a project's agents' in a few words. */
+/** What a project's line says of one agent: its state in a word or two, not the step it is on. */
+function briefOf(agent: LiveAgent): { text: string; waiting: boolean } | null {
+  if (agent.state === 'approval') return { text: 'Waiting for your approval', waiting: true };
+  if (agent.question) return { text: 'Asking you a question', waiting: true };
+  if (agent.state === 'error') return { text: 'Hit an error', waiting: false };
+  if (agent.state === 'paused') return { text: 'Interrupted', waiting: true };
+  return agent.working ? { text: stateLabel(agent.state), waiting: false } : null;
+}
+
+/**
+ * The "what it's doing now" line. For an agent it is its phrase, and it is red for an error. For a
+ * project it is each busy agent in a word or two, up to three, and it is never red: an error is in
+ * the list beside it, and the thread of the agent that has it.
+ */
 export function doingNow(agents: LiveAgent[], mode: 'agent' | 'project'): DoingNow | null {
   if (mode === 'agent') return agents[0] ? doingOf(agents[0]) : null;
-  const lines: { name: string; doing: DoingNow }[] = [];
+  const lines: { name: string; text: string; waiting: boolean }[] = [];
   for (const agent of agents) {
-    const doing = doingOf(agent);
-    if (doing) lines.push({ name: agent.name, doing });
+    const brief = briefOf(agent);
+    if (brief) lines.push({ name: agent.name, ...brief });
   }
   if (!lines.length) return null;
-  const tone = lines.some((line) => line.doing.tone === 'error')
-    ? 'error'
-    : lines.some((line) => line.doing.tone === 'waiting')
-      ? 'waiting'
-      : 'working';
-  const shown = lines.slice(0, 3).map((line) => `${line.name}: ${line.doing.text}`);
+  const shown = lines.slice(0, 3).map((line) => `${line.name}: ${line.text}`);
   if (lines.length > 3) shown.push(`and ${lines.length - 3} more`);
-  return { text: shown.join(' · '), tone };
+  return {
+    text: shown.join(' · '),
+    tone: lines.some((line) => line.waiting) ? 'waiting' : 'working',
+  };
 }

@@ -62,7 +62,7 @@ test('With you lists who needs you first, and opens a thread beside the list', a
   const list = page.getByRole('navigation', { name: 'Who to talk to' });
   const agents = list.getByRole('region', { name: /^Agents/ });
   // Approvals and errors first, then what works, then the rest: the order of who needs you.
-  const names = await agents.locator('.chname').allTextContents();
+  const names = await agents.locator('.wyname').allTextContents();
   expect(names.slice(0, 2)).toEqual(['Atlas', 'Mori']);
   expect(names.indexOf('Pixel')).toBeGreaterThan(names.indexOf('Bolt'));
   await expect(list.getByRole('status')).toHaveText('2 need you, listed first.');

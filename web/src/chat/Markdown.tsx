@@ -76,13 +76,16 @@ function CodeBlock({ lang, code, open }: { lang: string; code: string; open: boo
   );
 }
 
-function Blocks({ blocks }: { blocks: Block[] }): ReactNode {
+function Blocks({ blocks, caret = false }: { blocks: Block[]; caret?: boolean }): ReactNode {
   return blocks.map((block, index) => {
     switch (block.t) {
       case 'p':
         return (
           <p key={index}>
             <Spans nodes={block.c} />
+            {caret && index === blocks.length - 1 ? (
+              <span className="mdcaret" aria-hidden="true" />
+            ) : null}
           </p>
         );
       case 'h': {
@@ -167,10 +170,11 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
 }) {
   const blocks = useMemo(() => parseBlocks(text), [text]);
+  const last = blocks[blocks.length - 1]?.t;
   return (
     <div className={streaming ? 'md streaming' : 'md'}>
-      <Blocks blocks={blocks} />
-      {streaming && (blocks.length === 0 || blocks[blocks.length - 1]?.t !== 'code') ? (
+      <Blocks blocks={blocks} caret={streaming} />
+      {streaming && last !== 'p' && last !== 'code' ? (
         <span className="mdcaret" aria-hidden="true" />
       ) : null}
     </div>

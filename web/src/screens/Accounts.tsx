@@ -310,12 +310,25 @@ function ClaudeCard({ account }: { account: Account }) {
                 Update the hooks
               </button>
             ) : null}
-            <button type="button" className="btn primary" onClick={() => setShowCommand(true)}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() =>
+                account.canStart
+                  ? useOfficeUi.getState().set({ newAgent: { account: 'claude_code' } })
+                  : setShowCommand(true)
+              }
+            >
               Start a Claude Code session
             </button>
             <button type="button" className="btn" disabled={busy} onClick={detach}>
               Detach and restore backup
             </button>
+            {account.canStart && !showCommand ? (
+              <button type="button" className="linkbtn" onClick={() => setShowCommand(true)}>
+                Or run it in a terminal
+              </button>
+            ) : null}
           </>
         ) : (
           <>

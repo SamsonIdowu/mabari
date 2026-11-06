@@ -17,6 +17,7 @@ import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
 import { AutoApproveButton, AutoApproveDialog } from './Approvals.tsx';
 import { DemoNote } from './DemoNote.tsx';
+import { NotifyRow } from './NotifyRow.tsx';
 import { PageHead } from './parts.tsx';
 
 /** The accounts whose default model can be set, in the order Settings lists them. */
@@ -152,6 +153,7 @@ function ApprovalsCard({ settings }: { settings: SettingsModel }) {
             {state} Applies to all agents and is recorded in the Activity log.
           </span>
         </div>
+        <NotifyRow />
       </div>
     </div>
   );

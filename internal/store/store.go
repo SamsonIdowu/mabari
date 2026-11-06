@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -430,6 +431,75 @@ func (s *Store) Log(ctx context.Context, q LogQuery) ([]models.LogEntry, error) 
 	return entries, rows.Err()
 }
 
+// SaveConversationItem inserts an item, or replaces the one with its number.
+func (s *Store) SaveConversationItem(ctx context.Context, item models.ConversationItem) error {
+	data, err := encode(item)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO conversation_items (agent_id, seq, item_id, at, data)
+		VALUES (?, ?, ?, ?, ?) ON CONFLICT(agent_id, seq) DO UPDATE SET data = excluded.data`,
+		item.Agent, item.Seq, item.ID, item.Time, data)
+	return err
+}
+
+// ConversationSeq is the number of an agent's item with this id, or 0 when it has no such item.
+func (s *Store) ConversationSeq(ctx context.Context, agentID, itemID string) (int64, error) {
+	var seq int64
+	err := s.db.QueryRowContext(ctx,
+		"SELECT seq FROM conversation_items WHERE agent_id = ? AND item_id = ?", agentID, itemID).Scan(&seq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return seq, err
+}
+
+// ConversationItem reads one item of an agent's conversation, or returns nil.
+func (s *Store) ConversationItem(ctx context.Context, agentID, itemID string) (*models.ConversationItem, error) {
+	items, err := list[models.ConversationItem](ctx, s,
+		"SELECT data FROM conversation_items WHERE agent_id = ? AND item_id = ?", agentID, itemID)
+	if err != nil || len(items) == 0 {
+		return nil, err
+	}
+	return &items[0], nil
+}
+
+// LastConversationSeq is the highest number in an agent's conversation, or 0 when it is empty.
+func (s *Store) LastConversationSeq(ctx context.Context, agentID string) (int64, error) {
+	var seq sql.NullInt64
+	err := s.db.QueryRowContext(ctx,
+		"SELECT MAX(seq) FROM conversation_items WHERE agent_id = ?", agentID).Scan(&seq)
+	return seq.Int64, err
+}
+
+// Conversation reads the newest items before `before`, oldest first, and whether older ones are
+// left. A `before` of 0 starts from the newest.
+func (s *Store) Conversation(ctx context.Context, agentID string, before int64, limit int) ([]models.ConversationItem, bool, error) {
+	query := "SELECT data FROM conversation_items WHERE agent_id = ?"
+	args := []any{agentID}
+	if before > 0 {
+		query += " AND seq < ?"
+		args = append(args, before)
+	}
+	// One more than asked for says whether anything is left.
+	items, err := list[models.ConversationItem](ctx, s, query+" ORDER BY seq DESC LIMIT ?", append(args, limit+1)...)
+	if err != nil {
+		return nil, false, err
+	}
+	more := len(items) > limit
+	if more {
+		items = items[:limit]
+	}
+	slices.Reverse(items)
+	return items, more, nil
+}
+
+// TrimConversation removes an agent's items numbered lower than keepFrom.
+func (s *Store) TrimConversation(ctx context.Context, agentID string, keepFrom int64) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM conversation_items WHERE agent_id = ? AND seq < ?", agentID, keepFrom)
+	return err
+}
+
 // Meta reads a stored value. Missing keys return "".
 func (s *Store) Meta(ctx context.Context, key string) (string, error) {
 	var value string
@@ -467,8 +537,12 @@ func (s *Store) SaveSettings(ctx context.Context, settings models.Settings) erro
 	return s.SetMeta(ctx, MetaSettings, data)
 }
 
-// DeleteOlderThan removes tool calls and log entries from before cutoff, in Unix milliseconds.
+// DeleteOlderThan removes tool calls, conversations and log entries from before cutoff, in Unix
+// milliseconds.
 func (s *Store) DeleteOlderThan(ctx context.Context, cutoff int64) (events, log int64, err error) {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM conversation_items WHERE at < ?", cutoff); err != nil {
+		return 0, 0, err
+	}
 	result, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE at < ?", cutoff)
 	if err != nil {
 		return 0, 0, err
@@ -487,13 +561,13 @@ func (s *Store) DeleteOlderThan(ctx context.Context, cutoff int64) (events, log 
 // ClearOffice empties agents and everything hanging off them, keeping settings and accounts.
 func (s *Store) ClearOffice(ctx context.Context) error {
 	return s.clear(ctx, "session_states", "agents", "events", "messages", "instructions",
-		"approvals", "activity_log", "projects")
+		"approvals", "activity_log", "projects", "conversation_items")
 }
 
 // Wipe empties every table.
 func (s *Store) Wipe(ctx context.Context) error {
 	return s.clear(ctx, "session_states", "agents", "events", "messages", "instructions",
-		"approvals", "activity_log", "projects", "accounts", "settings")
+		"approvals", "activity_log", "projects", "accounts", "settings", "conversation_items")
 }
 
 func (s *Store) clear(ctx context.Context, tables ...string) error {

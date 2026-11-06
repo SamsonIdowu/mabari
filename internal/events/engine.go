@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/redact"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
@@ -74,6 +75,8 @@ type Engine struct {
 	defs []models.AgentDef
 	// accountNotes adds what only the running server knows to each account as the office shows it.
 	accountNotes func(account models.Account, demo bool) models.Account
+	// lastItem is the newest conversation item number of each agent seen since the server started.
+	lastItem map[string]int64
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -89,6 +92,7 @@ func New(ctx context.Context, s *store.Store, now func() time.Time) (*Engine, er
 		dirty:      map[string]struct{}{},
 		eventNext:  map[string]int{},
 		connectors: map[string]Connector{},
+		lastItem:   map[string]int64{},
 	}
 	if err := e.load(ctx); err != nil {
 		return nil, fmt.Errorf("load office: %w", err)
@@ -222,6 +226,7 @@ func (e *Engine) resetMemory() {
 	e.agents, e.projects, e.messages, e.log = nil, nil, []models.Message{}, []models.LogEntry{}
 	e.dirty = map[string]struct{}{}
 	e.eventNext = map[string]int{}
+	e.lastItem = map[string]int64{}
 	e.accounts = map[models.AccountKind]*models.Account{}
 	for _, kind := range models.AccountKinds {
 		e.accounts[kind] = &models.Account{
@@ -565,6 +570,70 @@ func (e *Engine) AddMessage(
 	e.record(e.store.AddMessage(context.Background(), message))
 	e.broadcast(models.ServerMessage{Type: models.MsgMessage, Message: &message})
 	return message
+}
+
+// conversationTrimEvery is how many new items an agent adds between trims of its conversation.
+const conversationTrimEvery = 256
+
+// Converse adds an item to an agent's conversation, or replaces the item with its ID, and tells
+// every page. Secrets are masked and long text is cut here, so nothing a connector sends can reach
+// the database or a browser unchecked. Call inside Do.
+func (e *Engine) Converse(agentID string, item models.ConversationItem) models.ConversationItem {
+	ctx := context.Background()
+	item.Agent = agentID
+	if item.ID == "" {
+		item.ID = newID("item-")
+	}
+	if item.Time == 0 {
+		item.Time = e.now().UnixMilli()
+	}
+	item.Text = redact.Text(item.Text)
+	if item.Tool != nil {
+		tool := *item.Tool
+		tool.Summary, tool.Input, tool.Output = redact.Text(tool.Summary), redact.Text(tool.Input), redact.Text(tool.Output)
+		item.Tool = &tool
+	}
+	item = item.WithinLimits()
+	seq, err := e.store.ConversationSeq(ctx, agentID, item.ID)
+	e.record(err)
+	if seq == 0 {
+		seq = e.nextItem(agentID)
+	}
+	item.Seq = seq
+	e.record(e.store.SaveConversationItem(ctx, item))
+	e.broadcast(models.ServerMessage{Type: models.MsgConversation, Item: &item})
+	return item
+}
+
+// nextItem numbers a new conversation item, trimming the agent's oldest now and then.
+func (e *Engine) nextItem(agentID string) int64 {
+	ctx := context.Background()
+	last, known := e.lastItem[agentID]
+	if !known {
+		var err error
+		last, err = e.store.LastConversationSeq(ctx, agentID)
+		e.record(err)
+	}
+	last++
+	e.lastItem[agentID] = last
+	if last%conversationTrimEvery == 0 && last > models.ConversationKept {
+		e.record(e.store.TrimConversation(ctx, agentID, last-models.ConversationKept))
+	}
+	return last
+}
+
+// ConverseDelta passes on more text for a streaming item, without storing it: the finished item
+// follows through Converse, and a page that missed some reloads the conversation. Connectors mask
+// the text themselves, since a secret can span two deltas. Call inside Do.
+func (e *Engine) ConverseDelta(agentID, itemID, text string) {
+	e.broadcast(models.ServerMessage{Type: models.MsgConversationDelta, AgentID: agentID, ID: itemID, Text: text})
+}
+
+// ConversationItem reads back one item of an agent's conversation, or returns nil. Call inside Do.
+func (e *Engine) ConversationItem(agentID, itemID string) *models.ConversationItem {
+	item, err := e.store.ConversationItem(context.Background(), agentID, itemID)
+	e.record(err)
+	return item
 }
 
 // Log adds a row to the activity log. Call inside Do.

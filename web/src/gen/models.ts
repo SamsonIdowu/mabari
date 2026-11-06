@@ -2,6 +2,192 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //////////
+// source: conversation.go
+
+/**
+ * ConversationKind is what one entry of an agent's conversation is.
+ */
+export type ConversationKind = string;
+/**
+ * ConversationUser is what the person said to the agent.
+ */
+export const ConversationUser: ConversationKind = "user";
+/**
+ * ConversationAssistant is what the agent said back.
+ */
+export const ConversationAssistant: ConversationKind = "assistant";
+/**
+ * ConversationTool is a tool call and, once it has one, its result.
+ */
+export const ConversationTool: ConversationKind = "tool";
+/**
+ * ConversationNotice is something that happened to the session itself: it started, it was
+ * resumed, it stopped with an error.
+ */
+export const ConversationNotice: ConversationKind = "notice";
+/**
+ * ToolCallState is how far a tool call has got.
+ */
+export type ToolCallState = string;
+/**
+ * Tool call states.
+ */
+export const ToolRunning: ToolCallState = "running";
+/**
+ * Tool call states.
+ */
+export const ToolDone: ToolCallState = "done";
+/**
+ * ToolFailed is a call that ran and failed.
+ */
+export const ToolFailed: ToolCallState = "failed";
+/**
+ * ToolDenied is a call that never ran, because a person or a rule said no.
+ */
+export const ToolDenied: ToolCallState = "denied";
+/**
+ * SaidInMabari is a message sent from Mabari.
+ */
+export const SaidInMabari = "mabari";
+/**
+ * SaidInSession is a message typed in the session's own window, read from its transcript.
+ */
+export const SaidInSession = "session";
+/**
+ * ToolCall is what an agent asked a tool to do and what came back. Input and Output have secrets
+ * masked and are cut to ConversationToolLimit.
+ */
+export interface ToolCall {
+  name: string;
+  /**
+   * Summary is one calm line about the call, such as "Read src/app.ts".
+   */
+  summary: string;
+  /**
+   * Input is the call's arguments as JSON.
+   */
+  input: string;
+  output: string;
+  state: ToolCallState;
+}
+/**
+ * ConversationItem is one entry of an agent's conversation. Items are ordered by Seq, which only
+ * goes up for an agent. An update to an item, such as a tool call getting its result, keeps its
+ * ID and Seq, so a client replaces what it holds.
+ */
+export interface ConversationItem {
+  id: string;
+  agentId: string;
+  seq: number /* int64 */;
+  time: number /* int64 */;
+  kind: ConversationKind;
+  /**
+   * Text is what was said, for every kind but a tool call. Secrets are masked.
+   */
+  text: string;
+  /**
+   * Streaming is true while Text is still arriving. It arrives in ConversationDelta messages,
+   * and the finished item replaces what was built from them.
+   */
+  streaming: boolean;
+  tool: ToolCall | null;
+  /**
+   * From says who said a user item: SaidInMabari or SaidInSession.
+   */
+  from: string;
+  /**
+   * Parent is the tool call that started the subagent this came from, or "" for the session's
+   * own conversation.
+   */
+  parent: string;
+  /**
+   * Clipped is true when some of it was cut to fit the limits.
+   */
+  clipped: boolean;
+}
+/**
+ * Limits on what a conversation keeps, so one chatty session can't fill the disk or the page. A
+ * longer text is cut and marked Clipped. An agent's oldest items go first once it passes
+ * ConversationKept.
+ */
+export const ConversationTextLimit = 100_000;
+/**
+ * Limits on what a conversation keeps, so one chatty session can't fill the disk or the page. A
+ * longer text is cut and marked Clipped. An agent's oldest items go first once it passes
+ * ConversationKept.
+ */
+export const ConversationToolLimit = 16_000;
+/**
+ * Limits on what a conversation keeps, so one chatty session can't fill the disk or the page. A
+ * longer text is cut and marked Clipped. An agent's oldest items go first once it passes
+ * ConversationKept.
+ */
+export const ConversationKept = 20_000;
+/**
+ * ConversationPage is how many items one read returns unless it asks for fewer.
+ */
+export const ConversationPage = 200;
+/**
+ * ConversationPageMax is the most one read may ask for.
+ */
+export const ConversationPageMax = 500;
+/**
+ * Conversation is one page of an agent's conversation, oldest first. HasMore says there is older
+ * history: ask again with before set to the first item's Seq.
+ */
+export interface Conversation {
+  agentId: string;
+  items: ConversationItem[];
+  hasMore: boolean;
+}
+/**
+ * SessionStatus says who has an agent's Claude Code session now.
+ */
+export type SessionStatus = string;
+/**
+ * SessionRunning is a session Mabari runs as a child process that is alive, working or
+ * waiting for its next message.
+ */
+export const SessionRunning: SessionStatus = "running";
+/**
+ * SessionResumable is a session Mabari ran whose process has ended. Its next message starts
+ * the process again with --resume, so nothing is lost.
+ */
+export const SessionResumable: SessionStatus = "resumable";
+/**
+ * SessionElsewhere is a session started somewhere else, in a terminal or an editor. Mabari
+ * follows it through its hooks and reads its transcript. It may still be open there.
+ */
+export const SessionElsewhere: SessionStatus = "elsewhere";
+/**
+ * AgentSession is the Claude Code session behind an agent.
+ */
+export interface AgentSession {
+  /**
+   * ID is Claude Code's own session id.
+   */
+  id: string;
+  status: SessionStatus;
+  /**
+   * Mode is the permission mode Mabari runs it in: "default", or "plan" until the plan is
+   * approved.
+   */
+  mode: string;
+  /**
+   * AgentFile is the agent it runs as, passed to --agent, or "".
+   */
+  agentFile: string;
+  /**
+   * Resume is the exact command that continues the session in a terminal.
+   */
+  resume: string;
+  /**
+   * PID is the running process, or zero. It lets a restart after a crash end what was left.
+   */
+  pid: number /* int */;
+}
+
+//////////
 // source: desks.go
 
 /**
@@ -338,6 +524,10 @@ export interface Agent {
    * Otherwise its Desk is OffFloor and the office doesn't show it.
    */
   workflow: boolean;
+  /**
+   * Session is the Claude Code session behind this agent, or null for any other kind of agent.
+   */
+  session: AgentSession | null;
 }
 /**
  * SessionState is what an agent is doing and how far along it is.
@@ -743,7 +933,25 @@ export interface Settings {
   requireLogin: boolean;
   defaults: { [key: string]: string};
   autoApprove: AutoApprove;
+  /**
+   * MaxSessions caps the Claude Code sessions Mabari runs at once, from MinSessions to
+   * MaxSessionsLimit. Sessions waiting for their next message give up their place when another
+   * needs it, because they resume with no loss.
+   */
+  maxSessions: number /* int */;
 }
+/**
+ * Limits on the MaxSessions setting.
+ */
+export const MinSessions = 1;
+/**
+ * Limits on the MaxSessions setting.
+ */
+export const MaxSessionsLimit = 16;
+/**
+ * Limits on the MaxSessions setting.
+ */
+export const DefaultSessions = 4;
 /**
  * Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.
  */
@@ -889,6 +1097,14 @@ export const MsgDefs = "defs"; // The agent definitions changed; Defs is the who
  */
 export const MsgReset = "reset"; // The office was replaced by a wipe or the demo: reload and clear the view.
 /**
+ * MsgConversation adds Item to its agent's conversation, or replaces the item with its ID.
+ */
+export const MsgConversation = "conversation";
+/**
+ * MsgConversationDelta adds Text to the streaming item ID of AgentID's conversation.
+ */
+export const MsgConversationDelta = "conversation.delta";
+/**
  * ServerMessage is one WebSocket message. Type says which of the other fields is set.
  */
 export interface ServerMessage {
@@ -905,6 +1121,14 @@ export interface ServerMessage {
   settings: Settings | null;
   defs: AgentDef[] | null;
   text: string | null;
+  /**
+   * Item is the conversation entry of a MsgConversation.
+   */
+  item: ConversationItem | null;
+  /**
+   * AgentID is whose conversation a MsgConversationDelta belongs to.
+   */
+  agentId: string | null;
 }
 /**
  * WhisperStatus is what Settings shows about Local Whisper.

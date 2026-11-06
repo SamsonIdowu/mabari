@@ -32,7 +32,7 @@ func must(t *testing.T, err error) {
 func TestMigratesFromEmpty(t *testing.T) {
 	version, err := open(t).SchemaVersion(context.Background())
 	must(t, err)
-	if version != 1 {
+	if version != 2 {
 		t.Errorf("version = %d", version)
 	}
 }
@@ -214,6 +214,7 @@ func TestWipeEmptiesEverything(t *testing.T) {
 	must(t, s.SaveInstruction(ctx, models.Instruction{ID: "i", Agent: &agent.ID, Text: "hi"}))
 	must(t, s.SaveApproval(ctx, models.Approval{ID: "ap", Agent: "agent"}))
 	must(t, s.SaveLog(ctx, models.LogEntry{ID: "l", Agent: "Mori"}))
+	must(t, s.SaveConversationItem(ctx, models.ConversationItem{ID: "c", Agent: "agent", Seq: 1}))
 	must(t, s.SaveSettings(ctx, models.DefaultSettings()))
 	must(t, s.SetMeta(ctx, "k", "v"))
 

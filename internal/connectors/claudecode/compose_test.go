@@ -3,7 +3,9 @@
 package claudecode
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
@@ -122,5 +124,29 @@ func TestANameChosenForASessionMabariRunsIsKept(t *testing.T) {
 	got := b.read(agent.ID)
 	if got.Name != "Juniper" || got.Workflow || got.Desk < 0 {
 		t.Fatalf("tidying changed it: name %q, workflow %v, desk %d", got.Name, got.Workflow, got.Desk)
+	}
+}
+
+// A model is a command line flag, so only what the account offers gets that far, and the process
+// isn't ended for a switch that can't happen.
+func TestASessionOnlySwitchesToAModelItsAccountOffers(t *testing.T) {
+	b := newBench(t)
+	agent := b.start("hello")
+	b.untilState(agent.ID, models.StateDone)
+	for _, model := range []string{"not-a-model", "--dangerously-skip-permissions", "gpt-5"} {
+		var err error
+		_ = b.engine.Do(func() {
+			err = b.c.InstructWith(b.engine.Agent(agent.ID), "carry on", SendOptions{Model: model})
+		})
+		var unknown UnknownModel
+		if !errors.As(err, &unknown) || !strings.Contains(err.Error(), model) {
+			t.Fatalf("%s: %v", model, err)
+		}
+	}
+	if got := b.read(agent.ID); got.Model != agent.Model || got.Session.Status != models.SessionRunning {
+		t.Fatalf("model %q, session %q", got.Model, got.Session.Status)
+	}
+	if runs := b.argsOf(agent.Session.ID); len(runs) != 1 {
+		t.Fatalf("runs = %q", runs)
 	}
 }

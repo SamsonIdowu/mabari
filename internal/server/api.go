@@ -354,6 +354,7 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	var saved *models.Agent
 	var badProject bool
+	var badModel error
 	err := a.engine.Do(func() {
 		agent := a.engine.Agent(r.PathValue("id"))
 		if agent == nil {
@@ -363,6 +364,12 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 			badProject = true
 			return
 		}
+		// A session Mabari runs passes its model on the command line at its next start.
+		if body.Model != nil && agent.RunsHere() && agent.Source == claudecode.Source {
+			if badModel = claudecode.CheckModel(agent, *body.Model); badModel != nil {
+				return
+			}
+		}
 		a.applyAgentBody(agent, body)
 		a.engine.Touch(agent)
 		copied := agent.Agent
@@ -370,6 +377,10 @@ func (a *api) updateAgent(w http.ResponseWriter, r *http.Request) {
 	})
 	if badProject {
 		writeError(w, http.StatusBadRequest, "no such project")
+		return
+	}
+	if badModel != nil {
+		writeError(w, http.StatusBadRequest, badModel.Error())
 		return
 	}
 	respond(w, saved, err, "no such agent")

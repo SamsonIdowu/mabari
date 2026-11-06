@@ -226,6 +226,10 @@ func (a *api) sendTo(agent *models.LiveAgent, text string, body chatBody) (chatR
 		if err := a.claude.Connector.InstructWith(agent, text, claudecode.SendOptions{
 			Plan: inMode, Model: body.Model, Now: body.Now,
 		}); err != nil {
+			var unknown claudecode.UnknownModel
+			if errors.As(err, &unknown) {
+				return chatResult{}, http.StatusBadRequest, err.Error()
+			}
 			return chatResult{}, http.StatusConflict, err.Error()
 		}
 	default:

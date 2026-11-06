@@ -4,6 +4,7 @@ package claudecode
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
@@ -17,6 +18,22 @@ type SendOptions struct {
 	// Now interrupts a turn in progress and sends the message straight after, instead of waiting
 	// for the next checkpoint.
 	Now bool
+}
+
+// UnknownModel says a session was asked to switch to a model its account doesn't offer.
+type UnknownModel struct{ Model, Agent string }
+
+func (e UnknownModel) Error() string {
+	return e.Model + " isn't one of the models for " + e.Agent + "'s account."
+}
+
+// CheckModel says why an agent's session can't switch to a model, or nil. Keeping its model is
+// always fine: a session can run one the list has since dropped.
+func CheckModel(agent *models.LiveAgent, model string) error {
+	if model == "" || model == agent.Model || slices.Contains(models.Models[agent.Account], model) {
+		return nil
+	}
+	return UnknownModel{Model: model, Agent: agent.Name}
 }
 
 // CanSwitchModel says whether the session's model can change now: only a session Mabari runs, that
@@ -45,6 +62,9 @@ func CanPlan(agent *models.LiveAgent) bool {
 func (c *Connector) InstructWith(agent *models.LiveAgent, text string, opt SendOptions) error {
 	if !agent.RunsHere() || agent.Lead != nil {
 		return errors.New(agent.Name + "'s session doesn't run in Mabari.")
+	}
+	if err := CheckModel(agent, opt.Model); err != nil {
+		return err
 	}
 	switchModel := opt.Model != "" && opt.Model != agent.Model
 	switchPlan := opt.Plan && agent.Session.Mode != runModePlan

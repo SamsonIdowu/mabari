@@ -389,6 +389,30 @@ func TestAFolderThatBringsMoreNeedsAnotherClick(t *testing.T) {
 	o.until(t, "the session to run again", func() bool { return o.said(t, id, "Done: carry on") })
 }
 
+// A model the account doesn't offer is a bad request, said plainly, by either way of changing it.
+func TestASessionsModelMustBeOneItsAccountOffers(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	o.until(t, "the first turn", func() bool { return o.state(agent.ID).State == models.StateDone })
+	response := o.do(t, http.MethodPost, "/api/chat/send",
+		`{"agentId":"`+agent.ID+`","text":"carry on","model":"not-a-model"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "isn't one of the models") {
+		t.Fatalf("send: %d %s", response.Code, response.Body.String())
+	}
+	response = o.do(t, http.MethodPatch, "/api/agents/"+agent.ID, `{"model":"not-a-model"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "isn't one of the models") {
+		t.Fatalf("patch: %d %s", response.Code, response.Body.String())
+	}
+	if got := o.state(agent.ID); got.Model == "not-a-model" {
+		t.Fatal("the model changed")
+	}
+	response = o.do(t, http.MethodPost, "/api/chat/send",
+		`{"agentId":"`+agent.ID+`","text":"carry on","model":"claude-haiku-4-5"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("a good model: %d %s", response.Code, response.Body.String())
+	}
+}
+
 // A session picked up again is a new process, so it needs the same click.
 func TestResumingInAFolderThatBringsCodeAsksFirst(t *testing.T) {
 	o := newRunOffice(t)

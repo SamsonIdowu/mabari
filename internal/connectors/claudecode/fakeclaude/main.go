@@ -100,6 +100,9 @@ func main() {
 
 // hookBridge stands in for `mabari hook` where a test can't listen on a port. It leaves the call in
 // a file named for its event, waits for the reply file, and prints it. A reply of "exit 2" exits 2.
+// hookBridgeWait is the most a hook waits for its test to answer.
+const hookBridgeWait = 5 * time.Minute
+
 func hookBridge(args []string) int {
 	dir := os.Getenv("FAKE_HOOK_DIR")
 	if dir == "" {
@@ -122,7 +125,9 @@ func hookBridge(args []string) int {
 	if err := os.Rename(name+".tmp", name+".call"); err != nil { // #nosec G304,G703 -- a test double, using paths its test gave it
 		return 1
 	}
-	for {
+	// A test that has ended answers nobody, and its folder goes with it. Waiting on would leave this
+	// process behind, polling for good.
+	for deadline := time.Now().Add(hookBridgeWait); time.Now().Before(deadline); {
 		reply, err := os.ReadFile(name + ".reply") // #nosec G304,G703 -- a test double, using paths its test gave it
 		if err == nil {
 			if string(reply) == "exit 2" {
@@ -131,8 +136,12 @@ func hookBridge(args []string) int {
 			_, _ = os.Stdout.Write(reply)
 			return 0
 		}
+		if _, err := os.Stat(dir); err != nil {
+			return 1
+		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	return 1
 }
 
 func run(args []string) int {

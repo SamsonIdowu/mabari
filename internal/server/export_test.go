@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"encoding/csv"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/redact"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 // seedLog writes rows into the activity log, newest last.
@@ -336,5 +339,44 @@ func TestExportHasTheSameAccessChecks(t *testing.T) {
 	}
 	if response := o.call(t, http.MethodGet, "/api/activity/export?format=csv", "", docker, local, "not.asession"); !needsSignIn(response) {
 		t.Errorf("a forged session = %d", response.Code)
+	}
+}
+
+// A secret is masked on the way into the log, so no way of reading the log can show it: the page's
+// list, a search, the office's snapshot, the export and the store itself.
+func TestTheLogNeverHoldsASecret(t *testing.T) {
+	const secret = "sk-ant-abcdefghijklmnop1234"
+	o := newOffice(t)
+	seedLog(t, o, models.LogEntry{
+		Agent: "Atlas", Type: models.LogInstruction, Message: "use the key " + secret + " for this", Outcome: "Sent with " + secret,
+	})
+	var entry models.LogEntry
+	_ = o.engine.Do(func() {
+		entry = o.engine.Log("Atlas", models.LogInstruction, "another", "Waiting", "amber")
+		o.engine.UpdateLog(entry.ID, "Failed with "+secret, "red")
+	})
+	for name, got := range map[string]string{
+		"activity": o.do(t, http.MethodGet, "/api/activity", "").Body.String(),
+		"search":   o.do(t, http.MethodGet, "/api/activity?q=sk-ant", "").Body.String(),
+		"snapshot": o.do(t, http.MethodGet, "/api/snapshot", "").Body.String(),
+		"export":   exportOf(t, o, "format=json").Body.String(),
+	} {
+		if strings.Contains(got, secret) {
+			t.Errorf("the %s shows the secret: %s", name, got)
+		}
+	}
+	rows, err := o.engine.Store().Log(context.Background(), store.LogQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range rows {
+		if strings.Contains(row.Message+row.Outcome, secret) {
+			t.Errorf("stored: %+v", row)
+		}
+		found = found || row.Message == "use the key "+redact.Mask+" for this"
+	}
+	if !found {
+		t.Errorf("the words around the secret were lost: %+v", rows)
 	}
 }

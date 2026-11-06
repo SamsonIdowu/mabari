@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/redact"
 	_ "modernc.org/sqlite" // Pure Go driver, so CGO_ENABLED=0 builds work everywhere.
 )
 
@@ -29,6 +30,8 @@ const (
 	MetaSettings = "app"
 	MetaFirstRun = "first_run"
 	MetaDemo     = "demo_active"
+	// MetaLogRedacted is set once the log's older rows have had their secrets masked.
+	MetaLogRedacted = "log_redacted"
 	// MetaWatches holds the "tell me when it's done" watches, as JSON. They are few, and each is
 	// read and written whole, so they need no table of their own.
 	MetaWatches = "watches"
@@ -384,6 +387,50 @@ func (s *Store) SaveLog(ctx context.Context, e models.LogEntry) error {
 		ON CONFLICT(id) DO UPDATE SET outcome = excluded.outcome, chip = excluded.chip`,
 		e.ID, e.Time, e.Agent, e.Type, e.Message, e.Outcome, e.Chip, e.Demo)
 	return err
+}
+
+// RedactLog masks secrets in rows written before the log was masked as it was written. The rows
+// themselves change, so the secret is gone from the file, and from a search of it, not only hidden.
+// It runs once.
+func (s *Store) RedactLog(ctx context.Context) error {
+	done, err := s.Meta(ctx, MetaLogRedacted)
+	if err != nil || done == "1" {
+		return err
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT id, agent, message, outcome FROM activity_log")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	type row struct{ id, agent, message, outcome string }
+	var changed []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.agent, &r.message, &r.outcome); err != nil {
+			return err
+		}
+		clean := row{r.id, redact.Text(r.agent), redact.Text(r.message), redact.Text(r.outcome)}
+		if clean != r {
+			changed = append(changed, clean)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	return s.Transaction(ctx, func() error {
+		for _, r := range changed {
+			if _, err := s.db.ExecContext(ctx, "UPDATE activity_log SET agent = ?, message = ?, outcome = ? WHERE id = ?",
+				r.agent, r.message, r.outcome, r.id); err != nil {
+				return err
+			}
+		}
+		_, err := s.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, '1')
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, MetaLogRedacted)
+		return err
+	})
 }
 
 // LogQuery filters the activity log. Search finds a word in the agent, type, message or outcome,

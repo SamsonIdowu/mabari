@@ -11,6 +11,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 // A tool's input is JSON, where a secret's key and value are separated by quotes, so text patterns
@@ -265,5 +266,27 @@ func TestClearingTheDemoKeepsConversationsOfRealAgents(t *testing.T) {
 	})
 	if next.Seq != 2 {
 		t.Fatalf("the kept conversation started over at %d", next.Seq)
+	}
+}
+
+// Opening an office whose log was written before it was masked cleans the rows already there.
+func TestOpeningTheOfficeMasksSecretsInOldLogRows(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	const secret = "ghp_abcdefghijklmnopqrstuvwxyz"
+	if err := s.SaveLog(ctx, models.LogEntry{ID: "old", Agent: "Atlas", Type: models.LogInstruction, Message: "use " + secret}); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := events.New(ctx, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := engine.Snapshot().Log
+	if len(rows) != 1 || strings.Contains(rows[0].Message, secret) {
+		t.Fatalf("log = %+v", rows)
 	}
 }

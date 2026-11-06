@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/redact"
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
@@ -148,6 +149,9 @@ func (e *Engine) load(ctx context.Context) error {
 	}
 
 	if e.messages, err = e.store.Messages(ctx, messageLimit); err != nil {
+		return err
+	}
+	if err := e.store.RedactLog(ctx); err != nil {
 		return err
 	}
 	if e.log, err = e.store.Log(ctx, store.LogQuery{Limit: logLimit}); err != nil {
@@ -635,15 +639,17 @@ func (e *Engine) ConversationItem(agentID, itemID string) *models.ConversationIt
 	return item
 }
 
-// Log adds a row to the activity log. Call inside Do.
+// Log adds a row to the activity log, with anything that looks like a secret masked, so every way
+// of reading the log is covered. What an agent was sent is kept whole on its instruction. Call
+// inside Do.
 func (e *Engine) Log(agent string, kind models.LogType, message, outcome, chip string) models.LogEntry {
 	entry := models.LogEntry{
 		ID:      newID("log-"),
 		Time:    e.now().UnixMilli(),
-		Agent:   agent,
+		Agent:   redact.Text(agent),
 		Type:    kind,
-		Message: message,
-		Outcome: outcome,
+		Message: redact.Text(message),
+		Outcome: redact.Text(outcome),
 		Chip:    chip,
 		Demo:    e.demoRow(agent),
 	}
@@ -670,7 +676,7 @@ func (e *Engine) UpdateLog(id, outcome, chip string) {
 		if e.log[index].ID != id {
 			continue
 		}
-		e.log[index].Outcome, e.log[index].Chip = outcome, chip
+		e.log[index].Outcome, e.log[index].Chip = redact.Text(outcome), chip
 		entry := e.log[index]
 		e.record(e.store.SaveLog(context.Background(), entry))
 		e.broadcast(models.ServerMessage{Type: models.MsgLog, Log: &entry})

@@ -75,6 +75,9 @@ func (e *Engine) Unsubscribe(sub *Subscription) {
 func (e *Engine) broadcast(message models.ServerMessage) {
 	e.seq++
 	message.Seq = e.seq
+	if len(e.history) == 0 {
+		e.historySince = e.now().UnixMilli()
+	}
 	e.history = append(e.history, message)
 	if len(e.history) > historySize {
 		e.history = e.history[len(e.history)-historySize:]

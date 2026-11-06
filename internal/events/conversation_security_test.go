@@ -11,6 +11,7 @@ import (
 
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 // A tool's input is JSON, where a secret's key and value are separated by quotes, so text patterns
@@ -265,5 +266,57 @@ func TestClearingTheOfficeKeepsConversationsOfAgentsThatStay(t *testing.T) {
 	})
 	if next.Seq != 2 {
 		t.Fatalf("the kept conversation started over at %d", next.Seq)
+	}
+}
+
+// Retention covers the record pages catch up from, or a page that was away could still be handed
+// text that has been deleted everywhere else.
+func TestRetentionPurgesWhatAPageCouldCatchUpOn(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	engine, err := events.New(ctx, s, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings models.Settings
+	_ = engine.Do(func() {
+		settings = engine.Settings()
+		engine.Converse("old", models.ConversationItem{Kind: models.ConversationUser, Text: "something private"})
+	})
+	joined := engine.Subscribe(events.Resume{})
+	engine.Unsubscribe(joined.Sub)
+	early := events.Resume{BootID: joined.BootID, Seq: joined.Seq - 1}
+	replay := engine.Subscribe(early)
+	engine.Unsubscribe(replay.Sub)
+	if replay.Resync || len(replay.Replay) == 0 {
+		t.Fatalf("nothing to catch up on: %+v", replay)
+	}
+	if err := engine.RunRetention(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Still young, so it stays.
+	replay = engine.Subscribe(early)
+	engine.Unsubscribe(replay.Sub)
+	if replay.Resync || len(replay.Replay) == 0 {
+		t.Fatalf("retention took what was still young: %+v", replay)
+	}
+	now = now.AddDate(0, 0, settings.RetentionDays+1)
+	if err := engine.RunRetention(ctx); err != nil {
+		t.Fatal(err)
+	}
+	replay = engine.Subscribe(early)
+	engine.Unsubscribe(replay.Sub)
+	for _, message := range replay.Replay {
+		if message.Item != nil {
+			t.Fatalf("replayed %+v", message.Item)
+		}
+	}
+	if !replay.Resync {
+		t.Fatalf("a page that was away wasn't told to reload: %+v", replay)
 	}
 }

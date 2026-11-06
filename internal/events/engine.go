@@ -50,24 +50,26 @@ type Connector interface {
 
 // Engine owns the office's live state. Every mutating method must run inside Do.
 type Engine struct {
-	mu         sync.Mutex
-	store      *store.Store
-	now        func() time.Time
-	bootID     string
-	seq        uint64
-	history    []models.ServerMessage
-	subs       map[*Subscription]struct{}
-	agents     []*models.LiveAgent
-	projects   []*models.Project
-	accounts   map[models.AccountKind]*models.Account
-	settings   models.Settings
-	firstRun   bool
-	demo       bool
-	demoEndsAt int64
-	messages   []models.Message
-	log        []models.LogEntry
-	dirty      map[string]struct{}
-	eventNext  map[string]int
+	mu      sync.Mutex
+	store   *store.Store
+	now     func() time.Time
+	bootID  string
+	seq     uint64
+	history []models.ServerMessage
+	// historySince is when the oldest message in history was sent, or near enough: never later.
+	historySince int64
+	subs         map[*Subscription]struct{}
+	agents       []*models.LiveAgent
+	projects     []*models.Project
+	accounts     map[models.AccountKind]*models.Account
+	settings     models.Settings
+	firstRun     bool
+	demo         bool
+	demoEndsAt   int64
+	messages     []models.Message
+	log          []models.LogEntry
+	dirty        map[string]struct{}
+	eventNext    map[string]int
 	// phases is what each agent was last recorded doing, so only a change is written down.
 	phases     map[string]models.Phase
 	connectors map[string]Connector
@@ -1407,7 +1409,8 @@ func (e *Engine) Sweep() {
 	}
 }
 
-// RunRetention deletes tool calls and log entries older than the retention setting.
+// RunRetention deletes tool calls, conversations and log entries older than the retention setting,
+// wherever they are kept.
 func (e *Engine) RunRetention(ctx context.Context) error {
 	return e.Do(func() {
 		cutoff := e.now().AddDate(0, 0, -e.settings.RetentionDays).UnixMilli()
@@ -1438,8 +1441,14 @@ func (e *Engine) RunRetention(ctx context.Context) error {
 				trimmed = true
 			}
 		}
+		// The record of what changed holds the same text, and has to go by the same rule. A page that
+		// was away reloads instead of having it replayed.
+		expired := len(e.history) > 0 && e.historySince < cutoff
+		if expired {
+			e.history = nil
+		}
 		// Open pages reload, so removed log rows disappear there too.
-		if events+log > 0 || trimmed {
+		if events+log > 0 || trimmed || expired {
 			e.Resync()
 		}
 	})

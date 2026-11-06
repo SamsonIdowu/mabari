@@ -19,6 +19,7 @@ import { restingLook } from './resting.ts';
 import type { OfficeScene, Walker } from './scene.ts';
 import { chipFor } from './talk.ts';
 import { inScope, matches, useOfficeUi } from './uiStore.ts';
+import { placeTrophies } from './trophyLayer.ts';
 import { whereWorking } from './where.ts';
 
 const STEP_LABELS: Record<string, string> = {
@@ -547,6 +548,8 @@ export function renderOverlays(
   renderResting(elements.tags, scene);
   renderMabari(elements.tags, scene);
   scaleTags(elements.tags, scene);
+  const overlay = elements.tags.closest<HTMLElement>('.ovl');
+  if (overlay) placeTrophies(overlay, scene);
   renderReadout(elements.readout, agents, walker);
   renderSpotlight(elements.spotlight, scene, shown, performance.now());
   if (elements.hint) elements.hint.hidden = walker !== null;

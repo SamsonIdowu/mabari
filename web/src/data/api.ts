@@ -3,6 +3,7 @@ import type { Relay } from '../office/relay.ts';
 import type {
   AccountKind,
   Agent,
+  AgentCard,
   AgentDef,
   Conversation,
   Changes,
@@ -472,6 +473,8 @@ export const api = {
     }),
   wipe: () => send<{ ok: boolean }>('POST', '/api/wipe', { confirm: true }),
   updateSettings: (patch: Partial<Settings>) => send<Settings>('PATCH', '/api/settings', patch),
+  /** The card shown over an agent's name: its role and what it did today, counted by the server. */
+  agentCard: (id: string) => request<AgentCard>(`/api/agents/${encodeURIComponent(id)}/card`),
   completeProject: (id: string) => send<Project>('POST', `/api/projects/${id}/complete`),
   reopenProject: (id: string) => send<Project>('POST', `/api/projects/${id}/reopen`),
   updateProject: (

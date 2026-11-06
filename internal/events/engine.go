@@ -226,6 +226,8 @@ func (e *Engine) loadAgents(ctx context.Context) error {
 				break
 			}
 		}
+		// The office wasn't watching while it was off, so no agent counts as working until heard from.
+		agent.Ledger.Unwatched(e.now())
 		e.agents = append(e.agents, agent)
 	}
 	return nil
@@ -284,6 +286,9 @@ func (e *Engine) flush() {
 			e.dirty[*agent.Lead] = struct{}{}
 		}
 		agent.Refresh(now)
+		if _, ok := e.dirty[agent.ID]; ok {
+			agent.Ledger.Advance(now, agent.State, agent.Working)
+		}
 	}
 	e.trackPhases(now.UnixMilli())
 	e.record(e.store.Transaction(context.Background(), func() error {

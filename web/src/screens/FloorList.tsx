@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../gen/models.ts';
 import { floorGroups, type FloorEntry } from '../office/floorList.ts';
 import { selectAgent, selectResting, useOfficeUi, type OfficeFilters } from '../office/uiStore.ts';
+import { Cast } from '../shell/Cast.tsx';
 
 interface RowProps {
   entry: FloorEntry;
@@ -140,7 +141,12 @@ export function FloorList({ office, filters }: { office: Snapshot; filters: Offi
             ))}
           </div>
         ))}
-        {ids.length ? null : <p className="help flempty">Nobody is on the floor in this view.</p>}
+        {ids.length ? null : (
+          <div className="flempty">
+            <Cast who={0} act="rest" />
+            <p className="help">Nobody is on the floor in this view.</p>
+          </div>
+        )}
       </div>
     </aside>
   );

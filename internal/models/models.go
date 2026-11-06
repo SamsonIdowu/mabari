@@ -243,6 +243,8 @@ type SessionState struct {
 	// Asked are the latest instructions sent from Mabari that reached the agent, oldest first,
 	// each with the agent's reply once it gives one. At most AskedKept.
 	Asked []Instruction `json:"asked"`
+	// Ledger is what the agent did today, kept by the engine for the agent's card.
+	Ledger Ledger `json:"ledger"`
 }
 
 // AskedKept is how many instructions and replies an agent keeps for its panel.

@@ -19,6 +19,7 @@ import { useVee } from '../office/veeStore.ts';
 import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useEscape } from '../shell/useEscape.ts';
+import { Delight } from './Delight.tsx';
 import { AgentPanel } from './AgentPanel.tsx';
 import { RestingPanel } from './RestingPanel.tsx';
 import { FloorList } from './FloorList.tsx';
@@ -27,6 +28,7 @@ import { ApprovalBell, MabariUpdates, MabariUpdatesButton, WallBar } from './Off
 import { PauseEveryone } from './PauseEveryone.tsx';
 import { PromptTray } from './PromptTray.tsx';
 import { VoiceCard } from './VoiceCard.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 type Menu = 'project' | 'model' | 'key' | null;
 
@@ -558,6 +560,10 @@ function FloorMessage({ office }: { office: Snapshot }) {
   return (
     <div className="floormsg">
       <div className="card">
+        <Cast
+          who={connected ? 1 : keysOnly ? 2 : 0}
+          act={connected ? 'sparkle' : keysOnly ? 'think' : 'wave'}
+        />
         {connected ? (
           <>
             <h2>Connected. No agents running yet.</h2>
@@ -984,6 +990,7 @@ function Stage({ office }: { office: Snapshot }) {
         </div>
         <FloorMessage office={office} />
         <MabariUpdates />
+        <Delight />
       </div>
     </div>
   );

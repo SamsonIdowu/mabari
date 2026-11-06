@@ -22,6 +22,7 @@ import { PageHead } from './parts.tsx';
 import { ProjectChat } from './ProjectChat.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
 import { WatchControl } from './WatchControl.tsx';
+import { Cast } from '../shell/Cast.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 
@@ -592,6 +593,7 @@ export function Projects() {
         </div>
         {projects.length === 0 ? (
           <div className="card" id="noProjects" style={{ textAlign: 'center', padding: 48 }}>
+            <Cast who={1} act="sparkle" />
             <h2>No projects yet</h2>
             <p className="help">
               Describe what you want built and the planner proposes a team. Attach a folder or a Git
@@ -609,6 +611,7 @@ export function Projects() {
           </div>
         ) : filter !== 'all' && shown.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <Cast who={3} act="trophy" />
             <h2>No completed projects yet</h2>
             <p className="help">
               When every task in a project is finished, mark it as complete and it shows here.

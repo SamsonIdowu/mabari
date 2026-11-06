@@ -21,6 +21,7 @@ import { routeTitle } from '../routeTitles.ts';
 import { useHashRoute } from '../useHashRoute.ts';
 import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
 import { Rail } from './Rail.tsx';
+import { ScreenSkeleton } from './Skeleton.tsx';
 import { useRailStore } from './railStore.ts';
 import { Toasts } from './Toasts.tsx';
 import { Topbar } from './Topbar.tsx';
@@ -74,7 +75,7 @@ export function Shell() {
       <Topbar />
       <Rail current={route} />
       <main className="screen" id="screen" ref={screenRef} tabIndex={-1}>
-        {route ? <Screen route={route} /> : null}
+        {route ? <Screen route={route} /> : <ScreenSkeleton />}
       </main>
       <NewAgentDialog />
       <DeskDialog />

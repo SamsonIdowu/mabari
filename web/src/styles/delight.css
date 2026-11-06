@@ -1,0 +1,231 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * A place worth opening: the motion language, hover and pressed states, loading skeletons, the
+ * agent card, the cast of pixel characters, and the celebration. Flat colour only, no gradients.
+ * The motion tokens (--ease, --dur-fast, --dur, --dur-slow) come from tokens.css. Reduced motion
+ * is handled once, in base.css, by switching every animation and transition off.
+ */
+
+/* ---------- motion language ----------
+   Arriving things ease out over --dur and travel a few pixels; leaving ones ease in. Nothing here
+   changes layout: only transform and, for small floating things, opacity. A change of screen and
+   a panel slide with transform alone, so the text on them is never faded while it is read. */
+@keyframes screenin {
+  from {
+    transform: translateY(6px);
+  }
+}
+@keyframes panelin {
+  from {
+    transform: translateX(14px);
+  }
+}
+@keyframes toastout {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes cardin {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+section[data-screen]:not([data-screen='office']) {
+  animation: screenin var(--dur-slow) var(--ease);
+}
+.panel {
+  animation: panelin var(--dur) var(--ease);
+}
+.dialog {
+  animation-duration: var(--dur);
+  animation-timing-function: var(--ease);
+}
+/* A toast arrives with the dialogs' rise and leaves the same way just before it is removed, which
+   the store does 3.8 s after it showed. */
+.toast {
+  animation:
+    rise var(--dur) var(--ease),
+    toastout var(--dur) var(--ease-in) 3.6s forwards;
+}
+
+/* ---------- hover and pressed ----------
+   A control answers the pointer in two steps: a quiet lift on hover, a small press on click. Lists
+   and menus darken their line; buttons sink a pixel. */
+.btn,
+.tbtn,
+.nav,
+.mi,
+.seg button,
+.dd,
+.flrow,
+.pwin,
+.lbtn,
+.ctools button {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    filter var(--dur-fast) var(--ease);
+}
+.btn:not(.primary):not(.danger):not(.ghost):not(:disabled):hover {
+  background: var(--surface3);
+}
+.btn:not(:disabled):active,
+.tbtn:active,
+.dd:active,
+.ctools button:not(:disabled):active,
+.lbtn:active {
+  transform: translateY(1px);
+}
+.btn.primary:not(:disabled):active {
+  filter: brightness(0.9);
+}
+.btn.ghost:not(:disabled):active {
+  background: var(--surface3);
+}
+.nav:active,
+.mi:active,
+.flrow:active,
+.seg button:active {
+  background: var(--surface3);
+}
+.pwin:active {
+  transform: translateY(1px);
+}
+.switch input:active::after {
+  width: 20px;
+}
+.switch input:checked:active::after {
+  transform: translateX(12px);
+}
+.switch input::after {
+  transition:
+    transform var(--dur-fast) var(--ease),
+    width var(--dur-fast) var(--ease);
+}
+
+/* ---------- loading skeletons ----------
+   Flat shapes in the page's own layout, breathing slowly, instead of a blank page. */
+@keyframes skeleton {
+  50% {
+    opacity: 0.55;
+  }
+}
+.skel {
+  background: var(--surface2);
+  border-radius: 10px;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+.skel.line {
+  height: 12px;
+  border-radius: 6px;
+}
+.skel.title {
+  height: 32px;
+  width: 220px;
+  border-radius: 8px;
+}
+.skeletons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+@media (max-width: 1100px) {
+  .skeletons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .skeletons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.skeletons .card {
+  min-height: 180px;
+  gap: 12px;
+}
+
+/* ---------- the agent card ---------- */
+.acard {
+  position: fixed;
+  z-index: 40;
+  width: 264px;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-top: 3px solid var(--ac, var(--line2));
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: cardin var(--dur) var(--ease);
+}
+.acard .ahead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.acard .aportrait {
+  /* The stage's own rule fills it with its canvases. */
+  position: static;
+  flex: none;
+  width: 48px;
+  height: 56px;
+  image-rendering: pixelated;
+  border-radius: 10px;
+  background: var(--surface3);
+  box-shadow: inset 0 0 0 2px var(--ac, var(--line2));
+}
+.acard .atitle {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.acard h3 {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acard .arole {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acard .acnts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+.acard .acnt {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.acard .acnt dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.acard .acnt dt {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.25;
+}

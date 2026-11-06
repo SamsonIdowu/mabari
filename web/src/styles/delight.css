@@ -371,3 +371,15 @@ input[type='range'].volume:disabled {
 #noProjects .cast {
   margin-bottom: 6px;
 }
+
+/* ---------- spacing ----------
+   A page's pieces are a gap apart, and the page sets the gap. The demo's banner kept a margin of
+   its own on top of it, and Accounts' empty slot for its banners counted as a piece, so the
+   banner sat 56 px from the first card there and 36 px on Settings. Now both are one gap. */
+.page > #demoNote {
+  /* It has an inline margin of its own, so this has to be firm. */
+  margin-bottom: 0 !important;
+}
+.page > #accBanner:empty {
+  display: none;
+}

@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -138,8 +139,9 @@ func (a *api) wipe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// Attached files go with the conversations they were part of.
-	if err := a.wipeAttachments(); err != nil {
+	// Attached files go with the conversations they were part of, and the saved instructions are
+	// the person's words too, so they go as well. Neither is in the database.
+	if err := errors.Join(a.wipeAttachments(), a.wipeSaved()); err != nil {
 		internalError(w, err)
 		return
 	}

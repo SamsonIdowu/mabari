@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,6 +154,22 @@ func (a *api) wipeAttachments() error {
 		return nil
 	}
 	return os.RemoveAll(a.dataPath("attachments"))
+}
+
+// wipeSaved removes the saved instructions, for a wipe.
+func (a *api) wipeSaved() error {
+	path := a.savedFile()
+	if path == "" {
+		return nil
+	}
+	savedMu.Lock()
+	defer savedMu.Unlock()
+	for _, file := range []string{path, path + ".tmp"} {
+		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Saved is an instruction the person keeps to send again.

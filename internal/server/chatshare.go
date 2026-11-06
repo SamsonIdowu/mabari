@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/SamsonIdowu/mabari/internal/models"
+	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 // What only Mabari can do with a reply: hand it to another agent, and ask everyone on a project at
@@ -19,9 +20,8 @@ import (
 // actions still need the person's click, and neither can approve anything.
 
 const (
-	// metaAsks holds the messages sent to everyone on a project, newest last, so the side by side
-	// view of the replies is still there after a reload.
-	metaAsks = "chat_asks"
+	// asksKept is how many messages to everyone stay, newest last, so the side by side view of the
+	// replies is still there after a reload.
 	asksKept = 40
 	// handQuestion is how much of the request a handed over reply was answering goes with it.
 	handQuestion = 600
@@ -45,7 +45,7 @@ type Ask struct {
 
 // allAsks reads the stored asks, oldest first. Call inside Do.
 func (a *api) allAsks() []Ask {
-	raw, err := a.engine.Store().Meta(context.Background(), metaAsks)
+	raw, err := a.engine.Store().Meta(context.Background(), store.MetaAsks)
 	var asks []Ask
 	if err != nil || raw == "" || json.Unmarshal([]byte(raw), &asks) != nil {
 		return []Ask{}
@@ -116,7 +116,7 @@ func (a *api) askEveryone(w http.ResponseWriter, body chatBody) {
 		if len(asks) > asksKept {
 			asks = asks[len(asks)-asksKept:]
 		}
-		a.engine.SetMeta(metaAsks, mustJSON(asks))
+		a.engine.SetMeta(store.MetaAsks, mustJSON(asks))
 		a.engine.Log("You", models.LogInstruction, "Asked everyone on "+project.Name+": "+ellipsize(ask.Text, 120),
 			"Sent to "+pluralAgents(len(agents)), "")
 	}); err != nil {

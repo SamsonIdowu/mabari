@@ -34,6 +34,9 @@ const (
 	MetaWatches = "watches"
 	// MetaTrusted holds the folders the person has said they trust, with what each brought then.
 	MetaTrusted = "claude_trusted_folders"
+	// MetaAsks holds the messages sent to everyone on a project. They belong to the office's
+	// projects, so they go when the office is cleared.
+	MetaAsks = "chat_asks"
 )
 
 // Store is the database. One connection means one writer, so writes never contend.
@@ -610,6 +613,9 @@ func (s *Store) ClearOffice(ctx context.Context, keep ...string) error {
 	return s.Transaction(ctx, func() error {
 		if err := s.empty(ctx, "session_states", "agents", "events", "messages", "instructions",
 			"approvals", "activity_log", "state_changes", "projects"); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", MetaAsks); err != nil {
 			return err
 		}
 		query, args := "DELETE FROM conversation_items", make([]any, 0, len(keep))

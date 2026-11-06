@@ -363,20 +363,14 @@ func TestAnAttachmentOver25MegabytesIsRefusedAndLeavesNothing(t *testing.T) {
 	}
 }
 
-func TestAWipeRemovesAttachmentsButKeepsSavedInstructions(t *testing.T) {
+func TestAWipeRemovesAttachments(t *testing.T) {
 	o := newChatOffice(t)
-	file := o.upload(t, "keep.txt", "x")
-	if response := o.do(t, http.MethodPost, "/api/saved-instructions", `{"name":"Review","text":"Review the diff"}`); response.Code != http.StatusCreated {
-		t.Fatalf("save = %d", response.Code)
-	}
+	file := o.upload(t, "gone.txt", "x")
 	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
 		t.Fatalf("wipe = %d %s", response.Code, response.Body.String())
 	}
 	if _, err := os.Stat(file.Path); err == nil {
 		t.Error("the attachment survived a wipe")
-	}
-	if saved := decode[[]Saved](t, o.do(t, http.MethodGet, "/api/saved-instructions", "")); len(saved) != 1 {
-		t.Errorf("saved after a wipe = %+v", saved)
 	}
 }
 
@@ -650,4 +644,45 @@ func TestChatSendQueuesForAWorkingSessionAndNowInterruptsIt(t *testing.T) {
 		t.Fatalf("send now queued: %+v", now)
 	}
 	o.until(t, "the new message to be answered", func() bool { return o.said(t, agent.ID, "Done: stop, do this instead") })
+}
+
+// A full wipe removes what the person wrote, including what isn't in the database, and asks with it.
+func TestAWipeRemovesSavedInstructionsAndAsks(t *testing.T) {
+	o := newChatOffice(t)
+	if response := o.do(t, http.MethodPost, "/api/saved-instructions", `{"name":"review","text":"review the diff"}`); response.Code != http.StatusCreated {
+		t.Fatalf("save = %d %s", response.Code, response.Body.String())
+	}
+	saved := filepath.Join(o.data, "saved-instructions.json")
+	if _, err := os.Stat(saved); err != nil {
+		t.Fatal(err)
+	}
+	_ = o.engine.Do(func() { o.engine.SetMeta(store.MetaAsks, `[{"id":"a","projectId":"p","text":"secret plans"}]`) })
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("wipe = %d %s", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(saved); !os.IsNotExist(err) {
+		t.Fatalf("the saved instructions are still there: %v", err)
+	}
+	if list := decode[[]Saved](t, o.do(t, http.MethodGet, "/api/saved-instructions", "")); len(list) != 0 {
+		t.Fatalf("list = %+v", list)
+	}
+	if asks := decode[[]Ask](t, o.do(t, http.MethodGet, "/api/projects/p/asks", "")); len(asks) != 0 {
+		t.Fatalf("asks = %+v", asks)
+	}
+	// With nothing to remove, a wipe is still fine.
+	if response := o.do(t, http.MethodPost, "/api/wipe", `{"confirm":true}`); response.Code != http.StatusOK {
+		t.Fatalf("second wipe = %d %s", response.Code, response.Body.String())
+	}
+}
+
+// The demo clears the office, so a project's asks go with the project.
+func TestLoadingTheDemoForgetsAsks(t *testing.T) {
+	o := newChatOffice(t)
+	_ = o.engine.Do(func() { o.engine.SetMeta(store.MetaAsks, `[{"id":"a","projectId":"p","text":"secret plans"}]`) })
+	if response := o.do(t, http.MethodPost, "/api/demo/load", ""); response.Code != http.StatusOK {
+		t.Fatalf("demo = %d", response.Code)
+	}
+	if asks := decode[[]Ask](t, o.do(t, http.MethodGet, "/api/projects/p/asks", "")); len(asks) != 0 {
+		t.Fatalf("asks = %+v", asks)
+	}
 }

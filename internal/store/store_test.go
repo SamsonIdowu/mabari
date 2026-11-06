@@ -209,6 +209,22 @@ func TestSettingsFillInDefaults(t *testing.T) {
 	}
 }
 
+// Clearing the office takes the messages sent to everyone with the projects they were for, and
+// leaves what isn't the office's.
+func TestClearingTheOfficeForgetsAsks(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	must(t, s.SetMeta(ctx, MetaAsks, `[{"id":"a"}]`))
+	must(t, s.SetMeta(ctx, MetaTrusted, `{}`))
+	must(t, s.ClearOffice(ctx))
+	if got, err := s.Meta(ctx, MetaAsks); err != nil || got != "" {
+		t.Errorf("asks = %q, %v", got, err)
+	}
+	if got, err := s.Meta(ctx, MetaTrusted); err != nil || got != "{}" {
+		t.Errorf("trusted = %q, %v", got, err)
+	}
+}
+
 // Every table holds a row before the wipe and none after it, so a table added later without
 // joining Wipe fails this test.
 func TestWipeEmptiesEverything(t *testing.T) {

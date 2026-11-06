@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // Local Whisper with a fake microphone (a steady tone) and a fake transcription route, so no
 // model, whisper.cpp or real voice is needed. Nothing here reaches Hugging Face.
 
 test.beforeEach(async ({ page, request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
       const context = new AudioContext();

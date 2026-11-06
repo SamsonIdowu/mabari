@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 test('a log with nothing in it says nothing has happened yet', async ({ page }) => {

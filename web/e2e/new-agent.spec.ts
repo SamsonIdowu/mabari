@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page) {
@@ -231,7 +232,7 @@ test('New agent here starts in that project', async ({ page }) => {
 
 test('with no account the dialog sends you to Accounts', async ({ page, request }) => {
   await request.post('/api/demo/load');
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await page.goto('/#accounts');
   await page.getByRole('button', { name: 'New agent' }).click();
   const form = dialog(page);

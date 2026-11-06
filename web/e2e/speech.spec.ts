@@ -2,9 +2,10 @@
 // Playwright's headless Chromium takes the whole page down if its own speech engine is asked to
 // listen (NEW-2). The page has to refuse, with a message, before it asks.
 import { expect, test, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await request.post('/api/demo/load');
 });
 

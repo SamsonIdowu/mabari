@@ -3,6 +3,7 @@
 // many and which project, only working agents paused, nothing approved, and only the agents that
 // pause stopped carried on.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 interface Agent {
   id: string;
@@ -24,7 +25,7 @@ interface Reply {
 }
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page) {

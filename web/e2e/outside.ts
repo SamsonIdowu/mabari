@@ -9,6 +9,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 export const apiPort = process.env.MABARI_API_PORT ?? '4327';
 
@@ -35,7 +36,7 @@ export function buildMabari(name: string): string {
 
 /** Connects Claude Code to the test server, into the scratch Claude folder. */
 export async function connectClaude(binary: string, request: APIRequestContext) {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   execFileSync(binary, ['disconnect', 'claude'], { env: mabariEnv() });
   execFileSync(binary, ['connect', 'claude', '--yes'], { env: mabariEnv() });
 }

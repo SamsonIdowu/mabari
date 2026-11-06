@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // The office floor: one meaning of "needs you" everywhere, the groups in the list, and the
 // controls and cards that must stay reachable and readable.
@@ -28,7 +29,7 @@ test.afterAll(() => {
 });
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page, hash = '') {
@@ -92,7 +93,7 @@ async function askOnceLive(page: Page, asking: Locator): Promise<void> {
 }
 
 async function connectClaude(request: APIRequestContext) {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   execFileSync(binary, ['disconnect', 'claude'], { env });
   execFileSync(binary, ['connect', 'claude', '--yes'], { env });
 }

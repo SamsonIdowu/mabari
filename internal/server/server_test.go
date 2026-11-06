@@ -49,6 +49,8 @@ func newOffice(t *testing.T) *office {
 func (o *office) do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, "http://localhost:4317"+path, strings.NewReader(body))
+	// What Mabari's own page sends, which a few routes insist on.
+	request.Header.Set("Origin", "http://localhost:4317")
 	recorder := httptest.NewRecorder()
 	o.handler.ServeHTTP(recorder, request)
 	return recorder
@@ -1064,5 +1066,55 @@ func TestCreateSubagentFromTheDialog(t *testing.T) {
 	}
 	if juniper := agentNamed(t, office, "Juniper"); juniper.Lead == nil || *juniper.Lead != scout.ID {
 		t.Errorf("lead = %v", juniper.Lead)
+	}
+}
+
+// A command an agent was allowed to run can reach Mabari's port. What must follow a person's click
+// refuses anything but Mabari's own page, which also keeps a script without a browser out.
+func TestOnlyMabarisPageCanDoWhatNeedsAClick(t *testing.T) {
+	o := newRunOffice(t)
+	snapshot := o.demo(t)
+	approval := ""
+	for _, agent := range snapshot.Agents {
+		if agent.Approval != nil {
+			approval = agent.Approval.ID
+		}
+	}
+	if approval == "" {
+		t.Fatal("no approval waiting")
+	}
+	routes := map[string]string{
+		"/api/auto-approve":  `{"on":true,"scope":"all","acknowledged":true}`,
+		"/api/folders/trust": `{"path":"/tmp/shop","confirm":true}`,
+		"/api/wipe":          `{"confirm":true}`,
+		"/api/approvals/" + approval + "/decision": `{"decision":"allowed"}`,
+	}
+	for path, body := range routes {
+		for name, origin := range map[string]string{
+			"no origin":       "",
+			"another site":    "https://evil.example",
+			"another port":    "http://localhost:3000",
+			"a sandbox frame": "null",
+		} {
+			request := httptest.NewRequest(http.MethodPost, "http://localhost:4317"+path, strings.NewReader(body))
+			if origin != "" {
+				request.Header.Set("Origin", origin)
+			}
+			recorder := httptest.NewRecorder()
+			o.handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden {
+				t.Errorf("%s, %s = %d %s", path, name, recorder.Code, recorder.Body)
+			}
+		}
+	}
+	after := decode[models.Snapshot](t, o.do(t, http.MethodGet, "/api/snapshot", ""))
+	if after.Settings.AutoApprove.On || len(after.Agents) == 0 {
+		t.Fatalf("something got through: auto approve %v, %d agents", after.Settings.AutoApprove.On, len(after.Agents))
+	}
+	if response := o.do(t, http.MethodPost, "/api/approvals/"+approval+"/decision", `{"decision":"denied"}`); response.Code != http.StatusOK {
+		t.Fatalf("from the page = %d %s", response.Code, response.Body)
+	}
+	if response := o.do(t, http.MethodPost, "/api/auto-approve", `{"on":false,"scope":"safe"}`); response.Code != http.StatusOK {
+		t.Fatalf("from the page = %d %s", response.Code, response.Body)
 	}
 }

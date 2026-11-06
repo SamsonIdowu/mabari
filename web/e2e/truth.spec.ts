@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // Mabari tells the truth: what it says about the office, about what it did with a message, and
 // about itself is so. Each test is a thing a newcomer's first minutes hit.
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function demoHome(page: Page, request: APIRequestContext) {

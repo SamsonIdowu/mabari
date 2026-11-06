@@ -2,6 +2,7 @@
 // The mic on Home's dock: push to talk, and a Snapchat style lock. Speech recognition is faked,
 // so "saying" something is a call to window.fakeSpeech.say.
 import { expect, test, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 declare global {
   interface Window {
@@ -13,7 +14,7 @@ const sent: string[] = [];
 
 test.beforeEach(async ({ page, request }) => {
   sent.length = 0;
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await request.post('/api/demo/load');
   await page.addInitScript(() => {
     class FakeSpeech {

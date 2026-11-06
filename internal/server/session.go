@@ -20,7 +20,7 @@ import (
 const whereTerminal = "terminal"
 
 func (a *api) sessionRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/folders/trust", a.trustFolder)
+	mux.HandleFunc("POST /api/folders/trust", a.fromPage(a.trustFolder))
 	mux.HandleFunc("POST /api/agents/{id}/session/resume", a.resumeSession)
 	mux.HandleFunc("POST /api/agents/{id}/session/release", a.releaseSession)
 }

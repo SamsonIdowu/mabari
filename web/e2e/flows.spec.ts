@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
+import { fromPage, wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page) {
@@ -222,11 +223,11 @@ test('an approval card closes when its approval is settled elsewhere', async ({
   await page.locator('.bitem').click();
   const card = page.getByRole('dialog');
   await expect(card).toBeVisible();
-  await request.post('/api/auto-approve', {
+  await request.post('/api/auto-approve', { headers: fromPage,
     data: { on: true, scope: 'all', acknowledged: true },
   });
   await expect(card).toBeHidden();
-  await request.post('/api/auto-approve', {
+  await request.post('/api/auto-approve', { headers: fromPage,
     data: { on: false, scope: 'all', acknowledged: false },
   });
 });
@@ -236,4 +237,15 @@ test('clicking an agent that needs approval opens the card', async ({ page }) =>
   const tag = (await page.locator('.tag', { hasText: 'Atlas' }).first().boundingBox())!;
   await page.mouse.click(tag.x + tag.width / 2, tag.y - 24);
   await expect(page.getByRole('dialog')).toContainText('Atlas wants to run a command');
+});
+
+test('a script with no page behind it can not do what needs a click', async ({ request }) => {
+  // Only what a browser adds is missing, which is what a command run by an agent would send.
+  const refused = await request.post('/api/auto-approve', {
+    data: { on: true, scope: 'all', acknowledged: true },
+  });
+  expect(refused.status()).toBe(403);
+  expect((await request.post('/api/wipe', { data: { confirm: true } })).status()).toBe(403);
+  const settings = await (await request.get('/api/settings')).json();
+  expect(settings.autoApprove.on).toBe(false);
 });

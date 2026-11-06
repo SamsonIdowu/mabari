@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
 import { themes } from '../src/shared/tokens.ts';
+import { wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 const NAV: [name: string, label: string, heading: string][] = [
@@ -201,7 +202,7 @@ test('the Agents link in the rail says how many need you, in words', async ({ pa
   await expect(link.locator('.badge')).toHaveAttribute('aria-hidden', 'true');
 
   // One waiting is "needs", and the words stay when the rail is folded and its labels are hidden.
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
     token: string;
   };

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { hubInstructions, hubReport, hubToken, stubNotifications, type HubReport } from './outside';
+import { wipe } from './support/page.ts';
 
 // "Tell me when it's done" and "then tell the next one". Agents are hub agents, which report any
 // state a test likes, so each can be made done, or stopped by an error, on cue.
@@ -8,7 +9,7 @@ import { hubInstructions, hubReport, hubToken, stubNotifications, type HubReport
 const WATCH = "Tell me when it's done";
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 /** Seats hub agents. Their ids are "hub-" and the key given. */

@@ -45,6 +45,8 @@ func (o *accessOffice) call(t *testing.T, method, path, body, remote, host, toke
 	request := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
 	request.RemoteAddr = remote
 	request.Host = host
+	// What Mabari's own page sends, which a few routes insist on.
+	request.Header.Set("Origin", "http://"+host)
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}

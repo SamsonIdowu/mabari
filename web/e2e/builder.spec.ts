@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 interface Def {
   id: string;
@@ -22,7 +23,7 @@ async function clearDefs(request: APIRequestContext) {
 }
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await clearDefs(request);
 });
 test.afterEach(async ({ request }) => clearDefs(request));

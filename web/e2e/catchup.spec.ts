@@ -2,16 +2,17 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { fromPage, wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 /** The demo office, with something auto approve decided, so there is a line for the recap to tell. */
 async function demoWithAnAutoApproval(request: APIRequestContext) {
   await request.post('/api/demo/load');
-  await request.post('/api/auto-approve', { data: { on: true, scope: 'all', acknowledged: true } });
-  await request.post('/api/auto-approve', {
+  await request.post('/api/auto-approve', { headers: fromPage, data: { on: true, scope: 'all', acknowledged: true } });
+  await request.post('/api/auto-approve', { headers: fromPage,
     data: { on: false, scope: 'all', acknowledged: true },
   });
 }
@@ -153,10 +154,10 @@ test.describe('while you were away', () => {
     await expect(page.locator('#homeSum')).toContainText('working');
     await expect(card(page)).toHaveCount(0);
     // Something happens while nobody is there: auto approve settles an approval.
-    await request.post('/api/auto-approve', {
+    await request.post('/api/auto-approve', { headers: fromPage,
       data: { on: true, scope: 'all', acknowledged: true },
     });
-    await request.post('/api/auto-approve', {
+    await request.post('/api/auto-approve', { headers: fromPage,
       data: { on: false, scope: 'all', acknowledged: true },
     });
     // Twenty minutes go by, and then the mouse moves.

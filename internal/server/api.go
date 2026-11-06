@@ -37,7 +37,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ws", a.websocket)
 	mux.HandleFunc("POST /api/demo/load", a.loadDemo)
 	mux.HandleFunc("POST /api/demo/stop", a.stopDemo)
-	mux.HandleFunc("POST /api/wipe", a.wipe)
+	mux.HandleFunc("POST /api/wipe", a.fromPage(a.wipe))
 
 	mux.HandleFunc("GET /api/projects", a.listProjects)
 	mux.HandleFunc("POST /api/projects", a.createProject)
@@ -73,7 +73,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/settings", a.updateSettings)
 
 	mux.HandleFunc("GET /api/approvals", a.listApprovals)
-	mux.HandleFunc("POST /api/approvals/{id}/decision", a.decide)
+	mux.HandleFunc("POST /api/approvals/{id}/decision", a.fromPage(a.decide))
 
 	mux.HandleFunc("GET /api/activity", a.activity)
 	mux.HandleFunc("GET /api/activity/export", a.exportActivity)
@@ -82,7 +82,7 @@ func (a *api) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/dispatch/preview", a.previewDispatch)
 	mux.HandleFunc("POST /api/messages", a.sendMessage)
-	mux.HandleFunc("POST /api/auto-approve", a.autoApprove)
+	mux.HandleFunc("POST /api/auto-approve", a.fromPage(a.autoApprove))
 	mux.HandleFunc("POST /api/vee", a.talkToVee)
 }
 

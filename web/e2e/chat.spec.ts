@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // The Chats screen in the demo office: With you, the thread, the message box, project chat, Hand
 // to and Ask everyone. Streaming, "@" files and the session choices need a real session, so
@@ -23,7 +24,7 @@ async function ids(request: APIRequestContext): Promise<Ids> {
 }
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await request.post('/api/demo/load');
 });
 

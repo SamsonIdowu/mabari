@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // Review the work: what an agent or a project changed in its folder, read by the server with Git,
 // shown as a diff, with comments that go to the agent and a second opinion from another one.
@@ -66,7 +67,7 @@ test.afterAll(() => {
 });
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function hubToken(request: APIRequestContext): Promise<string> {

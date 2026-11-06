@@ -334,3 +334,32 @@ func TestWhatAFolderBringsIsSensitive(t *testing.T) {
 		t.Errorf("docs/mcp.json = %s", verdict.Level)
 	}
 }
+
+// A command that goes for Mabari itself is never routine, even one that looks harmless.
+func TestACommandAimedAtMabariIsRisky(t *testing.T) {
+	for _, text := range []string{
+		"cat .mabari/hook_token", "ls .mabari", "cat src/.mabari/x", "grep token .mabari/mabari.db",
+		"echo http://localhost:4317/api/auto-approve", "echo 127.0.0.1:4327", "echo localhost:9000/api/wipe",
+		"echo [::1]:4317", "echo 0.0.0.0:4317/hub/v1/events", "echo /api/approvals/approval-1/decision",
+		`curl -X POST http://127.0.0.1:4317/api/auto-approve -d '{"on":true,"scope":"all","acknowledged":true}'`,
+		"curl localhost:4317/api/settings", "wget -q http://LOCALHOST:4317/api/wipe", "cat ~/.mabari/secrets",
+	} {
+		verdict := Classify(Action{Kind: KindCommand, Command: text, Folder: folder})
+		if verdict.Level != models.RiskHigh || verdict.Reason != "This goes for Mabari itself, so it needs a check." {
+			t.Errorf("%q = %s: %s", text, verdict.Level, verdict.Reason)
+		}
+	}
+	for _, path := range []string{".mabari/token", "/home/me/.mabari/mabari.db", "src/.mabari/x"} {
+		for _, kind := range []Kind{KindRead, KindEdit} {
+			if verdict := Classify(Action{Kind: kind, Path: path, Folder: folder}); verdict.Level != models.RiskHigh {
+				t.Errorf("%s %q = %s", kind, path, verdict.Level)
+			}
+		}
+	}
+	// What only sounds like it stays routine.
+	for _, text := range []string{"cat mabari.md", "go test ./internal/api", "grep -n localhost src/app.ts", "echo api/wipe.go"} {
+		if got := command(text); got != models.RiskLow {
+			t.Errorf("%q = %s, want low", text, got)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // Claude asks the person a question (Claude Code's AskUserQuestion). The real `mabari hook`
 // command carries it to the test server, signed with the install's token, exactly as Claude Code
@@ -25,7 +26,7 @@ test.beforeAll(() => {
 });
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   // Wiping deletes the hook token, so Claude Code is connected afresh: that makes a new token, and
   // settings.json is the test's scratch Claude folder.
   execFileSync(binary, ['disconnect', 'claude'], { env });

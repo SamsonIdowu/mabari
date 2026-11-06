@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 /** Animation frames a second over a window, counted in the page the way the browser draws. */
 function framesPerSecond(page: Page, ms: number) {
@@ -30,7 +31,7 @@ function framesPerSecond(page: Page, ms: number) {
 // development build, several times slower than the shipped app, so a pass here is conservative.
 test('the floor stays smooth with 16 busy agents', async ({ page, request }) => {
   test.setTimeout(60_000);
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   const { token } = (await (await request.post('/api/accounts/hub/token')).json()) as {
     token: string;
   };

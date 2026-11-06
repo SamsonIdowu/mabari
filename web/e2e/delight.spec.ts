@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { fromPage, wipe } from './support/page.ts';
 
 // Package 7, "A place worth opening": shipping a project, the trophy shelf, the small moments, the
 // agent card, the sound of the office, loading skeletons, the cast in empty states and the motion
@@ -9,7 +10,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 const API = `http://127.0.0.1:${process.env.MABARI_API_PORT ?? '4327'}`;
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function hubToken(request: APIRequestContext): Promise<string> {
@@ -236,7 +237,7 @@ test.describe('shipping a project', () => {
             id: string;
           }[];
           for (const approval of waiting) {
-            await request.post(`/api/approvals/${approval.id}/decision`, {
+            await request.post(`/api/approvals/${approval.id}/decision`, { headers: fromPage,
               data: { decision: 'denied' },
             });
           }

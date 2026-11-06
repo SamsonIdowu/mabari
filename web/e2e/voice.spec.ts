@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 declare global {
   interface Window {
@@ -12,7 +13,7 @@ declare global {
 }
 
 test.beforeEach(async ({ page, request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await page.addInitScript(() => {
     class FakeSpeech {
       declare processLocally: boolean;

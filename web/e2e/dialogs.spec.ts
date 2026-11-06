@@ -2,9 +2,10 @@
 // Every dialog that says aria-modal="true" has to behave like one: focus moves in, Tab and
 // Shift+Tab stay in, the page behind cannot be reached, and closing puts focus back where it was.
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page) {

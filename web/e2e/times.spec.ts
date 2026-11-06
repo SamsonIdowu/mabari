@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // A browser set to English (US) writes 07:38 PM by itself. The app writes 19:38 everywhere.
 test.use({ locale: 'en-US' });
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await request.post('/api/demo/load');
 });
 

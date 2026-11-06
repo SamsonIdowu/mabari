@@ -133,7 +133,7 @@ var (
 // sensitiveNames are patterns for other paths that hold secrets or run by themselves.
 const sensitiveNames = `\.env[^/]*|\.git|\.github|\.husky|\.vscode|\.ssh|\.aws|\.gnupg|\.claude|\.codex|` +
 	`\.npmrc|\.netrc|\.kube|credentials[^/]*|secrets?[^/]*|id_rsa[^/]*|id_ed25519[^/]*|` +
-	`[^/]*\.pem|[^/]*\.key`
+	`[^/]*\.pem|[^/]*\.key|\.mabari`
 
 // sensitive paths always need a person, even inside the working folder. Workflow and editor
 // folders count, because what is in them runs without anyone asking, and so does everything a
@@ -147,6 +147,15 @@ func sensitivePattern() string {
 	}
 	return strings.Join(names, "|")
 }
+
+// mabariTarget is a command that goes for Mabari itself: its data folder, its port, or a route of
+// its API, in any folder, under any port. Such a command is never routine, because it could approve
+// the next step. This only reads the words of the command, so it raises the bar for a stray or
+// injected command and is not a boundary: a script an allowed command runs can do the same unseen.
+var mabariTarget = regexp.MustCompile(`(?i)\.mabari\b|` +
+	`\b(localhost|127\.[0-9.]+|0\.0\.0\.0)(:[0-9]+)?/(api|hub|ws)\b|\[::1\](:[0-9]+)?/(api|hub|ws)\b|` +
+	`\b(localhost|127\.[0-9.]+|0\.0\.0\.0):(4317|4327)\b|\[::1\]:(4317|4327)\b|` +
+	`/api/(auto-approve|wipe|approvals|folders/trust|settings|hooks|access)\b`)
 
 // reasons explain well-known dangerous words. They only choose the wording: anything not on
 // the low risk list is risky whether or not it appears here.
@@ -294,6 +303,9 @@ func explain(command string) string {
 }
 
 func classifyCommand(action Action) Verdict {
+	if mabariTarget.MatchString(action.Command) {
+		return risky("This goes for Mabari itself, so it needs a check.")
+	}
 	commands, ok := split(action.Command)
 	if !ok || len(commands) == 0 {
 		return risky(orShellReason(action.Command))

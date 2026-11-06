@@ -2,6 +2,7 @@
 // The quick switcher: Ctrl K or Command K opens a search box over any screen, to jump to an agent,
 // a project or a screen, or to run a plain action. Every jump here is made from the keyboard alone.
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 declare global {
   interface Window {
@@ -10,7 +11,7 @@ declare global {
 }
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
 });
 
 async function loadDemo(page: Page) {

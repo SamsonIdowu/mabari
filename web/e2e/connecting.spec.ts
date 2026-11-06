@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { wipe } from './support/page.ts';
 
 // Connecting accounts, and the Settings page. Everything here runs against the test server's own
 // scratch folders: never the real ~/.claude, ~/.codex or keychain.
@@ -41,7 +42,7 @@ const STANDARD = {
 };
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   // A wipe keeps settings, so each test starts from the standard ones.
   await request.patch('/api/settings', { data: STANDARD });
   rmSync(settingsFile + '.mabari-backup', { force: true });
@@ -49,7 +50,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.afterEach(async ({ request }) => {
-  await request.post('/api/wipe', { data: { confirm: true } });
+  await wipe(request);
   await request.patch('/api/settings', { data: STANDARD });
   writeFileSync(settingsFile, original);
 });
@@ -120,7 +121,7 @@ test('Claude Code attached from a binary named mabari-run reads as attached, and
   attachClaudeFrom(binary);
   expect(hooksIn()).toBe(11);
 
-  const wiped = await request.post('/api/wipe', { data: { confirm: true } });
+  const wiped = await wipe(request);
   expect(wiped.ok()).toBe(true);
   expect(readFileSync(settingsFile, 'utf8')).toBe(original);
   expect((await claudeStatus(request)).attached).toBe(false);

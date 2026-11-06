@@ -122,7 +122,9 @@ func TestToolsChangeTheStateAndSecretsAreMasked(t *testing.T) {
 func TestQueuedInstructionsArriveAtTheNextCheckpoint(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Also add a changelog entry") })
+	_ = engine.Do(func() {
+		c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "Also add a changelog entry")
+	})
 	if len(agentOf(t, engine).Queued) != 1 {
 		t.Fatal("not queued")
 	}
@@ -571,7 +573,9 @@ func TestAForkedSkillsSubagentTakesADeskFromItsFirstToolCall(t *testing.T) {
 		"tool_input": map[string]any{"file_path": "/home/me/shop/README.md"}}
 	hook(t, c, "PreToolUse", fork)
 	var lead, auditor *models.LiveAgent
-	_ = engine.Do(func() { lead, auditor = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-f1") })
+	_ = engine.Do(func() {
+		lead, auditor = engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), engine.Agent("cc-abcabc00-0000-4000-8000-000000000123-f1")
+	})
 	if auditor == nil {
 		t.Fatal("the forked skill's subagent isn't in the office")
 	}
@@ -738,7 +742,9 @@ func TestSessionsAreNamedAfterTheirFolder(t *testing.T) {
 func TestQueuedSlashCommandsAreAskedForInWords(t *testing.T) {
 	c, engine := newConnector(t)
 	hook(t, c, "UserPromptSubmit", map[string]any{"prompt": "Build the page"})
-	_ = engine.Do(func() { c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "/ux-audit https://example.com/Issue/1") })
+	_ = engine.Do(func() {
+		c.Instruct(engine.Agent("cc-abcabc00-0000-4000-8000-000000000123"), "/ux-audit https://example.com/Issue/1")
+	})
 	reply := string(hook(t, c, "PostToolUse", map[string]any{"tool_name": "Read"}))
 	if !strings.Contains(reply, "run the /ux-audit command with: https://example.com/Issue/1 (a slash command; use the Skill tool for it).") {
 		t.Errorf("reply = %s", reply)
@@ -1130,12 +1136,40 @@ func TestACardShowsWhatAnEditChanges(t *testing.T) {
 	if outside := cardOf("NotebookEdit", map[string]any{"notebook_path": "/etc/n.ipynb"}); !strings.Contains(outside.Risk, "outside") {
 		t.Errorf("outside the folder = %s", outside.Risk)
 	}
-	// Deleting a cell has no text, so the card shows the call itself rather than nothing.
+}
+
+// A notebook edit is described by what it does to the cell, and its mode and cell are always shown.
+func TestANotebookCardSaysWhatHappensToTheCell(t *testing.T) {
+	path := "/home/me/shop/analysis.ipynb"
 	deleted := cardOf("NotebookEdit", map[string]any{
-		"notebook_path": "/home/me/shop/analysis.ipynb", "cell_id": "c1", "edit_mode": "delete",
+		"notebook_path": path, "cell_id": "c7", "edit_mode": "delete", "new_source": "looks harmless",
 	})
-	if !strings.Contains(diffText(deleted.Detail.Lines), `"edit_mode":"delete"`) {
-		t.Errorf("deleted = %+v", deleted.Detail)
+	text := diffText(deleted.Detail.Lines)
+	if deleted.Title != "Delete a notebook cell" || !strings.Contains(text, "edit_mode: delete") || !strings.Contains(text, "cell_id: c7") {
+		t.Errorf("deleted = %q: %s", deleted.Title, text)
+	}
+	for _, line := range deleted.Detail.Lines {
+		if line.Kind == "add" {
+			t.Errorf("a delete reads as an addition: %+v", line)
+		}
+	}
+	inserted := cardOf("NotebookEdit", map[string]any{
+		"notebook_path": path, "edit_mode": "insert", "cell_type": "code", "new_source": "new cell",
+	})
+	text = diffText(inserted.Detail.Lines)
+	if inserted.Title != "Add a notebook cell" || !strings.Contains(text, "add new cell") ||
+		!strings.Contains(text, "edit_mode: insert") || !strings.Contains(text, "cell_id: (none)") {
+		t.Errorf("inserted = %q: %s", inserted.Title, text)
+	}
+	// Replace is the default.
+	replaced := cardOf("NotebookEdit", map[string]any{"notebook_path": path, "cell_id": "c1", "new_source": "text"})
+	if text := diffText(replaced.Detail.Lines); !strings.Contains(text, "edit_mode: replace") || !strings.Contains(text, "add text") {
+		t.Errorf("replaced: %s", text)
+	}
+	// A mode nobody knows isn't taken for an addition either.
+	odd := cardOf("NotebookEdit", map[string]any{"notebook_path": path, "edit_mode": "wipe", "new_source": "text"})
+	if text := diffText(odd.Detail.Lines); !strings.Contains(text, "edit_mode: wipe") || strings.Contains(text, "add text") {
+		t.Errorf("odd: %s", text)
 	}
 }
 
@@ -1167,10 +1201,6 @@ func TestACardShowsAnUnknownToolsInput(t *testing.T) {
 		if strings.Contains(card.Detail.Cmd, secret) {
 			t.Errorf("a secret on the card: %s", card.Detail.Cmd)
 		}
-	}
-	long := cardOf("Mystery", map[string]any{"text": strings.Repeat("a", 5000)})
-	if runes := []rune(long.Detail.Cmd); len(runes) != maxRawInput || runes[len(runes)-1] != '…' {
-		t.Errorf("%d runes", len(runes))
 	}
 	if card := cardOf("Mystery", map[string]any{"text": "a < b"}); !strings.Contains(card.Detail.Cmd, "a < b") {
 		t.Errorf("cmd = %s", card.Detail.Cmd)
@@ -1210,5 +1240,64 @@ func TestAHookWithAnOddSessionIdGetsNowhere(t *testing.T) {
 	}
 	if agents := engine.Snapshot().Agents; len(agents) != 0 {
 		t.Fatalf("seated %+v", agents)
+	}
+}
+
+// Masking works field by field. Run over encoded JSON, a cookie's pattern runs to the end of the
+// line, which is every field after it.
+func TestMaskingOneArgumentLeavesTheOthers(t *testing.T) {
+	card := cardOf("mcp__db__run", map[string]any{
+		"a_note": "Cookie: session=abcdefgh", "z_sql": "DROP TABLE users",
+		"token_options":                     map[string]any{"mode": "all"},
+		"sk-ant-api03-abcdefghijklmnopqrst": "value",
+	})
+	for _, want := range []string{"DROP TABLE users", `"mode"`, `"a_note"`} {
+		if !strings.Contains(card.Detail.Cmd, want) {
+			t.Errorf("%q isn't on the card: %s", want, card.Detail.Cmd)
+		}
+	}
+	for _, secret := range []string{"abcdefgh", "sk-ant-api03", `"all"`} {
+		if strings.Contains(card.Detail.Cmd, secret) {
+			t.Errorf("%q is on the card: %s", secret, card.Detail.Cmd)
+		}
+	}
+}
+
+// Whoever orders or pads a call can't push an argument off the card: each value is clipped on its
+// own, and the card says how much it left out.
+func TestPaddingCantPushAnArgumentOffTheCard(t *testing.T) {
+	card := cardOf("mcp__db__run", map[string]any{
+		"a_padding": strings.Repeat("a", 5000), "b_padding": strings.Repeat("b", 5000), "z_sql": "DROP TABLE users",
+	})
+	if !strings.Contains(card.Detail.Cmd, "DROP TABLE users") {
+		t.Fatalf("the argument was pushed off: %d characters", len(card.Detail.Cmd))
+	}
+	if !strings.Contains(card.Detail.Cmd, "4602 more characters not shown") {
+		t.Errorf("cmd = %s", card.Detail.Cmd)
+	}
+	// Many arguments share the room, and each still shows.
+	many := map[string]any{"z_sql": "DROP TABLE users"}
+	for n := range 60 {
+		many["pad"+strconv.Itoa(n)] = strings.Repeat("x", 5000)
+	}
+	if card := cardOf("mcp__db__run", many); !strings.Contains(card.Detail.Cmd, "DROP TABLE users") {
+		t.Fatal("the argument was pushed off by many others")
+	}
+	// Past what a card can hold it is plain that this isn't all of it.
+	many = map[string]any{}
+	for n := range 130 {
+		many["k"+strconv.Itoa(1000+n)] = "x"
+	}
+	if card := cardOf("mcp__db__run", many); !strings.Contains(card.Detail.Cmd, "30 more arguments not shown") ||
+		!strings.Contains(card.Detail.Cmd, "doesn't show all of the call") {
+		t.Fatalf("cmd = %s", card.Detail.Cmd)
+	}
+	// Input that isn't an object is clipped the same way, and says so.
+	raw, _ := json.Marshal(strings.Repeat("a", maxRawInput+50))
+	if got := rawInput("Mystery", raw); !strings.Contains(got, "more characters not shown") {
+		t.Errorf("a long string = %d characters", len(got))
+	}
+	if got := rawInput("Mystery", []byte(strings.Repeat("not json ", 1000))); !strings.Contains(got, "more characters not shown") {
+		t.Errorf("not JSON = %d characters", len(got))
 	}
 }

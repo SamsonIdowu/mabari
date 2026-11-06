@@ -3,7 +3,12 @@
 // Package redact strips secrets from text before it is stored or shown.
 package redact
 
-import "regexp"
+import (
+	"maps"
+	"regexp"
+	"slices"
+	"strconv"
+)
 
 // Mask replaces a secret.
 const Mask = "[redacted]"
@@ -91,6 +96,46 @@ func Value(value any) any {
 				continue
 			}
 			clean[key] = Value(item)
+		}
+		return clean
+	}
+	return value
+}
+
+// Shape removes secrets from decoded JSON for a person to read, keeping its shape. Value hides all
+// of an object under a key that names a secret, which could take an argument with it and leave no
+// sign. Here every value under such a key is masked one by one, so its keys stay in view. Keys are
+// cleaned too, because a key can be a secret, and two that clean to the same text both stay.
+func Shape(value any) any { return shape(value, false) }
+
+func shape(value any, secret bool) any {
+	switch typed := value.(type) {
+	case string:
+		if secret {
+			return Mask
+		}
+		return Text(typed)
+	case float64:
+		if secret {
+			return Mask
+		}
+	case []any:
+		clean := make([]any, len(typed))
+		for index, item := range typed {
+			clean[index] = shape(item, secret)
+		}
+		return clean
+	case map[string]any:
+		clean := make(map[string]any, len(typed))
+		for _, key := range slices.Sorted(maps.Keys(typed)) {
+			name := Text(key)
+			for number := 2; ; number++ {
+				if _, taken := clean[name]; !taken {
+					break
+				}
+				name = Text(key) + " (" + strconv.Itoa(number) + ")"
+			}
+			clean[name] = shape(typed[key], secret || secretKey.MatchString(key))
 		}
 		return clean
 	}

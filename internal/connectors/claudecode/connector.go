@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,8 +90,10 @@ type toolInput struct {
 		OldString string `json:"old_string"`
 		NewString string `json:"new_string"`
 	} `json:"edits"`
-	// NotebookPath is the notebook NotebookEdit changes, and NewSource the cell's new text.
+	// NotebookEdit's notebook, the cell it targets, what it does there, and the cell's new text.
 	NotebookPath string `json:"notebook_path"`
+	CellID       string `json:"cell_id"`
+	EditMode     string `json:"edit_mode"`
 	NewSource    string `json:"new_source"`
 }
 
@@ -987,14 +990,18 @@ func classify(in input, folder string) models.Approval {
 		if in.ToolName == "NotebookEdit" && verdict.Level == models.RiskLow {
 			verdict = risk.Verdict{Level: models.RiskHigh, Reason: "Notebook cells can run code, so this needs a check."}
 		}
-		lines := diffOf(args)
-		// A card with nothing on it would ask for a click on something unseen, as a cell being
-		// deleted would.
+		title, lines := "Change a file", diffOf(args)
+		if in.ToolName == "NotebookEdit" {
+			title, lines = notebookCard(args)
+		}
+		// A card with nothing on it would ask for a click on something unseen.
 		if len(lines) == 0 {
-			lines = []models.DiffLine{{Kind: "ctx", Text: rawInput(in.ToolName, in.ToolInput)}}
+			for line := range strings.SplitSeq(rawInput(in.ToolName, in.ToolInput), "\n") {
+				lines = append(lines, models.DiffLine{Kind: "ctx", Text: line})
+			}
 		}
 		return models.Approval{
-			Type: models.ApprovalFile, Title: "Change a file",
+			Type: models.ApprovalFile, Title: title,
 			Detail: models.ApprovalDetail{Path: path, Lines: lines},
 			Risk:   verdict.Reason, RiskLevel: verdict.Level,
 		}
@@ -1014,29 +1021,105 @@ func classify(in input, folder string) models.Approval {
 	}
 }
 
-// maxDiffLines keeps an approval card readable, and maxRawInput does the same for a tool's input.
+// What an approval card holds. A tool's input is shown argument by argument, so no argument can push
+// another off the card, and whatever is cut says so.
 const (
 	maxDiffLines = 40
-	maxRawInput  = 1500
+	// maxRawInput is about how much of a tool's input a card shows, and maxRawArguments how many
+	// arguments. Values share maxRawInput, between minRawValue and maxRawValue each.
+	maxRawInput     = 6000
+	maxRawArguments = 100
+	maxRawValue     = 400
+	minRawValue     = 60
+	maxRawKey       = 80
 )
 
-// rawInput is a tool's input as the person should see it: the JSON itself, because Mabari can't
-// tell which of an unknown tool's arguments matter, with secrets masked and clipped to fit a card.
-func rawInput(tool string, raw json.RawMessage) string {
-	var value any
-	if json.Unmarshal(raw, &value) != nil {
-		if text := strings.TrimSpace(string(raw)); text != "" {
-			return clip(redact.Text(strings.ReplaceAll(text, "\n", " ")), maxRawInput)
-		}
-		return tool
+// cut clips text to limit characters and says how much it left out.
+func cut(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
 	}
+	return string(runes[:limit]) + "… [" + strconv.Itoa(len(runes)-limit) + " more characters not shown]"
+}
+
+// encoded is a value as JSON on one line, which is how it reads on a card.
+func encoded(value any) string {
 	var text bytes.Buffer
 	encoder := json.NewEncoder(&text)
 	encoder.SetEscapeHTML(false) // Shown as text, so < stays <.
-	if encoder.Encode(redact.Value(value)) != nil {
+	if encoder.Encode(value) != nil {
+		return "(can't be shown)"
+	}
+	return strings.TrimSpace(text.String())
+}
+
+// rawInput is a tool's input as the person should see it, because Mabari can't tell which of an
+// unknown tool's arguments matter: one line for every argument, sorted so the caller's order counts
+// for nothing, with secrets masked field by field before anything is encoded, and each value
+// clipped on its own. The text patterns are never run over encoded JSON, where one can run from one
+// field into the next.
+func rawInput(tool string, raw json.RawMessage) string {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		// Not JSON, so it has no fields to keep apart.
+		if text := strings.Join(strings.Fields(string(raw)), " "); text != "" {
+			return cut(redact.Text(text), maxRawInput)
+		}
 		return tool
 	}
-	return clip(redact.Text(text.String()), maxRawInput)
+	shown, isObject := redact.Shape(value).(map[string]any)
+	if !isObject {
+		if value == nil {
+			return tool
+		}
+		return cut(encoded(redact.Shape(value)), maxRawInput)
+	}
+	if len(shown) == 0 {
+		return tool
+	}
+	limit := max(minRawValue, min(maxRawValue, maxRawInput/len(shown)))
+	lines := make([]string, 0, min(len(shown), maxRawArguments)+1)
+	for _, key := range slices.Sorted(maps.Keys(shown)) {
+		if len(lines) == maxRawArguments {
+			lines = append(lines, "… "+strconv.Itoa(len(shown)-maxRawArguments)+
+				" more arguments not shown. This card doesn't show all of the call.")
+			break
+		}
+		lines = append(lines, cut(encoded(key), maxRawKey)+": "+cut(encoded(shown[key]), limit))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// notebookCard describes a NotebookEdit by what it does to the cell, which its mode decides: only
+// replace, the default, and insert put new text in. Its title, mode and cell are always on the card.
+func notebookCard(args toolInput) (string, []models.DiffLine) {
+	mode, cell := args.EditMode, args.CellID
+	if mode == "" {
+		mode = "replace"
+	}
+	if cell == "" {
+		cell = "(none)"
+	}
+	title := "Change a notebook cell"
+	switch mode {
+	case "insert":
+		title = "Add a notebook cell"
+	case "delete":
+		title = "Delete a notebook cell"
+	}
+	lines := []models.DiffLine{{
+		Kind: "ctx", Text: "edit_mode: " + cut(redact.Text(clip(mode, maxRawKey)), maxRawKey) +
+			", cell_id: " + cut(redact.Text(clip(cell, maxRawKey)), maxRawKey),
+	}}
+	if mode == "replace" || mode == "insert" {
+		return title, append(lines, diffOf(toolInput{NewString: args.NewSource})...)
+	}
+	// Anything else adds no text, whatever came with it, so none of it reads as an addition.
+	for _, line := range diffOf(toolInput{NewString: args.NewSource}) {
+		lines = append(lines, models.DiffLine{Kind: "ctx", Text: "new_source, not added: " + line.Text})
+	}
+	return title, lines
 }
 
 func diffOf(args toolInput) []models.DiffLine {
@@ -1061,7 +1144,6 @@ func diffOf(args toolInput) []models.DiffLine {
 		add("del", edit.OldString)
 		add("add", edit.NewString)
 	}
-	add("add", args.NewSource)
 	if hidden > 0 {
 		lines = append(lines, models.DiffLine{Kind: "ctx", Text: "… and " + strconv.Itoa(hidden) + " more lines not shown"})
 	}

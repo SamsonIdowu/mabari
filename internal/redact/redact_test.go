@@ -124,3 +124,26 @@ func TestValue(t *testing.T) {
 		t.Errorf("nested = %+v", nested)
 	}
 }
+
+// A card shows what is being approved, so masking must not take an argument with it.
+func TestShapeKeepsWhatItMasks(t *testing.T) {
+	got, _ := Shape(map[string]any{
+		"token_options":                 map[string]any{"sql": "DROP TABLE users", "limit": 5.0, "nested": []any{"a"}, "on": true},
+		"password":                      1234.0,
+		"tokens_in":                     "API_KEY=abcd1234 go test",
+		"note":                          "plain",
+		"sk-ant-api03-aaaaaaaaaaaaaaaa": "first",
+		"sk-ant-api03-bbbbbbbbbbbbbbbb": "second",
+	}).(map[string]any)
+	options, _ := got["token_options"].(map[string]any)
+	nested, _ := options["nested"].([]any)
+	if options["sql"] != Mask || options["limit"] != Mask || options["on"] != true || len(nested) != 1 || nested[0] != Mask {
+		t.Errorf("options = %+v", options)
+	}
+	if got["password"] != Mask || got["note"] != "plain" {
+		t.Errorf("got = %+v", got)
+	}
+	if got[Mask] != "first" || got[Mask+" (2)"] != "second" || len(got) != 6 {
+		t.Errorf("keys = %+v", got)
+	}
+}

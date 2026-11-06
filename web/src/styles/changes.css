@@ -1,0 +1,451 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* The review view: a file list beside the diffs, in the diff style of the settings and approval
+   cards (.codebox with green and red lines). Everything else is the calm surface the other dialogs
+   use. Only the diff itself uses green and red. */
+
+.dialog.changes {
+  width: min(1240px, 100%);
+  max-height: calc(100vh - 76px);
+  padding: 20px;
+  gap: 12px;
+}
+.changes .dhd {
+  align-items: center;
+}
+.chtitle {
+  min-width: 0;
+  flex: 1;
+}
+.chtitle h2 {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chsub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 4px;
+}
+.chfolder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46ch;
+}
+.chlive {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.chdemo {
+  margin: 0;
+}
+
+.chbody {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 16px;
+}
+.chbody > .chempty,
+.chbody > p {
+  grid-column: 1 / -1;
+}
+.chempty {
+  text-align: center;
+  padding: 36px 24px;
+  align-self: start;
+}
+.chempty h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+/* The files */
+.chlist {
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px;
+  background: var(--surface);
+}
+.chlist ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chlist > p {
+  padding: 6px 10px;
+}
+.chitem {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chitem:hover {
+  background: var(--surface2);
+}
+.chpath {
+  display: flex;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+/* A long path loses its folders first, and keeps the name of the file. */
+.chdir {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.chbase {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chmeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.chcount {
+  font-size: 12.5px;
+  font-weight: 800;
+}
+.chadd {
+  color: var(--ok);
+}
+.chdel {
+  color: var(--red);
+}
+
+/* The diffs */
+.chfiles {
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 2px;
+}
+.chfiles:focus-visible {
+  outline-offset: -2px;
+}
+.chfile {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  flex: none;
+}
+.chfhd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.chfhd .chpath {
+  flex: 1;
+}
+.chnote {
+  padding: 8px 14px;
+  margin: 0;
+}
+.chcode.codebox {
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 12px 12px;
+  container-type: inline-size;
+}
+.chtable {
+  border-collapse: collapse;
+  /* As wide as the window, and wider for a long line, which then scrolls. */
+  width: 100%;
+  min-width: max-content;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.chtable td {
+  padding: 0;
+  border: 0;
+  vertical-align: top;
+}
+.chl.add td {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.chl.del td {
+  background: var(--red-soft);
+  color: var(--red);
+}
+.chl.ctx td,
+.chl.note td {
+  color: var(--muted);
+}
+.chl.hunk td {
+  background: var(--surface2);
+  color: var(--muted);
+  padding: 2px 14px;
+}
+.chn {
+  width: 1%;
+  min-width: 5.5ch;
+  white-space: nowrap;
+  user-select: none;
+  text-align: right;
+  color: var(--muted);
+}
+.chn > span {
+  display: block;
+  padding: 0 10px;
+}
+/* A line's number is the button that starts a comment on it. */
+.chbtn {
+  display: block;
+  width: 100%;
+  min-height: 20px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+.chbtn:hover,
+.chbtn:focus-visible {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+.chbtn:focus-visible {
+  outline-offset: -2px;
+}
+.chmark {
+  width: 2ch;
+  text-align: center;
+  user-select: none;
+}
+.chtext code {
+  white-space: pre;
+  font: inherit;
+  padding: 0 14px 0 4px;
+}
+
+/* A comment being written, and one that is written. They stay in view when a long line has scrolled. */
+.chc td {
+  background: var(--surface2);
+  padding: 8px 14px;
+  font-family: var(--ui);
+  color: var(--fg);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.chform,
+.chcard {
+  position: sticky;
+  left: 14px;
+  width: min(720px, calc(100cqw - 28px));
+}
+.chform {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chform textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+.chform textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.chbtns {
+  display: flex;
+  gap: 8px;
+}
+.chcard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-left: 3px solid var(--line2);
+  padding: 2px 0 2px 10px;
+}
+.chcomment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* Second opinions */
+.chopinions {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chopinions h3 {
+  font-size: 14px;
+}
+.chopinion header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chopinion .reply {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+/* The bar at the bottom */
+.chfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.chask,
+.chsend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.chask label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.chask select {
+  width: auto;
+  min-width: 190px;
+  min-height: 34px;
+  padding: 4px 10px;
+}
+.chstatus,
+.chalert {
+  flex-basis: 100%;
+  margin: 0;
+}
+.chstatus:empty {
+  display: none;
+}
+.chalert {
+  color: var(--red);
+  font-weight: 700;
+}
+
+@media (max-width: 820px) {
+  .dialog.changes {
+    padding: 14px;
+    max-height: calc(100vh - 68px);
+  }
+  .chbody {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  /* The list is a strip above the diffs, so the diffs keep the room. */
+  .chlist {
+    max-height: 92px;
+  }
+  .chitem {
+    min-height: 40px;
+    padding: 6px 10px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  .chitem .chpath {
+    flex: 1;
+  }
+  .chitem .chmeta {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+  .chlive {
+    margin-left: 0;
+  }
+  .chfolder {
+    max-width: 100%;
+  }
+  .chask,
+  .chsend {
+    flex: 1 1 100%;
+  }
+  .chask select {
+    flex: 1;
+    min-width: 0;
+  }
+  .chsend {
+    justify-content: space-between;
+  }
+}
+
+/* An instruction can be long, a request for a second opinion most of all. The panel shows its start,
+   and the activity log keeps all of it. */
+.askitem .you,
+.queued .qitem > span:first-child {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

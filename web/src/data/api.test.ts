@@ -85,6 +85,14 @@ describe('unreachableMessage', () => {
     );
     expect(unreachableMessage('/api/vee', 'POST')).toContain('message was not sent');
     expect(unreachableMessage('/api/snapshot')).toBe("Can't reach Mabari.");
+    // A second opinion is a request, not a change that was saved.
+    expect(unreachableMessage('/api/agents/cc-1/changes/opinion', 'POST')).toBe(
+      "Can't reach Mabari. Your request for a second opinion was not sent.",
+    );
+    expect(unreachableMessage('/api/projects/p-1/changes/opinion', 'POST')).toContain(
+      'second opinion was not sent',
+    );
+    expect(unreachableMessage('/api/agents/cc-1/changes')).toBe("Can't reach Mabari.");
   });
 });
 

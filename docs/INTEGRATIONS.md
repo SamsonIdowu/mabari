@@ -74,6 +74,7 @@ Hooks go in `--settings`, so a session runs with nothing written to `settings.js
 ### Sessions started elsewhere
 
 - Read from `transcript_path`, only read, and only a `.jsonl` file inside Claude Code's `projects` folder. The docs say the format "is internal to Claude Code and changes between versions", so unknown lines are skipped and a broken format costs the conversation, never the session. The file "may lag", so what shows follows a little behind.
+- A session Mabari has run has heard its own transcript as it was written, down the stream, so that part is never read. `session.transcriptEnd` is the transcript's size when Mabari's process last ended, and reading starts there: only what comes after it, typed in a terminal, shows, from the next hook or when Mabari picks the session up. It goes by position, not by text, so a repeated message is never dropped. A hook from a process on its way out is ignored: with the account attached, the settings file's hooks fire for it too, and until then its `SessionEnd` started a read from the top. A restart counts sessions saved before this, so a thread already doubled keeps what it has and gains nothing.
 - "If you resume the same session in two terminals without forking, messages from both interleave into one transcript." Hook input doesn't say whether a session is still open, so taking one over needs `confirm: true`, after the person is told.
 - A session Mabari ran that reports through settings hooks with no process behind it has been continued in a terminal, so it goes back to being followed.
 

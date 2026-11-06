@@ -1168,6 +1168,202 @@ export interface WhisperStatus {
 }
 
 //////////
+// source: phase.go
+
+/**
+ * Phase is what an agent was doing over a stretch of time.
+ */
+export type Phase = string;
+/**
+ * PhaseWorking is any of the states in which the agent does work.
+ */
+export const PhaseWorking: Phase = "working";
+/**
+ * PhaseApproval is an agent paused until someone decides on an approval.
+ */
+export const PhaseApproval: Phase = "approval";
+/**
+ * PhaseQuestion is an agent waiting for the answer to a question it asked.
+ */
+export const PhaseQuestion: Phase = "question";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseError: Phase = "error";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseIdle: Phase = "idle";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhaseDone: Phase = "done";
+/**
+ * Phases. The first four are drawn as blocks on the timeline; the rest are gaps.
+ */
+export const PhasePaused: Phase = "paused";
+/**
+ * PhaseOff is for a time Mabari knows nothing about the agent: it left the office, or Mabari
+ * was not running.
+ */
+export const PhaseOff: Phase = "off";
+/**
+ * StateChange is the moment an agent's phase changed. Name is kept so an agent that has left the
+ * office is still named on the day's timeline.
+ */
+export interface StateChange {
+  agentId: string;
+  agent: string;
+  time: number /* int64 */;
+  phase: Phase;
+}
+
+//////////
+// source: recap.go
+
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeFinished = "Finished";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const PrefixFinished = "Finished: ";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeError = "Error";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const PrefixError = "Stopped by an error: ";
+/**
+ * How the activity log words the three kinds of row a recap reads back, so what writes them and
+ * what reads them can't drift apart.
+ */
+export const OutcomeAutoAllowed = "Auto-allowed";
+/**
+ * RecapListed is the most items a recap lists under each heading. The rest are counted.
+ */
+export const RecapListed = 5;
+/**
+ * RecapItem is one thing in a recap. AgentID is empty when the agent has left the office.
+ */
+export interface RecapItem {
+  agentId: string;
+  agent: string;
+  hue: string;
+  /**
+   * Text is what happened: the task finished, the command auto approved, the error.
+   */
+  text: string;
+  time: number /* int64 */;
+}
+/**
+ * RecapGroup is everything of one kind in a recap: how many, and the newest few.
+ */
+export interface RecapGroup {
+  count: number /* int */;
+  items: RecapItem[];
+}
+/**
+ * Recap is what happened while the person was away, worked out from the activity log and the
+ * office as they are. It has no spend: only each agent's running total is kept, not what it spent
+ * in any one period, so a figure for the period could not be true.
+ */
+export interface Recap {
+  /**
+   * Since and Until are the period, in Unix milliseconds.
+   */
+  since: number /* int64 */;
+  until: number /* int64 */;
+  /**
+   * Finished are tasks agents finished, AutoApproved approvals decided by auto approve,
+   * Errors agents that stopped with an error, and Needs what waits for the person now.
+   */
+  finished: RecapGroup;
+  autoApproved: RecapGroup;
+  errors: RecapGroup;
+  needs: RecapGroup;
+  /**
+   * Happened is true when something took place in the period. An approval, error or question
+   * that was already waiting when the person left is listed under Needs but is not news.
+   */
+  happened: boolean;
+}
+
+//////////
+// source: timeline.go
+
+/**
+ * TimelineBlock is a stretch of time an agent spent in one shown phase. Open is true when the
+ * block runs up to now.
+ */
+export interface TimelineBlock {
+  kind: Phase;
+  from: number /* int64 */;
+  to: number /* int64 */;
+  open: boolean;
+}
+/**
+ * MarkerKind is what a marker on the timeline stands for.
+ */
+export type MarkerKind = string;
+/**
+ * Marker kinds.
+ */
+export const MarkerApproval: MarkerKind = "approval";
+/**
+ * Marker kinds.
+ */
+export const MarkerInstruction: MarkerKind = "instruction";
+/**
+ * TimelineMarker is one approval asked for or instruction sent. Text says which, and Outcome how
+ * an approval went ("Allowed", "Denied", "Auto-allowed", "Waiting" or "Cancelled").
+ */
+export interface TimelineMarker {
+  kind: MarkerKind;
+  time: number /* int64 */;
+  text: string;
+  outcome: string;
+}
+/**
+ * TimelineLane is one agent's row.
+ */
+export interface TimelineLane {
+  agentId: string;
+  agent: string;
+  /**
+   * Provider is empty once the agent has left the office. So is Present.
+   */
+  provider: Provider;
+  present: boolean;
+  blocks: TimelineBlock[];
+  markers: TimelineMarker[];
+}
+/**
+ * Timeline is one day of the office: a lane for each agent that did anything.
+ */
+export interface Timeline {
+  /**
+   * Day is the date, such as 2026-11-06, in the computer's own time zone.
+   */
+  day: string;
+  /**
+   * Start and End bound the day, and Now is the clock, all in Unix milliseconds. The line at
+   * now is drawn only when it falls inside the day.
+   */
+  start: number /* int64 */;
+  end: number /* int64 */;
+  now: number /* int64 */;
+  lanes: TimelineLane[];
+}
+
+//////////
 // source: watch.go
 
 /**

@@ -17,7 +17,6 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/models"
 	"github.com/SamsonIdowu/mabari/internal/projectmap"
-	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
 const (
@@ -73,6 +72,9 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/approvals/{id}/decision", a.decide)
 
 	mux.HandleFunc("GET /api/activity", a.activity)
+	mux.HandleFunc("GET /api/activity/export", a.exportActivity)
+	mux.HandleFunc("GET /api/recap", a.recapRoute)
+	mux.HandleFunc("GET /api/timeline", a.timelineRoute)
 
 	mux.HandleFunc("POST /api/dispatch/preview", a.previewDispatch)
 	mux.HandleFunc("POST /api/messages", a.sendMessage)
@@ -845,11 +847,9 @@ func (a *api) decide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) activity(w http.ResponseWriter, r *http.Request) {
-	entries, err := a.engine.Store().Log(r.Context(), store.LogQuery{
-		Search: r.URL.Query().Get("q"),
-		Type:   models.LogType(r.URL.Query().Get("type")),
-		Limit:  int(positiveQuery(r, "limit", 500)),
-	})
+	query := logQueryOf(r)
+	query.Limit = int(positiveQuery(r, "limit", 500))
+	entries, err := a.engine.Store().Log(r.Context(), query)
 	if err != nil {
 		internalError(w, err)
 		return

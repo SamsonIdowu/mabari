@@ -14,6 +14,7 @@ import './styles/calm.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { startAbsenceWatch } from './data/away.ts';
 import { Shell } from './shell/Shell.tsx';
 import { SessionGate } from './shell/SignIn.tsx';
 import { startViewState } from './viewState.ts';
@@ -29,6 +30,8 @@ if (!root) throw new Error('Missing #root element');
 
 // The office filters, the tabs, and the agent or chat named in the address come back after a reload.
 startViewState();
+// Coming back after a while shows what happened while you were away, on Home.
+startAbsenceWatch();
 
 createRoot(root).render(
   <StrictMode>

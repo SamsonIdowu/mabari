@@ -68,6 +68,8 @@ type Engine struct {
 	log        []models.LogEntry
 	dirty      map[string]struct{}
 	eventNext  map[string]int
+	// phases is what each agent was last recorded doing, so only a change is written down.
+	phases     map[string]models.Phase
 	connectors map[string]Connector
 	writeErr   error
 	// defs are the agent definitions from the agent folders. A wipe leaves them: they are files.
@@ -92,6 +94,7 @@ func New(ctx context.Context, s *store.Store, now func() time.Time) (*Engine, er
 		subs:       map[*Subscription]struct{}{},
 		dirty:      map[string]struct{}{},
 		eventNext:  map[string]int{},
+		phases:     map[string]models.Phase{},
 		connectors: map[string]Connector{},
 		lastItem:   map[string]int64{},
 	}
@@ -159,7 +162,7 @@ func (e *Engine) load(ctx context.Context) error {
 	}
 	e.reseat()
 	e.dropPlaceholder()
-	return nil
+	return e.openPhases(ctx)
 }
 
 // dropPlaceholder removes the empty "My first project" earlier versions made on a fresh install
@@ -231,6 +234,7 @@ func (e *Engine) resetMemory() {
 	e.dirty = map[string]struct{}{}
 	e.eventNext = map[string]int{}
 	e.lastItem = map[string]int64{}
+	e.phases = map[string]models.Phase{}
 	e.accounts = map[models.AccountKind]*models.Account{}
 	for _, kind := range models.AccountKinds {
 		e.accounts[kind] = &models.Account{
@@ -279,6 +283,7 @@ func (e *Engine) flush() {
 		}
 		agent.Refresh(now)
 	}
+	e.trackPhases(now.UnixMilli())
 	e.record(e.store.Transaction(context.Background(), func() error {
 		for _, agent := range e.agents {
 			if _, ok := e.dirty[agent.ID]; !ok {
@@ -514,6 +519,7 @@ func (e *Engine) KeepAgent(agent *models.LiveAgent) {
 func (e *Engine) RemoveAgent(id string) {
 	for index, agent := range e.agents {
 		if agent.ID == id {
+			e.closePhase(agent)
 			e.CancelApproval(agent)
 			// Nothing will deliver what it was still waiting for.
 			for _, instruction := range agent.Queued {
@@ -968,7 +974,7 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	summary := approvalSummary(approval)
 	switch {
 	case by == models.DecidedByAuto:
-		e.Log(agent.Name, models.LogApproval, summary, "Auto-allowed", "ok")
+		e.Log(agent.Name, models.LogApproval, summary, models.OutcomeAutoAllowed, "ok")
 		e.AddEvent(agent, "approval", "Auto-allowed (auto approve is on)", nil)
 	case decision == models.DecisionAllowed:
 		e.Log(agent.Name, models.LogApproval, summary, "Allowed", "ok")
@@ -1420,10 +1426,19 @@ func (e *Engine) Run(ctx context.Context) {
 	defer second.Stop()
 	hour := time.NewTicker(time.Hour)
 	defer hour.Stop()
+	alive := time.NewTicker(aliveEvery)
+	defer alive.Stop()
+	if err := e.Do(e.noteAlive); err != nil {
+		slog.Error("could not note that Mabari is running", "error", err)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-alive.C:
+			if err := e.Do(e.noteAlive); err != nil {
+				slog.Error("could not note that Mabari is running", "error", err)
+			}
 		case <-second.C:
 			if err := e.Do(e.Sweep); err != nil {
 				slog.Error("could not save bubbles", "error", err)

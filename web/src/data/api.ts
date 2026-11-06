@@ -10,6 +10,7 @@ import type {
   LiveAgent,
   Project,
   QuestionAnswer,
+  Recap,
   Settings,
   Snapshot,
   Watch,
@@ -70,7 +71,7 @@ export function unreachableMessage(path: string, method = 'GET'): string {
   return "Can't reach Mabari. Your change was not saved.";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   for (const [name, value] of Object.entries(sessionHeaders())) headers.set(name, value);
   let response: Response;
@@ -208,7 +209,8 @@ export interface VeeReply {
     | 'relayed'
     | 'improve'
     | 'builder'
-    | 'pickProject';
+    | 'pickProject'
+    | 'recap';
   lines: VeeLine[] | null;
   estimate: Estimate | null;
   working: number;
@@ -224,6 +226,8 @@ export interface VeeReply {
   project?: ProjectChoice | null;
   /** The choices when Mabari asks which project a message is for. */
   projects?: ProjectChoice[] | null;
+  /** For a recap: what happened while you were away. */
+  recap?: Recap | null;
   /** What is read aloud, when it differs from the text. */
   spoken?: string;
   /** A relayed reply too long for the bubble names its agent, to read the rest there. */
@@ -468,8 +472,12 @@ export const api = {
     send<{ applied: boolean }>('POST', `/api/approvals/${id}/decision`, { decision }),
   autoApprove: (on: boolean, scope: string, acknowledged: boolean) =>
     send<{ settled: number }>('POST', '/api/auto-approve', { on, scope, acknowledged }),
-  /** projectId is the project picked next to the box, "any", or empty for Mabari to choose. */
-  vee: (text: string, projectId = '') => send<VeeResult>('POST', '/api/vee', { text, projectId }),
+  /**
+   * projectId is the project picked next to the box, "any", or empty for Mabari to choose. since is
+   * when you last looked, which "what did I miss?" counts from; leave it out for the last hour.
+   */
+  vee: (text: string, projectId = '', since = 0) =>
+    send<VeeResult>('POST', '/api/vee', { text, projectId, ...(since > 0 ? { since } : {}) }),
   agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
   createAgent: (body: NewAgentBody) => send<StartedAgent>('POST', '/api/agents', body),

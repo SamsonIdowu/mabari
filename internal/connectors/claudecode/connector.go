@@ -285,7 +285,8 @@ func (c *Connector) gate(in input) []byte {
 func (c *Connector) agentFor(in input) *models.LiveAgent {
 	id := c.idOf(in.SessionID)
 	if agent := c.engine.Agent(id); agent != nil {
-		if agent.Lead == nil && legacyNames[agent.Name] {
+		// A name someone chose for a session Mabari runs is theirs, whatever it is.
+		if agent.Lead == nil && legacyNames[agent.Name] && !agent.RunsHere() {
 			agent.Name = c.nameFor(agent.Folder)
 			c.engine.Touch(agent)
 		}
@@ -418,7 +419,9 @@ func (c *Connector) defFor(name, project string) (models.AgentDef, bool) {
 // Call inside Do.
 func (c *Connector) TidyNames() {
 	for _, agent := range c.engine.Agents() {
-		if agent.Source != Source || agent.Lead != nil {
+		// A session Mabari started was never one of those: its name is the person's, and it is an
+		// agent of the office, not a workflow sub-agent.
+		if agent.Source != Source || agent.Lead != nil || agent.RunsHere() {
 			continue
 		}
 		if legacyNames[agent.Name] {

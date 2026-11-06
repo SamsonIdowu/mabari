@@ -65,7 +65,15 @@ func (a *api) claudeHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "this hook call is too old or was already used")
 		return
 	}
-	reply := a.claude.Connector.Handle(r.Context(), body)
+	// A hook Mabari passed to a session it runs says so, and is answered as one: a risky action
+	// reaches the approval flow, and a call nobody answers is denied. Without this every such call
+	// was taken for a settings-file hook, which a live process's session ignores, so nothing was
+	// ever asked and every risky action was denied.
+	handle := a.claude.Connector.Handle
+	if r.Header.Get(claudecode.RunHeader) != "" {
+		handle = a.claude.Connector.HandleRun
+	}
+	reply := handle(r.Context(), body)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set(claudecode.SignatureHeader, claudecode.SignReply(token, nonce, reply))
 	w.WriteHeader(http.StatusOK)

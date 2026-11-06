@@ -63,6 +63,7 @@ type runOffice struct {
 	folder    string
 	logs      string
 	data      string
+	vault     *secrets.Memory
 }
 
 func newRunOffice(t *testing.T) *runOffice {
@@ -105,13 +106,14 @@ func newRunOffice(t *testing.T) *runOffice {
 	})
 	sim := simulator.New(engine, simulator.Mulberry32(7), 0)
 	launcher := &fakeLauncher{}
+	vault := secrets.NewMemory()
 	handler := New(Options{
 		Engine: engine, Simulator: sim, Launcher: launcher, DataDir: data,
-		Claude: &ClaudeOptions{Connector: connector, Secrets: secrets.NewMemory(), ConfigDir: config},
+		Claude: &ClaudeOptions{Connector: connector, Secrets: vault, ConfigDir: config},
 	})
 	return &runOffice{
 		office:    &office{handler: handler, engine: engine, simulator: sim},
-		connector: connector, launcher: launcher, config: config, folder: folder, logs: logs, data: data,
+		connector: connector, launcher: launcher, config: config, folder: folder, logs: logs, data: data, vault: vault,
 	}
 }
 

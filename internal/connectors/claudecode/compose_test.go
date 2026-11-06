@@ -106,3 +106,21 @@ func TestSendingNowNeverSettlesAnApproval(t *testing.T) {
 		t.Fatalf("queued = %v, actions = %d", saved.Queued, b.actions())
 	}
 }
+
+// A name someone chose for an agent Mabari starts is theirs, even one an earlier version used to
+// hand out. Once the session's hooks reach Mabari, and after a restart tidies the old sessions, it
+// is still what they called it, and the agent is still at its desk.
+func TestANameChosenForASessionMabariRunsIsKept(t *testing.T) {
+	b := newBench(t)
+	// Juniper is one of the made up names the connector once gave sessions.
+	agent := b.start("say hello")
+	b.untilState(agent.ID, models.StateDone)
+	if got := b.read(agent.ID); got.Name != "Juniper" {
+		t.Fatalf("hooks renamed it to %q", got.Name)
+	}
+	_ = b.engine.Do(func() { b.c.TidyNames() })
+	got := b.read(agent.ID)
+	if got.Name != "Juniper" || got.Workflow || got.Desk < 0 {
+		t.Fatalf("tidying changed it: name %q, workflow %v, desk %d", got.Name, got.Workflow, got.Desk)
+	}
+}

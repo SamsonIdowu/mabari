@@ -869,3 +869,215 @@ func TestAHookFromAGoneRunIsToldNo(t *testing.T) {
 		t.Fatalf("a gone run took a desk: %+v", agent.Agent)
 	}
 }
+
+// callPermission sends a permission request for a tool call on its own goroutine, as Claude Code
+// does for each of a turn's parallel calls. The reply comes down the channel when it is answered.
+func callPermission(c *Connector, fields map[string]any) chan []byte {
+	return callPermissionUntil(context.Background(), c, fields)
+}
+
+// callPermissionUntil is a call whose hook goes away when ctx ends.
+func callPermissionUntil(ctx context.Context, c *Connector, fields map[string]any) chan []byte {
+	body := map[string]any{
+		"session_id": "abc-123", "cwd": "/home/me/shop", "hook_event_name": "PermissionRequest",
+		"tool_name": "Bash",
+	}
+	for key, value := range fields {
+		body[key] = value
+	}
+	data, _ := json.Marshal(body)
+	done := make(chan []byte, 1)
+	go func() { done <- c.Handle(ctx, data) }()
+	return done
+}
+
+func bashCommand(command string) map[string]any {
+	return map[string]any{"tool_input": map[string]any{"command": command}}
+}
+
+// cardFor waits until the agent's card asks about this command.
+func cardFor(t *testing.T, engine *events.Engine, command string) models.Approval {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var card *models.Approval
+		_ = engine.Do(func() {
+			if agent := engine.Agent("cc-abc-123"); agent != nil && agent.Approval != nil {
+				copied := *agent.Approval
+				card = &copied
+			}
+		})
+		if card != nil && card.Detail.Cmd == command {
+			return *card
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("no card for %q", command)
+	return models.Approval{}
+}
+
+func decideCard(t *testing.T, engine *events.Engine, id, decision string) {
+	t.Helper()
+	var applied bool
+	_ = engine.Do(func() { applied = engine.Decide(id, decision) })
+	if !applied {
+		t.Fatalf("%s wasn't waiting", id)
+	}
+}
+
+func replyOf(t *testing.T, done chan []byte) string {
+	t.Helper()
+	select {
+	case reply := <-done:
+		return string(reply)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no reply")
+		return ""
+	}
+}
+
+func notYet(t *testing.T, done chan []byte) {
+	t.Helper()
+	select {
+	case reply := <-done:
+		t.Fatalf("answered already: %s", reply)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// Parallel calls and subagents share a session id and so one agent. A click answers the call its
+// card was for and nothing else, and the next card shows when the first is settled.
+func TestACardAnswersOnlyItsOwnCall(t *testing.T) {
+	for name, second := range map[string]map[string]any{
+		"parallel calls": bashCommand("rm -rf second"),
+		"a subagent":     {"tool_input": map[string]any{"command": "rm -rf second"}, "agent_id": "a1", "agent_type": "Explore"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, engine := newConnector(t)
+			sub := engine.Subscribe(events.Resume{})
+			defer engine.Unsubscribe(sub.Sub)
+			hook(t, c, "SessionStart", nil)
+			first := callPermission(c, bashCommand("rm -rf first"))
+			card := cardFor(t, engine, "rm -rf first")
+			later := callPermission(c, second)
+			// The second call is in line behind the first, with the first card still up.
+			notYet(t, later)
+			if again := cardFor(t, engine, "rm -rf first"); again.ID != card.ID {
+				t.Fatalf("the card changed: %+v", again)
+			}
+			decideCard(t, engine, card.ID, models.DecisionAllowed)
+			if reply := replyOf(t, first); !strings.Contains(reply, `"allow"`) {
+				t.Fatalf("first = %s", reply)
+			}
+			notYet(t, later)
+			next := cardFor(t, engine, "rm -rf second")
+			if next.ID == card.ID {
+				t.Fatal("the same id twice")
+			}
+			if state := agentOf(t, engine).State; state != models.StateApproval {
+				t.Fatalf("state = %s", state)
+			}
+			decideCard(t, engine, next.ID, models.DecisionDenied)
+			if reply := replyOf(t, later); !strings.Contains(reply, `"deny"`) || !strings.Contains(reply, "denied this") {
+				t.Fatalf("second = %s", reply)
+			}
+		})
+	}
+}
+
+// A call whose card is taken away with nobody deciding isn't told the person said no.
+func TestACallReplacedByAPlanIsNotToldItWasDenied(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	waiting := callPermission(c, bashCommand("rm -rf build"))
+	cardFor(t, engine, "rm -rf build")
+	_ = engine.Do(func() { c.askAboutPlan(engine.Agent("cc-abc-123"), "1. Do it") })
+	reply := replyOf(t, waiting)
+	if !strings.Contains(reply, `"deny"`) || !strings.Contains(reply, "replaced") || strings.Contains(reply, "user denied") {
+		t.Fatalf("reply = %s", reply)
+	}
+}
+
+// A call stopped with the session behind it, or queued behind a card, is told the same.
+func TestAStopIsNotTheUserDenying(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	shown := callPermission(c, bashCommand("rm -rf one"))
+	cardFor(t, engine, "rm -rf one")
+	queued := callPermission(c, bashCommand("rm -rf two"))
+	notYet(t, queued)
+	_ = engine.Do(func() { c.StopAgent(engine.Agent("cc-abc-123")) })
+	for _, done := range []chan []byte{shown, queued} {
+		if reply := replyOf(t, done); !strings.Contains(reply, "withdrawn") || strings.Contains(reply, "user denied") {
+			t.Fatalf("reply = %s", reply)
+		}
+	}
+}
+
+// A call that gives up leaves the line, and the one behind it gets its card.
+func TestACallThatGivesUpMakesWayForTheNext(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first := callPermissionUntil(ctx, c, bashCommand("rm -rf one"))
+	cardFor(t, engine, "rm -rf one")
+	second := callPermission(c, bashCommand("rm -rf two"))
+	notYet(t, second)
+	cancel()
+	if reply := replyOf(t, first); reply != "" {
+		t.Fatalf("first = %s", reply)
+	}
+	card := cardFor(t, engine, "rm -rf two")
+	decideCard(t, engine, card.ID, models.DecisionAllowed)
+	if reply := replyOf(t, second); !strings.Contains(reply, `"allow"`) {
+		t.Fatalf("second = %s", reply)
+	}
+}
+
+// A call still in line that gives up never gets a card.
+func TestACallInLineThatGivesUpGetsNoCard(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	first := callPermission(c, bashCommand("rm -rf one"))
+	card := cardFor(t, engine, "rm -rf one")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	second := callPermissionUntil(ctx, c, bashCommand("rm -rf two"))
+	notYet(t, second)
+	cancel()
+	if reply := replyOf(t, second); reply != "" {
+		t.Fatalf("second = %s", reply)
+	}
+	decideCard(t, engine, card.ID, models.DecisionDenied)
+	replyOf(t, first)
+	if agent := agentOf(t, engine); agent.Approval != nil || agent.State != models.StateThinking {
+		t.Fatalf("state %s, card %+v", agent.State, agent.Approval)
+	}
+}
+
+// Auto approve settles a line in one go, each call by its own card.
+func TestAutoApproveSettlesTheWholeLine(t *testing.T) {
+	c, engine := newConnector(t)
+	sub := engine.Subscribe(events.Resume{})
+	defer engine.Unsubscribe(sub.Sub)
+	hook(t, c, "SessionStart", nil)
+	first := callPermission(c, bashCommand("rm -rf one"))
+	cardFor(t, engine, "rm -rf one")
+	second := callPermission(c, bashCommand("rm -rf two"))
+	notYet(t, second)
+	_ = engine.Do(func() { engine.SetAutoApprove(true, "all") })
+	for _, done := range []chan []byte{first, second} {
+		if reply := replyOf(t, done); !strings.Contains(reply, `"allow"`) {
+			t.Fatalf("reply = %s", reply)
+		}
+	}
+}

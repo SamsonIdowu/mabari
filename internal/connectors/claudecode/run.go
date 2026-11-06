@@ -411,6 +411,7 @@ func (c *Connector) exited(r *run) {
 		}
 		c.closeLive(r, agent)
 		c.markResumable(agent)
+		c.withdrawCalls(agent.ID)
 		switch {
 		case r.ended.Load():
 			// Stopped by Mabari itself shutting down. Its turn can be picked up again.
@@ -558,6 +559,7 @@ func (c *Connector) notice(agent *models.LiveAgent, text string) {
 // fail shows a session's failure on its agent and in the conversation. Call inside Do.
 func (c *Connector) fail(agent *models.LiveAgent, why string) {
 	why = clip(redact.Text(why), 300)
+	c.withdrawCalls(agent.ID)
 	c.engine.CancelApproval(agent)
 	agent.State, agent.Error = models.StateError, why
 	c.notice(agent, why)
@@ -628,6 +630,7 @@ func (c *Connector) askAboutPlan(agent *models.LiveAgent, plan string) {
 			steps = append(steps, clip(line, 160))
 		}
 	}
+	c.supersede(agent)
 	c.engine.RequestApproval(agent, models.Approval{
 		Type: models.ApprovalPlan, Title: "Approve the plan",
 		Detail:    models.ApprovalDetail{Project: project, Steps: steps},
@@ -869,6 +872,7 @@ func (c *Connector) endAll(keep map[string]bool) {
 	}
 	c.mu.Unlock()
 	for _, r := range ending {
+		c.withdrawCalls(r.agentID)
 		c.retire(r)
 	}
 }

@@ -92,8 +92,11 @@ type Connector struct {
 	// wait is how long a permission or question hook waits for the person.
 	wait time.Duration
 
-	mu      sync.Mutex
-	waiting map[string]chan models.Approval
+	mu sync.Mutex
+	// waiting are the hook calls waiting for a person, by approval id, and lines the same calls by
+	// agent, oldest first. See approvals.go.
+	waiting map[string]*approvalCall
+	lines   map[string][]*approvalCall
 	pause   map[string]bool
 	stopped map[string]bool
 	// handing is what the lead last asked a subagent to do, by session, from its Task call.
@@ -140,7 +143,8 @@ func New(engine *events.Engine) *Connector {
 	return &Connector{
 		engine:  engine,
 		wait:    PermissionWait * time.Second,
-		waiting: map[string]chan models.Approval{},
+		waiting: map[string]*approvalCall{},
+		lines:   map[string][]*approvalCall{},
 		pause:   map[string]bool{},
 		stopped: map[string]bool{},
 		handing: map[string]string{},
@@ -1023,35 +1027,10 @@ func (c *Connector) permission(ctx context.Context, in input, fromRun bool) []by
 	if in.ToolName == AskTool {
 		return nil
 	}
-	decided := make(chan models.Approval, 1)
 	id := c.idOf(in.SessionID)
-	var (
-		agent  *models.LiveAgent
-		asked  bool
-		answer *models.Approval
-	)
-	c.mu.Lock()
-	earlier := c.waiting[id]
-	c.waiting[id] = decided
-	c.mu.Unlock()
-	// An agent waits on one approval at a time. In a session with no prompt to fall back on, the
-	// call that was waiting hears no at once, rather than holding Claude Code until it times out.
-	if fromRun && earlier != nil {
-		cancelled := models.DecisionCancelled
-		select {
-		case earlier <- models.Approval{Decision: &cancelled}:
-		default:
-		}
-	}
-	defer func() {
-		c.mu.Lock()
-		if c.waiting[id] == decided {
-			delete(c.waiting, id)
-		}
-		c.mu.Unlock()
-	}()
+	var call *approvalCall
 	_ = c.engine.Do(func() {
-		agent = c.agentFor(in)
+		agent := c.agentFor(in)
 		if agent == nil {
 			return
 		}
@@ -1065,10 +1044,10 @@ func (c *Connector) permission(ctx context.Context, in input, fromRun bool) []by
 		if !covered && !c.engine.HasViewers() && !fromRun {
 			return
 		}
-		asked = true
-		c.engine.RequestApproval(agent, approval)
+		call = c.joinLine(agent.ID, approval)
+		c.showNext(agent)
 	})
-	if !asked {
+	if call == nil {
 		return nil
 	}
 	wait := c.wait
@@ -1077,35 +1056,30 @@ func (c *Connector) permission(ctx context.Context, in input, fromRun bool) []by
 	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
+	var answer *models.Approval
 	select {
-	case approval := <-decided:
+	case approval := <-call.decided:
 		answer = &approval
 	case <-timer.C:
 	case <-ctx.Done():
 	}
 	if answer == nil {
-		said := "Left to Claude Code's own prompt"
-		if fromRun {
-			said = "Denied: nobody answered in time"
-		}
-		_ = c.engine.Do(func() {
-			if agent := c.engine.Agent(id); agent != nil {
-				c.engine.CancelApproval(agent)
-				agent.State = models.StateThinking
-				c.engine.AddEvent(agent, "approval", said, nil)
-			}
-		})
-		if fromRun {
-			return denyReply("Nobody answered in Mabari in time, so this was denied. Ask the person before trying it another way.")
-		}
-		return nil
+		answer = c.giveUp(call, id, fromRun)
 	}
-	if answer.Decision == nil || *answer.Decision != models.DecisionAllowed {
+	switch {
+	case answer == nil && fromRun:
+		return denyReply("Nobody answered in Mabari in time, so this was denied. Ask the person before trying it another way.")
+	case answer == nil:
+		return nil
+	case answer.Decision != nil && *answer.Decision == models.DecisionAllowed:
+		return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+			"hookEventName": "PermissionRequest", "decision": map[string]any{"behavior": "allow"},
+		}})
+	case answer.Decision != nil && *answer.Decision == models.DecisionDenied:
 		return denyReply("The user denied this in Mabari.")
 	}
-	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
-		"hookEventName": "PermissionRequest", "decision": map[string]any{"behavior": "allow"},
-	}})
+	// Nobody said no, so Claude isn't told they did.
+	return denyReply(withdrawnReply)
 }
 
 // Start does nothing: hooks arrive by themselves once attached.
@@ -1150,24 +1124,20 @@ func (c *Connector) instructRun(agent *models.LiveAgent, text string) {
 	}
 }
 
-// Decide wakes the permission hook waiting on this agent. Call inside Do.
+// Decide wakes the permission hook that asked for this approval, and no other, and shows the next
+// card in the agent's line. Whichever way it went, the agent is no longer waiting on the person.
+// Call inside Do.
 func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
 	if approval.Type == models.ApprovalPlan && agent.RunsHere() {
 		c.planDecided(agent, approval)
+		c.showNext(agent)
 		return
 	}
-	if agent.RunsHere() || (approval.Decision != nil && *approval.Decision == models.DecisionAllowed) {
-		agent.State = models.StateThinking
+	agent.State = models.StateThinking
+	if call := c.takeCall(approval.ID); call != nil {
+		call.decided <- approval
 	}
-	c.mu.Lock()
-	waiter := c.waiting[agent.ID]
-	c.mu.Unlock()
-	if waiter != nil {
-		select {
-		case waiter <- approval:
-		default:
-		}
-	}
+	c.showNext(agent)
 }
 
 // Interrupt stops Claude at its next tool call. Typing in the session carries on. A session Mabari
@@ -1249,15 +1219,8 @@ func (c *Connector) stopRun(agent *models.LiveAgent) {
 	r := c.runs[agent.ID]
 	delete(c.sessions, agent.Session.ID)
 	delete(c.pause, agent.Session.ID)
-	waiter := c.waiting[agent.ID]
 	c.mu.Unlock()
-	if waiter != nil {
-		decision := models.DecisionCancelled
-		select {
-		case waiter <- models.Approval{Decision: &decision}:
-		default:
-		}
-	}
+	c.withdrawCalls(agent.ID)
 	if r != nil {
 		c.retire(r)
 	}
@@ -1284,16 +1247,10 @@ func (c *Connector) StopAgent(agent *models.LiveAgent) {
 	c.mu.Lock()
 	c.stopped[session] = true
 	c.pause[session] = true
+	c.mu.Unlock()
 	// A permission hook waiting on this session hears no at once, rather than holding Claude
 	// Code until it gives up. A waiting question notices the agent has gone by itself.
-	if waiter := c.waiting[agent.ID]; waiter != nil {
-		decision := models.DecisionCancelled
-		select {
-		case waiter <- models.Approval{Decision: &decision}:
-		default:
-		}
-	}
-	c.mu.Unlock()
+	c.withdrawCalls(agent.ID)
 	c.engine.CancelApproval(agent)
 	c.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")
 	c.engine.RemoveAgent(agent.ID)

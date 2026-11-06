@@ -116,9 +116,8 @@ func TestASettingsFileHookForASessionMabariRunsIsIgnored(t *testing.T) {
 	}
 }
 
-// A run hook for a session with no process behind it is answered with nothing, which a session
-// Mabari runs treats as a denial, so a call from a process Mabari no longer speaks for is never
-// allowed by a click meant for another.
+// A run hook for a session with no process behind it is told no, so a call from a process Mabari no
+// longer speaks for is never allowed by a click meant for another.
 func TestARunHookForAProcessMabariHasLetGoOfIsNotAsked(t *testing.T) {
 	o := newRunOffice(t)
 	agent := o.start(t)
@@ -128,10 +127,53 @@ func TestARunHookForAProcessMabariHasLetGoOfIsNotAsked(t *testing.T) {
 	}
 	done := o.hookCall(t, true, agent.Session.ID, "PermissionRequest",
 		map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf build"}})
-	if body := reply(t, done).Body.String(); strings.TrimSpace(body) != "" {
+	if body := reply(t, done).Body.String(); !strings.Contains(body, `"behavior":"deny"`) {
 		t.Fatalf("answered %q", body)
 	}
 	if got := o.state(agent.ID); got.Approval != nil {
 		t.Fatalf("asked: %+v", got.Approval)
+	}
+}
+
+// Parallel calls from a session Mabari runs wait in line: a click on one card answers its own call,
+// over the real route, and the next card comes up for the next.
+func TestParallelCallsFromASessionWaitInLine(t *testing.T) {
+	o := newRunOffice(t)
+	agent := o.start(t)
+	session := agent.Session.ID
+	bash := func(command string) map[string]any {
+		return map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": command}}
+	}
+	first := o.hookCall(t, true, session, "PermissionRequest", bash("rm -rf one"))
+	o.until(t, "the first card", func() bool { return o.state(agent.ID).Approval != nil })
+	card := o.state(agent.ID).Approval
+	// A subagent's call has the same session id.
+	subagent := bash("rm -rf two")
+	subagent["agent_id"], subagent["agent_type"] = "sub1", "Explore"
+	second := o.hookCall(t, true, session, "PermissionRequest", subagent)
+	select {
+	case <-second:
+		t.Fatal("the second call was answered with the first card up")
+	case <-time.After(150 * time.Millisecond):
+	}
+	if now := o.state(agent.ID).Approval; now == nil || now.ID != card.ID {
+		t.Fatalf("the card changed: %+v", now)
+	}
+	o.decide(t, card.ID, models.DecisionAllowed)
+	if body := reply(t, first).Body.String(); !strings.Contains(body, `"behavior":"allow"`) {
+		t.Fatalf("first = %q", body)
+	}
+	o.until(t, "the second card", func() bool {
+		next := o.state(agent.ID).Approval
+		return next != nil && next.ID != card.ID && strings.Contains(next.Detail.Cmd, "rm -rf two")
+	})
+	select {
+	case body := <-second:
+		t.Fatalf("a click on the first card answered the second call: %q", body.Body.String())
+	default:
+	}
+	o.decide(t, o.state(agent.ID).Approval.ID, models.DecisionDenied)
+	if body := reply(t, second).Body.String(); !strings.Contains(body, "denied this") {
+		t.Fatalf("second = %q", body)
 	}
 }

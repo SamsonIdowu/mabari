@@ -932,12 +932,15 @@ func (e *Engine) autoCovers(a models.Approval) bool {
 	return auto.On && (auto.Scope == "all" || a.RiskLevel == models.RiskLow)
 }
 
-// RequestApproval pauses an agent until the user decides. Auto approve may decide at once.
-// Call inside Do.
+// RequestApproval pauses an agent until the user decides. Auto approve may decide at once. An id
+// already on the approval is kept, for a connector that has to know it before it is decided. Call
+// inside Do.
 func (e *Engine) RequestApproval(agent *models.LiveAgent, approval models.Approval) {
 	// An agent waits on one approval at a time, so an earlier one is no longer asked.
 	e.CancelApproval(agent)
-	approval.ID = newID("approval-")
+	if approval.ID == "" {
+		approval.ID = newID("approval-")
+	}
 	approval.Agent = agent.ID
 	approval.Time = e.now().UnixMilli()
 	agent.State = models.StateApproval

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SamsonIdowu/mabari/internal/connectors/claudecode"
 	"github.com/SamsonIdowu/mabari/internal/models"
 )
 
@@ -108,6 +109,10 @@ func (a *api) startAtDesk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
+	if a.runsClaude() {
+		a.runAtDesk(w, def, task, *project)
+		return
+	}
 	// The task waits in the project for the session's first prompt, which links the two. When no
 	// window opens, the person starts it by hand, and it waits the same way, for 15 minutes.
 	_ = a.engine.Do(func() {
@@ -120,6 +125,37 @@ func (a *api) startAtDesk(w http.ResponseWriter, r *http.Request) {
 		a.countRun(def.ID)
 	}
 	writeJSON(w, http.StatusOK, deskStartResult{Notice: notice, Opened: opened})
+}
+
+// runAtDesk starts an agent file's agent as a session Mabari runs.
+func (a *api) runAtDesk(w http.ResponseWriter, def models.AgentDef, task string, project models.Project) {
+	if trust := a.needsTrust(project.Repository.Path); trust != nil {
+		writeTrustNeeded(w, trust)
+		return
+	}
+	var copied models.LiveAgent
+	var problem error
+	if err := a.engine.Do(func() {
+		agent, failed := a.startClaude(claudecode.SessionSpec{
+			Name: a.uniqueName(def.Name), Folder: project.Repository.Path, Task: task, Model: def.Model,
+			Project: project.ID, AgentFile: def.Name, DefID: def.ID,
+		})
+		if problem = failed; agent != nil {
+			copied = *agent
+			copied.Feed = nil
+		}
+	}); err != nil {
+		internalError(w, err)
+		return
+	}
+	if problem != nil {
+		writeError(w, http.StatusConflict, problem.Error())
+		return
+	}
+	a.countRun(def.ID)
+	writeJSON(w, http.StatusCreated, deskStartResult{
+		Notice: copied.Name + " sat down to work.", Opened: true, AgentID: copied.ID, Agent: &copied,
+	})
 }
 
 // startDefAgent starts an agent file's agent in Mabari, with the task, as the demo and Codex do.

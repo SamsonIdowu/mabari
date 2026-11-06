@@ -416,6 +416,10 @@ func (a *api) continueAgent(c events.Connector, agent *models.LiveAgent) {
 		return
 	}
 	c.Continue(agent)
+	// A session that can't get a place yet stays paused, and has said why.
+	if agent.State == models.StatePaused {
+		return
+	}
 	a.engine.AddEvent(agent, "start", "Continued by you from where it stopped", nil)
 	a.engine.Log(agent.Name, models.LogInstruction, "Continue", "Continued by you", "ok")
 	a.engine.Toast(agent.Name + " is back to work.")
@@ -464,6 +468,8 @@ type newAgentBody struct {
 	AllowedTools []string           `json:"allowedTools"`
 	Desk         *int               `json:"desk"`
 	LeadID       string             `json:"leadId"`
+	// Where is "terminal" to open a Claude Code session in a terminal, instead of running it here.
+	Where string `json:"where"`
 }
 
 const defaultNewTask = "Get to know the project and wait for instructions"
@@ -515,7 +521,13 @@ func (a *api) realRunner(kind models.AccountKind) string {
 		}
 		return ""
 	case models.AccountClaudeCode:
-		return "Claude Code sessions start in your terminal: run claude in the agent's folder and it takes a desk."
+		switch {
+		case a.claude == nil || !a.claude.Connector.CanRun():
+			return "Claude Code sessions start in your terminal: run claude in the agent's folder and it takes a desk."
+		case !a.claude.Connector.Installed():
+			return "Claude Code isn't installed on this computer. Install it, then start the agent here."
+		}
+		return ""
 	case models.AccountAnthropicKey, models.AccountOpenAIKey:
 		return "Agents that run on an API key aren't ready yet. Attach Claude Code or sign in with ChatGPT to run agents."
 	default:
@@ -531,6 +543,9 @@ func (a *api) accountNotes(account models.Account, demo bool) models.Account {
 	if account.Kind == models.AccountCodex && a.codex != nil && a.codex.Missing() {
 		account.Missing = "codex"
 	}
+	if account.Kind == models.AccountClaudeCode && a.claude != nil && a.claude.Connector.CanRun() && !a.claude.Connector.Installed() {
+		account.Missing = "claude"
+	}
 	connected := account.Status == models.AccountConnected
 	switch {
 	// The demo's agents are simulated, so any connected account of a kind it plays can start one.
@@ -538,7 +553,8 @@ func (a *api) accountNotes(account models.Account, demo bool) models.Account {
 		account.CanStart = true
 	default:
 		account.StartNote = a.realRunner(account.Kind)
-		if account.StartNote == "" && !connected {
+		// Claude Code needs no sign in here: it uses the login it already has.
+		if account.StartNote == "" && !connected && account.Kind != models.AccountClaudeCode {
 			account.StartNote = "Sign in with ChatGPT first."
 		}
 		account.CanStart = account.StartNote == ""
@@ -549,7 +565,7 @@ func (a *api) accountNotes(account models.Account, demo bool) models.Account {
 // startAgent starts an agent from a checked body, or says why it can't. Call inside Do.
 func (a *api) startAgent(body newAgentBody) (*models.LiveAgent, string) {
 	switch {
-	case !a.connected(body.Account):
+	case !a.canUse(body.Account):
 		return nil, "Connect an account first."
 	case a.engine.AgentByName(body.Name) != nil:
 		return nil, "There is already an agent called " + body.Name + ". Pick another name."
@@ -569,6 +585,9 @@ func (a *api) startAgent(body newAgentBody) (*models.LiveAgent, string) {
 		if problem := a.realRunner(body.Account); problem != "" {
 			return nil, problem
 		}
+		if body.Account == models.AccountClaudeCode {
+			return a.startClaudeAgent(body, spec.Lead)
+		}
 	}
 	created, failure := a.simulator.CreateAgent(spec)
 	switch {
@@ -584,6 +603,30 @@ func (a *api) startAgent(body newAgentBody) (*models.LiveAgent, string) {
 	return created, ""
 }
 
+// startClaudeAgent starts an agent as a Claude Code session Mabari runs. Call inside Do.
+func (a *api) startClaudeAgent(body newAgentBody, lead *models.LiveAgent) (*models.LiveAgent, string) {
+	if lead != nil {
+		return nil, "Claude Code starts its own subagents. Ask " + lead.Name + " for one."
+	}
+	agent, err := a.startClaude(claudecode.SessionSpec{
+		Name: body.Name, Folder: body.Folder, Task: body.Task, Model: body.Model, Project: body.ProjectID,
+		Desk: body.Desk, Tools: body.AllowedTools, DailyCostCap: body.DailyCostCap,
+	})
+	if err != nil {
+		return nil, err.Error()
+	}
+	return agent, ""
+}
+
+// realClaudeAgent reports whether this new agent would be a real Claude Code session, as opposed to
+// one in the demo.
+func (a *api) realClaudeAgent(body newAgentBody) (running bool, err error) {
+	err = a.engine.Do(func() {
+		running = body.Account == models.AccountClaudeCode && !a.simulator.DemoActive() && a.runsClaude()
+	})
+	return running, err
+}
+
 func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 	var body newAgentBody
 	if !readJSON(w, r, &body) {
@@ -593,9 +636,25 @@ func (a *api) createAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, problem)
 		return
 	}
+	running, err := a.realClaudeAgent(body)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if running && body.Where == whereTerminal {
+		notice, opened := a.openClaude(body.Name, body.Folder, body.Task, false)
+		writeJSON(w, http.StatusOK, map[string]any{"notice": notice, "opened": opened})
+		return
+	}
+	if running {
+		if trust := a.needsTrust(body.Folder); trust != nil {
+			writeTrustNeeded(w, trust)
+			return
+		}
+	}
 	var agent *models.LiveAgent
 	var problem string
-	err := a.engine.Do(func() { agent, problem = a.startAgent(body) })
+	err = a.engine.Do(func() { agent, problem = a.startAgent(body) })
 	switch {
 	case err != nil:
 		internalError(w, err)
@@ -687,6 +746,8 @@ func validSettings(s models.Settings) string {
 		return `voiceEngine must be "browser" or "whisper"`
 	case s.AutoApprove.Scope != "safe" && s.AutoApprove.Scope != "all":
 		return `autoApprove.scope must be "safe" or "all"`
+	case s.MaxSessions < models.MinSessions || s.MaxSessions > models.MaxSessionsLimit:
+		return "maxSessions must be from " + strconv.Itoa(models.MinSessions) + " to " + strconv.Itoa(models.MaxSessionsLimit)
 	default:
 		return ""
 	}

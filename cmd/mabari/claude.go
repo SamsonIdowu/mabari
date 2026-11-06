@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -229,10 +230,35 @@ func claudeOptions(cfg config.Config, o *office) *server.ClaudeOptions {
 		binary = ""
 	}
 	o.claude.HookBinary = binary
+	// Sessions Mabari runs live no longer than this process, so a go run binary serves them too.
+	o.claude.Hook = claudecode.Hook{Binary: sessionHookBinary(binary), Port: cfg.Port}
+	o.claude.Program = findClaude
 	return &server.ClaudeOptions{
 		Connector: o.claude, Secrets: o.secrets, ConfigDir: dir,
 		Hook: claudecode.Hook{Binary: binary, Port: cfg.Port},
 	}
+}
+
+// sessionHookBinary is the program a session Mabari runs reports through.
+func sessionHookBinary(binary string) string {
+	if binary != "" {
+		return binary
+	}
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// findClaude finds the claude program by its fixed name, on PATH like any terminal would. This is
+// the only place that does: tests pass their fake by path, so none can reach the real one.
+func findClaude() string {
+	path, err := exec.LookPath("claude")
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 // watchClaude checks every half minute whether hooks have stopped reporting.

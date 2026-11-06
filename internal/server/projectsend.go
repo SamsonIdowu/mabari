@@ -12,11 +12,12 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/vee"
 )
 
-// A message for a project goes to the agent there best placed to take it. A real Claude Code
-// session that is waiting for its person hears nothing until they type in its terminal, so it
-// doesn't count. When nobody can take it, and for slash commands, which Claude Code only runs
-// when they are typed or given as a session's first prompt, Mabari opens Claude Code in the
-// project's folder with the message as its first prompt.
+// A message for a project goes to the agent there best placed to take it. A Claude Code session
+// started elsewhere that is waiting for its person hears nothing until they type in it, so it
+// doesn't count, but one Mabari runs does: it gets the message at once. When nobody can take it,
+// and for slash commands, which Claude Code only runs when they are typed or given as a session's
+// first prompt, Mabari starts a session in the project's folder with the message. Where it can't
+// run sessions it opens Claude Code in a terminal instead.
 
 // isCommand reports whether a message is a Claude Code slash command, such as /ux-audit. A path
 // such as /Users/me/shop is not.
@@ -32,6 +33,8 @@ type projectRoute struct {
 	result messageResult
 	// badPrompt is set when the text can't go on Claude Code's command line.
 	badPrompt bool
+	// trust is set when the project's folder needs the person's word before a session runs there.
+	trust *folderTrust
 }
 
 // takers are the leads in a project that can take a message now, and the sessions waiting for
@@ -41,7 +44,7 @@ func (a *api) takers(projectID string) (now, later []*models.LiveAgent) {
 		if agent.Lead != nil || agent.Leaving || agent.State == models.StateError || agent.State == models.StatePaused {
 			continue
 		}
-		if agent.Source == claudecode.Source && !agent.State.Active() {
+		if agent.Source == claudecode.Source && !agent.State.Active() && !agent.RunsHere() {
 			later = append(later, agent)
 			continue
 		}
@@ -57,8 +60,8 @@ func (a *api) toProject(project *models.Project, text, why string) projectRoute 
 	now, later := a.takers(project.ID)
 	var agent *models.LiveAgent
 	switch {
-	case isCommand(text) && hasFolder:
-		// Commands open a session, below, where Claude Code runs them as typed.
+	case isCommand(text) && hasFolder && !hasIdleRun(now):
+		// Commands start a session, below, where Claude Code runs them as typed.
 	case len(now) > 0:
 		if decision := a.router.Route(text, now); decision != nil {
 			agent = a.engine.Agent(decision.AgentID)
@@ -79,6 +82,10 @@ func (a *api) toProject(project *models.Project, text, why string) projectRoute 
 	if !hasFolder {
 		route.sent.Problem = "Nobody works on " + project.Name + " yet, and it has no folder for Claude Code to open in. " +
 			"Attach one on the Projects page."
+		return route
+	}
+	if a.runsClaude() {
+		a.startForProject(project, text, &route)
 		return route
 	}
 	// Only here does the text become part of a command line.
@@ -164,6 +171,9 @@ func (a *api) sendToProject(w http.ResponseWriter, r *http.Request) {
 		return
 	case route.badPrompt:
 		writeError(w, http.StatusBadRequest, route.sent.Problem)
+		return
+	case route.trust != nil:
+		writeTrustNeeded(w, route.trust)
 		return
 	case route.sent.Problem != "":
 		writeError(w, http.StatusConflict, route.sent.Problem)

@@ -9,6 +9,7 @@ import { openAgent, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import { MESSAGE_KINDS } from '../office/talk.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
+import { VoiceCard } from './VoiceCard.tsx';
 import { Cast } from '../shell/Cast.tsx';
 
 const KINDS = MESSAGE_KINDS;
@@ -171,7 +172,12 @@ function AgentChats() {
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+            tabIndex={0}
+            role="region"
+            aria-label="Conversations between agents"
+          >
             <button
               type="button"
               className={current ? 'thread' : 'thread on'}
@@ -266,6 +272,10 @@ function AgentChats() {
           <div
             ref={body}
             data-testid="convBody"
+            // A box that scrolls can be reached and scrolled from the keyboard.
+            tabIndex={0}
+            role="region"
+            aria-label="Messages between agents"
             style={{
               flex: 1,
               minHeight: 0,
@@ -346,6 +356,8 @@ export function Conversations() {
           ))}
         </div>
         {tab === 'with' ? <WithYou office={office} /> : <AgentChats />}
+        {/* The mic in a message box listens here too, and its card shows where it is held. */}
+        <VoiceCard />
       </div>
     </section>
   );

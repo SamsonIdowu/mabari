@@ -102,7 +102,7 @@ test('the Projects and Conversations tabs come back after a reload', async ({ pa
     'true',
   );
 
-  await page.goto('/#conversations');
+  await page.goto('/#conversations?tab=between');
   await page.locator('.ptab', { hasText: 'Docs site' }).click();
   await page.reload();
   await expect(page.locator('.ptab', { hasText: 'Docs site' })).toHaveAttribute(
@@ -172,14 +172,16 @@ test('a link to an agent that is not here opens nothing and tidies the address',
 });
 
 test('the project chat is in the address too', async ({ page }) => {
+  // The chat is the Chats screen's project thread, so the address names it there. Back closes it,
+  // a reload keeps it, and the address the old drawer used still takes you to it.
   await page.goto('/#projects');
   await page
     .locator('article', { hasText: 'Docs site' })
-    .getByRole('button', { name: 'Chat' })
+    .getByRole('link', { name: 'Chat' })
     .click();
-  const chat = page.getByRole('complementary', { name: 'Chat with Docs site' });
+  const chat = page.getByRole('log', { name: 'Messages with Docs site' });
   await expect(chat).toBeVisible();
-  await expect(page).toHaveURL(/#projects\?chat=/);
+  await expect(page).toHaveURL(/#conversations\?project=/);
   const link = page.url();
 
   await page.reload();
@@ -190,4 +192,8 @@ test('the project chat is in the address too', async ({ page }) => {
 
   await page.goto(link);
   await expect(chat).toBeVisible();
+  const id = new URL(link).hash.split('project=')[1];
+  await page.goto(`/#projects?chat=${id}`);
+  await expect(chat).toBeVisible();
+  await expect(page).toHaveURL(/#conversations\?project=/);
 });

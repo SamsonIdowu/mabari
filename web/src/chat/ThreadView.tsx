@@ -24,6 +24,9 @@ const ROWS_MORE = 120;
 /** Within this many pixels of the bottom, new text keeps the thread at the bottom. */
 const NEAR_BOTTOM_PX = 80;
 const JUMP_PX = 240;
+/** The top of the thread is this near, and this long since the last load, to load more by itself. */
+const TOP_PX = 200;
+const LOAD_GAP_MS = 350;
 
 interface Props {
   mode: 'agent' | 'project';
@@ -49,8 +52,8 @@ function useThreads(agents: LiveAgent[]): Record<string, Thread> {
 /**
  * What an agent, or a project's agents, have said and done, newest at the bottom. Streaming text
  * grows in place, a tool call is one calm line, and an approval or question waits at the end
- * where you answer it. Only the newest rows are drawn until you ask for earlier ones, and the
- * browser skips the ones off screen, so a thousand messages scroll as one hundred do.
+ * where you answer it. Only the newest rows are drawn until you ask for earlier ones, or scroll to
+ * the top, so a thread of thousands opens as fast as one of a hundred.
  */
 export function ThreadView({ mode, label, agents, project, composer, empty }: Props) {
   const all = useThreads(agents);
@@ -61,9 +64,10 @@ export function ThreadView({ mode, label, agents, project, composer, empty }: Pr
   const [shown, setShown] = useState(ROWS_SHOWN);
   const [away, setAway] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const top = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const anchor = useRef<number | null>(null);
+  const loading = useRef(false);
+  // Where the thread was when it last settled, so rows added above can be made up for.
+  const metrics = useRef({ height: 0, top: 0, first: '' });
 
   useEffect(() => {
     if (project) void loadAsks(project.id).catch(() => undefined);
@@ -92,57 +96,57 @@ export function ThreadView({ mode, label, agents, project, composer, empty }: Pr
   const visible = rows.slice(first);
   const doing = doingNow(agents, mode);
 
+  // Draws more of what is held and, when that would use it up, asks for the page before it.
   const earlier = useCallback(() => {
-    const pane = scroller.current;
-    if (pane) anchor.current = pane.scrollHeight - pane.scrollTop;
-    setShown((now) => now + ROWS_MORE);
-    if (first <= 0) {
-      for (const agent of agents) {
-        if (threads[agent.id]?.hasMore) {
-          void older(agent.id).catch((error: Error) => toast(error.message));
-        }
-      }
-    }
-  }, [agents, first, older, threads, toast]);
+    const next = shown + ROWS_MORE;
+    setShown(next);
+    if (rows.length > next || loading.current) return;
+    const pages = agents.filter((agent) => threads[agent.id]?.hasMore);
+    if (!pages.length) return;
+    loading.current = true;
+    void Promise.all(pages.map((agent) => older(agent.id)))
+      .catch((error: Error) => toast(error.message))
+      .finally(() => {
+        loading.current = false;
+      });
+  }, [agents, older, rows.length, shown, threads, toast]);
 
-  // Reaching the top loads what is above, without a click.
+  // Scrolling to near the top loads what is above, without a click. It is paced, so rows that were
+  // just added have settled before more are, and it is started only by a scroll: a thread being
+  // written to never loads its past by itself.
   const canLoad = first > 0 || more;
-  useEffect(() => {
-    const sentinel = top.current;
-    if (!sentinel || !canLoad || typeof IntersectionObserver === 'undefined') return undefined;
-    const watch = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) earlier();
-      },
-      { root: scroller.current, rootMargin: '120px 0px 0px 0px' },
-    );
-    watch.observe(sentinel);
-    return () => watch.disconnect();
-  }, [canLoad, earlier]);
+  const lastLoad = useRef(0);
 
   // What changes at the bottom: a new row, more text in the last one, an approval or a question.
   const last = rows.at(-1);
   const lastText = last && 'item' in last ? last.item.text.length : 0;
   const waiting = agents.filter((agent) => agent.approval || agent.question).length;
+  const firstKey = visible[0]?.key ?? '';
   const signature = `${rows.length}:${last?.key ?? ''}:${lastText}:${waiting}:${loaded}`;
   useLayoutEffect(() => {
     const pane = scroller.current;
     if (!pane) return;
-    if (anchor.current !== null) {
-      // Rows were added above: keep what was in view where it was.
-      pane.scrollTop = pane.scrollHeight - anchor.current;
-      anchor.current = null;
-      return;
+    const before = metrics.current;
+    if (before.first && firstKey !== before.first && !stick.current) {
+      // Rows were added above what is in view: keep what was in view where it was.
+      pane.scrollTop = before.top + (pane.scrollHeight - before.height);
+    } else if (stick.current) {
+      pane.scrollTop = pane.scrollHeight;
     }
-    if (stick.current) pane.scrollTop = pane.scrollHeight;
-  }, [signature, visible.length]);
+    metrics.current = { height: pane.scrollHeight, top: pane.scrollTop, first: firstKey };
+  }, [signature, visible.length, firstKey]);
 
   const onScroll = () => {
     const pane = scroller.current;
     if (!pane) return;
     const gap = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+    metrics.current = { ...metrics.current, height: pane.scrollHeight, top: pane.scrollTop };
     stick.current = gap < NEAR_BOTTOM_PX;
     setAway(gap > JUMP_PX);
+    if (canLoad && pane.scrollTop <= TOP_PX && Date.now() - lastLoad.current >= LOAD_GAP_MS) {
+      lastLoad.current = Date.now();
+      earlier();
+    }
   };
   const jump = () => {
     const pane = scroller.current;
@@ -176,7 +180,6 @@ export function ThreadView({ mode, label, agents, project, composer, empty }: Pr
           composer.current?.addFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <div ref={top} className="mtop" aria-hidden="true" />
         {canLoad ? (
           <button type="button" className="btn ghost sm mearlier" onClick={earlier}>
             Show earlier messages

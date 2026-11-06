@@ -334,6 +334,21 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   useImperativeHandle(handle, () => ({ addFiles, focus: () => box.current?.focus() }), [addFiles]);
 
+  // Where the caret goes once the text that was just set is in the box. It is set before the browser
+  // paints and before the next key is handled, so typing straight on lands after what was chosen.
+  const pendingCaret = useRef<number | null>(null);
+  const placeCaret = (at: number) => {
+    pendingCaret.current = at;
+    setCaret(at);
+  };
+  useLayoutEffect(() => {
+    const at = pendingCaret.current;
+    if (at === null || !box.current) return;
+    pendingCaret.current = null;
+    box.current.focus();
+    box.current.setSelectionRange(at, at);
+  });
+
   const choose = (suggestion: Suggestion) => {
     if (!trigger) return;
     const next = replaceTrigger(text, trigger, suggestion.insert);
@@ -349,11 +364,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         ];
     }
     setDismissed(null);
-    requestAnimationFrame(() => {
-      box.current?.focus();
-      box.current?.setSelectionRange(next.caret, next.caret);
-      setCaret(next.caret);
-    });
+    placeCaret(next.caret);
   };
 
   const waiting = uploads.some((upload) => upload.status === 'sending');
@@ -368,7 +379,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const delivery = agent ? deliveryOf(agent) : null;
   const everyone =
     target.kind === 'project'
-      ? target.agents.filter((entry) => !entry.leadId && !entry.leaving)
+      ? target.agents.filter((entry) => !entry.leadId && !entry.leaving && entry.state !== 'error')
       : [];
 
   const send = async (how: { now?: boolean; everyone?: boolean } = {}) => {
@@ -437,11 +448,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         event.preventDefault();
         recalling.current = moved.state;
         setText(moved.text);
-        requestAnimationFrame(() => {
-          const end = moved.text.length;
-          box.current?.setSelectionRange(end, end);
-          setCaret(end);
-        });
+        placeCaret(moved.text.length);
       }
       return;
     }

@@ -91,7 +91,8 @@ test('the activity log searches and filters', async ({ page }) => {
 
 test('conversations list threads and open one', async ({ page }) => {
   await loadDemo(page);
-  await go(page, '#conversations');
+  // What agents say to each other is the second tab of Chats.
+  await go(page, '#conversations?tab=between');
   await page.getByRole('button', { name: /Ledger and Sage/ }).click();
   await expect(page.locator('.cmsg', { hasText: 'Yes, for pagination.' })).toBeVisible();
   await page.getByLabel('Search conversations').fill('rollback');

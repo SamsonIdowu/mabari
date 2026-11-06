@@ -419,7 +419,8 @@ function Column({ column }: { column: RoundColumn }) {
 
 function RoundRow({ row }: { row: Extract<Row, { kind: 'round' }> }) {
   const { ask, columns } = row;
-  const replied = columns.filter((column) => column.state === 'replied').length;
+  // An agent that has said something has replied, though it may still be working on the rest.
+  const replied = columns.filter((column) => column.replies.length > 0).length;
   return (
     <div className="mround" data-testid="chatRound">
       <div className="mrow you">

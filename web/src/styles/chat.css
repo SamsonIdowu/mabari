@@ -145,23 +145,11 @@
 .mearlier {
   align-self: center;
 }
-.mtop {
-  height: 1px;
-  margin-bottom: -12px;
-}
 .mempty {
   align-self: center;
   text-align: center;
   margin: 24px 0;
   max-width: 360px;
-}
-/* The browser leaves out what is off screen, so a long thread costs what is in view. */
-.mrow,
-.mtool,
-.mround,
-.mnotice {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 72px;
 }
 .mrow {
   max-width: min(760px, 92%);

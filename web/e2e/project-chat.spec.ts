@@ -6,10 +6,12 @@ test.beforeEach(async ({ request }) => {
   await request.post('/api/wipe', { data: { confirm: true } });
 });
 
+// A project's chat is a thread on the Chats screen, opened from the card's Chat link. The old
+// drawer is gone, so these look at the same things there.
 async function chatWith(page: Page, name: string) {
   await page.goto('/#projects');
-  await page.locator('article', { hasText: name }).getByRole('button', { name: 'Chat' }).click();
-  const chat = page.getByRole('complementary', { name: `Chat with ${name}` });
+  await page.locator('article', { hasText: name }).getByRole('link', { name: 'Chat' }).click();
+  const chat = page.getByRole('log', { name: `Messages with ${name}` });
   await expect(chat).toBeVisible();
   return chat;
 }
@@ -20,15 +22,22 @@ test('a project chat sends to the agent working there and shows its reply', asyn
 }) => {
   await request.post('/api/demo/load');
   const chat = await chatWith(page, 'Docs site');
-  await chat.getByLabel('Message Docs site').fill('Fix the typo in the install guide');
-  await chat.getByLabel('Message Docs site').press('Enter');
-  const messages = chat.getByRole('list', { name: 'Messages' });
-  await expect(messages.locator('.pcm.you').last()).toContainText(
-    'Fix the typo in the install guide',
-  );
-  await expect(messages.locator('.pcm.ai').last()).toBeVisible({ timeout: 15_000 });
-  await chat.getByRole('button', { name: 'Close the chat' }).click();
-  await expect(chat).toBeHidden();
+  const box = page.getByRole('textbox', { name: 'Message Docs site' });
+  // What is there already, so what the message brings can be told from it.
+  const before = await chat.getByTestId('chatAgent').count();
+  await box.fill('Fix the typo in the install guide');
+  await box.press('Enter');
+  await expect(
+    chat
+      .getByTestId('chatYou')
+      .or(chat.getByTestId('chatPending'))
+      .filter({ hasText: 'Fix the typo in the install guide' }),
+  ).toHaveCount(1, { timeout: 15_000 });
+  // The reply comes back in the same thread, with the name of whoever gave it.
+  await expect
+    .poll(() => chat.getByTestId('chatAgent').count(), { timeout: 20_000 })
+    .toBeGreaterThan(before);
+  await expect(chat.getByTestId('chatAgent').last().locator('.mwho')).toBeVisible();
 });
 
 test('a slash command opens Claude Code in the project folder', async ({ page, request }) => {
@@ -37,17 +46,21 @@ test('a slash command opens Claude Code in the project folder', async ({ page, r
   ).json();
   await request.patch(`/api/projects/${created.id}`, { data: { folder: resolve('.') } });
   const chat = await chatWith(page, 'Side shop');
-  await expect(chat).toContainText(resolve('.'));
-  await expect(chat.getByRole('button', { name: 'Open Claude Code' })).toBeVisible();
-  await chat.getByLabel('Message Side shop').fill('/ux-audit https://example.com/issues/130');
-  await chat.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Side shop' }).locator('..'),
+  ).toContainText(resolve('.'));
+  await expect(page.getByRole('button', { name: 'Open Claude Code' })).toBeVisible();
+  const box = page.getByRole('textbox', { name: 'Message Side shop' });
+  await box.fill('/ux-audit https://example.com/issues/130');
+  await page.getByTestId('chatSend').click();
   // The tests open no terminals, so Mabari says what to run, and keeps no prompt waiting.
   await expect(page.locator('.toast').last()).toContainText(`Run claude in ${resolve('.')}`);
-  await expect(chat.locator('.pcm')).toHaveCount(0);
-  // A dash could read as a flag, so it is refused.
-  await chat.getByLabel('Message Side shop').fill('--dangerously-skip-permissions');
-  await chat.getByLabel('Message Side shop').press('Enter');
+  await expect(chat.getByTestId('chatPending')).toHaveCount(0);
+  // A dash could read as a flag, so it is refused, and what was typed stays to be changed.
+  await box.fill('--dangerously-skip-permissions');
+  await box.press('Enter');
   await expect(page.locator('.toast').last()).toContainText("A prompt can't start with a dash.");
+  await expect(box).toHaveValue('--dangerously-skip-permissions');
 });
 
 test('a queued instruction can be taken back from the panel', async ({ page }) => {

@@ -53,6 +53,11 @@ type Office struct {
 	// Router is the dispatcher, asked which agent a message best fits when no project's name or
 	// folder settles it. Nil leaves it out.
 	Router dispatch.Router
+	// Since is when the person last looked, in Unix milliseconds, for "what did I miss?". Zero
+	// means the last RecapWindow.
+	Since int64
+	// Recap works out what happened from one time to another, from the log. Nil leaves it out.
+	Recap func(since, until int64) (models.Recap, error)
 }
 
 // stopWords never identify a project on their own.

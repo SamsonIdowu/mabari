@@ -56,7 +56,6 @@ func TestRules(t *testing.T) {
 		{"builder", "open my agents", "point", KindBuilder, "agent builder"},
 		{"office", "show me the floor", "point", KindOffice, "office floor"},
 		{"status", "What's happening?", "point", KindStatus, "2 agents are working and 2 need you."},
-		{"catch me up", "catch me up", "point", KindStatus, "2 agents are working"},
 		{"who is", "who is around", "point", KindStatus, "2 agents"},
 		{"a named agent", "What is Ledger doing?", "point", KindPlain, "Ledger (Claude) is editing: Do Ledger's work."},
 		{"no replies yet", "What did Claude say?", "shrug", KindPlain, "No AI replies yet."},

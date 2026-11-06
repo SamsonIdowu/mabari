@@ -72,6 +72,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/approvals/{id}/decision", a.decide)
 
 	mux.HandleFunc("GET /api/activity", a.activity)
+	mux.HandleFunc("GET /api/recap", a.recapRoute)
 
 	mux.HandleFunc("POST /api/dispatch/preview", a.previewDispatch)
 	mux.HandleFunc("POST /api/messages", a.sendMessage)

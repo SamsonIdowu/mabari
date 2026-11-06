@@ -20,6 +20,7 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/dispatch"
 	"github.com/SamsonIdowu/mabari/internal/events"
 	"github.com/SamsonIdowu/mabari/internal/launch"
+	"github.com/SamsonIdowu/mabari/internal/review"
 	"github.com/SamsonIdowu/mabari/internal/secrets"
 	"github.com/SamsonIdowu/mabari/internal/whisper"
 )
@@ -75,6 +76,8 @@ type api struct {
 	anyHost     func() bool
 	defs        *agentdefs.Library
 	launcher    launch.Launcher
+	// review reads what agents changed in their folders, read only.
+	review *review.Reader
 }
 
 // QueryAnswerer writes a query answer from an agent's facts.
@@ -89,7 +92,7 @@ func New(options Options) http.Handler {
 		claude: options.Claude, secrets: options.Secrets, hub: options.Hub, codex: options.Codex,
 		answerer: options.Answerer, whisper: options.Whisper,
 		login: options.Login, loginReason: options.LoginReason, access: options.Access,
-		defs: options.Defs, launcher: options.Launcher,
+		defs: options.Defs, launcher: options.Launcher, review: review.New(),
 	}
 	if a.answerer == nil {
 		a.answerer = func(key string) QueryAnswerer { return answer.NewAnthropic(key) }
@@ -102,6 +105,7 @@ func New(options Options) http.Handler {
 	a.routes(mux)
 	a.projectStartRoutes(mux)
 	a.watchRoutes(mux)
+	a.changesRoutes(mux)
 	a.loginRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)

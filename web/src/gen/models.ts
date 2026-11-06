@@ -1297,6 +1297,175 @@ export interface Recap {
 }
 
 //////////
+// source: review.go
+
+/**
+ * ChangesState says whether the changes in a folder could be read, and if not, why.
+ */
+export type ChangesState = string;
+/**
+ * ChangesRead means the folder was read. Files may still be empty: nothing has changed.
+ */
+export const ChangesRead: ChangesState = "ok";
+/**
+ * ChangesUnchanged answers a request that already holds this version, and carries no files.
+ */
+export const ChangesUnchanged: ChangesState = "unchanged";
+/**
+ * ChangesNoFolder means Mabari doesn't know a folder for this agent or project.
+ */
+export const ChangesNoFolder: ChangesState = "noFolder";
+/**
+ * ChangesMissing means the folder isn't there any more, or isn't a folder.
+ */
+export const ChangesMissing: ChangesState = "missing";
+/**
+ * ChangesNotRepo means the folder isn't in a Git repository.
+ */
+export const ChangesNotRepo: ChangesState = "notRepo";
+/**
+ * ChangesNoGit means Git isn't installed on this computer.
+ */
+export const ChangesNoGit: ChangesState = "noGit";
+/**
+ * ChangesFailed means Git ran and couldn't read the folder, such as a repository that belongs
+ * to another user.
+ */
+export const ChangesFailed: ChangesState = "failed";
+/**
+ * ChangeStatus is what happened to one file since the last commit.
+ */
+export type ChangeStatus = string;
+/**
+ * Change statuses.
+ */
+export const ChangeModified: ChangeStatus = "modified";
+/**
+ * Change statuses.
+ */
+export const ChangeAdded: ChangeStatus = "added";
+/**
+ * Change statuses.
+ */
+export const ChangeDeleted: ChangeStatus = "deleted";
+/**
+ * Change statuses.
+ */
+export const ChangeRenamed: ChangeStatus = "renamed";
+/**
+ * Change statuses.
+ */
+export const ChangeUntracked: ChangeStatus = "untracked";
+/**
+ * Change statuses.
+ */
+export const ChangeConflict: ChangeStatus = "conflict";
+/**
+ * Changes is what an agent or a project has changed in its folder since the last commit: the
+ * files, with how many lines were added and removed in each, and the changes themselves. Mabari
+ * reads them with Git and never changes anything. Every number is counted in Go; the page only
+ * formats them. Text has been through the secret filter.
+ */
+export interface Changes {
+  state: ChangesState;
+  /**
+   * Message is, for any state but "ok", what happened and what to do, in plain words.
+   */
+  message: string;
+  /**
+   * Demo is true in the demo office, whose agents have no real folder: the changes are made up.
+   */
+  demo: boolean;
+  /**
+   * Folder is the folder as Mabari knows it, such as ~/code/shop.
+   */
+  folder: string;
+  /**
+   * Branch is the branch the folder is on, or a short commit when Detached, or "" with no commit.
+   */
+  branch: string;
+  detached: boolean;
+  /**
+   * Version changes whenever what is read changes, so a page asking again can be told "no change".
+   */
+  version: string;
+  /**
+   * Files are the changed files, at most ChangesFilesMax, in path order.
+   */
+  files: ChangedFile[];
+  /**
+   * FileCount is every changed file, so it can be more than Files.
+   */
+  fileCount: number /* int */;
+  /**
+   * Added and Removed are lines, over every file that could be counted.
+   */
+  added: number /* int */;
+  removed: number /* int */;
+  /**
+   * Truncated is true when some of the text is left out for its size.
+   */
+  truncated: boolean;
+}
+/**
+ * ChangedFile is one file's change. Path is relative to the folder. OldPath is where a renamed
+ * file was. ID names the file in the list and is not a path.
+ */
+export interface ChangedFile {
+  id: string;
+  path: string;
+  oldPath: string;
+  status: ChangeStatus;
+  binary: boolean;
+  /**
+   * Counted is false when the lines weren't counted, as for a binary file or a new file
+   * among too many.
+   */
+  counted: boolean;
+  added: number /* int */;
+  removed: number /* int */;
+  /**
+   * Note says what isn't shown, such as "Binary file" or "Permissions changed", or "".
+   */
+  note: string;
+  hunks: ChangeHunk[];
+}
+/**
+ * ChangeHunk is a run of changed lines with a little around them. Header is Git's "@@" line.
+ */
+export interface ChangeHunk {
+  header: string;
+  lines: ChangeLine[];
+}
+/**
+ * ChangeLine is one line of a hunk. Kind is "ctx", "add", "del" or "note", which is Git's own
+ * remark such as "No newline at end of file". Old and New are line numbers, or 0 when the line
+ * isn't in that version of the file.
+ */
+export interface ChangeLine {
+  kind: string;
+  old: number /* int */;
+  new: number /* int */;
+  text: string;
+}
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesFilesMax = 300;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesFileLinesMax = 1500;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesLinesMax = 6000;
+/**
+ * Limits on what Changes carries, so a huge change can't make a huge page.
+ */
+export const ChangesLineRunesMax = 1000;
+
+//////////
 // source: timeline.go
 
 /**

@@ -19,13 +19,14 @@ import { useVoice } from '../office/voiceStore.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { useReturnFocus } from '../shell/useReturnFocus.ts';
 import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
+import { ChangesDialog, ChangesIcon } from './Changes.tsx';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
 import { LatestConversation, SessionSection } from './SessionSection.tsx';
 import { WatchControl, WatchesWaiting } from './WatchControl.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
-type Dialog = 'settings' | 'subagent' | null;
+type Dialog = 'settings' | 'subagent' | 'changes' | null;
 
 const colourOf = (kind: string): string =>
   (decisionColors as Record<string, string>)[kind] ?? decisionFallbackColor;
@@ -736,6 +737,15 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
             <button
               type="button"
               className="btn ghost sm"
+              title="See what this agent has changed in its folder"
+              onClick={() => setDialog('changes')}
+            >
+              <ChangesIcon />
+              Changes
+            </button>
+            <button
+              type="button"
+              className="btn ghost sm"
               aria-label="Agent settings"
               title="Agent settings"
               onClick={() => setDialog('settings')}
@@ -839,6 +849,9 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
           lead={lead}
           close={() => setDialog(null)}
         />
+      ) : null}
+      {dialog === 'changes' ? (
+        <ChangesDialog target={{ kind: 'agent', id: agent.id }} close={() => setDialog(null)} />
       ) : null}
       {dialog === 'subagent' ? (
         <AddSubagentDialog

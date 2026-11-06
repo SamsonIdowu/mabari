@@ -17,6 +17,7 @@ import type { LiveAgent, Project, Snapshot } from '../gen/models.ts';
 import { openAgent, useOfficeUi, type ProjectsTab } from '../office/uiStore.ts';
 import { projectWatchable } from '../office/watches.ts';
 import { Icon } from '../shell/Icon.tsx';
+import { ChangesDialog, ChangesIcon } from './Changes.tsx';
 import { PageHead } from './parts.tsx';
 import { ProjectChat } from './ProjectChat.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
@@ -321,6 +322,7 @@ function ProjectCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const remove = () =>
     api
       .deleteProject(project.id)
@@ -436,6 +438,15 @@ function ProjectCard({
             Chat
           </button>
         )}
+        <button
+          type="button"
+          className="btn sm"
+          title="See what this project has changed in its folder"
+          onClick={() => setReviewing(true)}
+        >
+          <ChangesIcon />
+          Changes
+        </button>
         <a
           className="btn sm"
           href="#office"
@@ -462,6 +473,12 @@ function ProjectCard({
         )}
       </div>
       {editing ? <ProjectDialog project={project} close={() => setEditing(false)} /> : null}
+      {reviewing ? (
+        <ChangesDialog
+          target={{ kind: 'project', id: project.id }}
+          close={() => setReviewing(false)}
+        />
+      ) : null}
     </article>
   );
 }

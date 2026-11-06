@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentDef,
   Conversation,
+  Changes,
   DiffLine,
   Estimate,
   LiveAgent,
@@ -67,6 +68,10 @@ export function unreachableMessage(path: string, method = 'GET'): string {
     /^\/api\/projects\/[^/]+\/send$/.test(path)
   ) {
     return "Can't reach Mabari. Your message was not sent.";
+  }
+  // A second opinion changes nothing in Mabari: it asks another agent.
+  if (/^\/api\/(agents|projects)\/[^/]+\/changes\/opinion$/.test(path)) {
+    return "Can't reach Mabari. Your request for a second opinion was not sent.";
   }
   return "Can't reach Mabari. Your change was not saved.";
 }
@@ -421,6 +426,19 @@ export interface DeskStartResult {
   agentId: string;
 }
 
+/** The reply to a request for a second opinion. Mirrors internal/server opinionResult. */
+export interface OpinionResult {
+  notice: string;
+  /** The reviewer, and the instruction it was sent, so the reply can be found under it. */
+  agentId: string;
+  instructionId: string;
+  queued: boolean;
+}
+
+/** The review view's address: an agent's or a project's id, never a path. */
+const reviewPath = (target: { kind: 'agent' | 'project'; id: string }, rest: string) =>
+  `/api/${target.kind}s/${encodeURIComponent(target.id)}/changes${rest}`;
+
 export const api = {
   session: () => request<SessionInfo>('/api/session'),
   signIn: (key: string) =>
@@ -520,6 +538,15 @@ export const api = {
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),
+  /**
+   * What an agent or a project has changed in its folder, read by the server with Git. `version`
+   * is the one already held: the answer is then "unchanged", without the files, if nothing moved.
+   */
+  changes: (target: { kind: 'agent' | 'project'; id: string }, version = '') =>
+    request<Changes>(reviewPath(target, version ? `?version=${encodeURIComponent(version)}` : '')),
+  /** Sends the changes to another agent to review, as an ordinary instruction. */
+  secondOpinion: (target: { kind: 'agent' | 'project'; id: string }, reviewerId: string) =>
+    send<OpinionResult>('POST', reviewPath(target, '/opinion'), { reviewerId }),
   /** Answers the question the agent is asking; the server checks the answers fit it. */
   answerQuestion: (id: string, questionId: string, answers: QuestionAnswer[]) =>
     send<{ answered: boolean }>('POST', `/api/agents/${encodeURIComponent(id)}/answer`, {

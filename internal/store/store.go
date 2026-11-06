@@ -558,10 +558,26 @@ func (s *Store) DeleteOlderThan(ctx context.Context, cutoff int64) (events, log 
 	return events, log, err
 }
 
-// ClearOffice empties agents and everything hanging off them, keeping settings and accounts.
-func (s *Store) ClearOffice(ctx context.Context) error {
-	return s.clear(ctx, "session_states", "agents", "events", "messages", "instructions",
-		"approvals", "activity_log", "projects", "conversation_items")
+// ClearOffice empties agents and everything hanging off them, keeping settings and accounts. The
+// conversations of the agents in keep stay, for agents the caller is about to put back: what else
+// hangs off them is in memory and is saved again, but a conversation only lives here.
+func (s *Store) ClearOffice(ctx context.Context, keep ...string) error {
+	return s.Transaction(ctx, func() error {
+		if err := s.empty(ctx, "session_states", "agents", "events", "messages", "instructions",
+			"approvals", "activity_log", "projects"); err != nil {
+			return err
+		}
+		query, args := "DELETE FROM conversation_items", make([]any, 0, len(keep))
+		if len(keep) > 0 {
+			// Only placeholders are added, one for each id.
+			query += " WHERE agent_id NOT IN (?" + strings.Repeat(", ?", len(keep)-1) + ")"
+			for _, id := range keep {
+				args = append(args, id)
+			}
+		}
+		_, err := s.db.ExecContext(ctx, query, args...)
+		return err
+	})
 }
 
 // Wipe empties every table.
@@ -571,13 +587,15 @@ func (s *Store) Wipe(ctx context.Context) error {
 }
 
 func (s *Store) clear(ctx context.Context, tables ...string) error {
-	return s.Transaction(ctx, func() error {
-		for _, table := range tables {
-			// Table names come only from the fixed lists above.
-			if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil { // #nosec G202
-				return err
-			}
+	return s.Transaction(ctx, func() error { return s.empty(ctx, tables...) })
+}
+
+func (s *Store) empty(ctx context.Context, tables ...string) error {
+	for _, table := range tables {
+		// Table names come only from the fixed lists above.
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil { // #nosec G202
+			return err
 		}
-		return nil
-	})
+	}
+	return nil
 }

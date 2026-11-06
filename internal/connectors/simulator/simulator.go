@@ -1200,7 +1200,11 @@ func (s *Simulator) endDemo(why, toast string) {
 			projects = append(projects, *project)
 		}
 	}
-	s.engine.ClearOffice()
+	keptIDs := make([]string, 0, len(kept))
+	for _, agent := range kept {
+		keptIDs = append(keptIDs, agent.ID)
+	}
+	s.engine.ClearOffice(keptIDs...)
 	for _, project := range projects {
 		s.engine.SaveProject(project)
 	}

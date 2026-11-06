@@ -590,7 +590,7 @@ func (e *Engine) Converse(agentID string, item models.ConversationItem) models.C
 	item.Text = redact.Text(item.Text)
 	if item.Tool != nil {
 		tool := *item.Tool
-		tool.Summary, tool.Input, tool.Output = redact.Text(tool.Summary), redact.Text(tool.Input), redact.Text(tool.Output)
+		tool.Summary, tool.Input, tool.Output = redact.Text(tool.Summary), maskStructured(tool.Input), maskStructured(tool.Output)
 		item.Tool = &tool
 	}
 	item = item.WithinLimits()
@@ -1249,12 +1249,23 @@ func (e *Engine) StoredAccounts() []models.Account {
 	return accounts
 }
 
-// ClearOffice empties agents, projects and history, keeping settings and accounts. Call inside Do.
-func (e *Engine) ClearOffice() {
-	e.record(e.store.ClearOffice(context.Background()))
+// ClearOffice empties agents, projects and history, keeping settings and accounts. keep names
+// agents the caller is about to put back, whose conversations stay. Call inside Do.
+func (e *Engine) ClearOffice(keep ...string) {
+	e.record(e.store.ClearOffice(context.Background(), keep...))
 	accounts := e.accounts
 	e.resetMemory()
 	e.accounts = accounts
+	e.forgetHistory()
+}
+
+// forgetHistory drops the record of what changed, which holds conversation text, log rows and
+// replies, once what it describes has been deleted. A new boot id means a page that was away
+// reloads rather than resuming: without one, a page exactly up to date would be told to carry on
+// with an office that has gone. Pages still connected hear about it through Reset. Call inside Do.
+func (e *Engine) forgetHistory() {
+	e.history = nil
+	e.bootID = newID("")
 }
 
 // Wipe removes everything Mabari stores and returns to first run, with no projects, as on a fresh
@@ -1274,6 +1285,7 @@ func (e *Engine) Wipe() {
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.firstRun, e.demo = true, false
+	e.forgetHistory()
 	e.Reset()
 }
 

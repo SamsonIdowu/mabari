@@ -150,7 +150,7 @@ var (
 	// recapAsk is a request to hear what happened while the person was away: "what did I miss?",
 	// "catch me up", "what happened while I was out?". It is the whole message, so a task that
 	// shares words with it ("catch up on the tests", "recap the meeting") is still a task, and
-	// a name in the message keeps it a question about that agent, as "catch me up on Ledger" was.
+	// "catch me up on Ledger" is still a question about Ledger.
 	recapAsk = regexp.MustCompile(`^(?:please\s+)?(?:(?:can|could) you\s+)?(?:` +
 		`what (?:did|have) i (?:miss|missed)|what i missed|what(?:'s| has| have)? happened|` +
 		`did i miss (?:anything|something)|anything (?:happen|happened)|` +
@@ -313,7 +313,7 @@ func AnswerIn(text string, in Office, now time.Time) Reply {
 		return office.greet()
 	case chat && has(q, "thank"):
 		return office.reply("Any time. Keeping an eye on things is my favourite job.", "bow", KindPlain)
-	case recapAsk.MatchString(q) && named == nil:
+	case recapAsk.MatchString(q):
 		return office.recap(in, now)
 	case isQ && has(q, "need me", "needs me", "approval", "approve", "waiting on me", "blocked"),
 		deciding.MatchString(q):

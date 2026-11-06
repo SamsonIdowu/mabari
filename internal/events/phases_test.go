@@ -15,27 +15,9 @@ import (
 	"github.com/SamsonIdowu/mabari/internal/store"
 )
 
-// clock is a clock the test moves by hand.
-type clock struct{ now time.Time }
-
-func (c *clock) read() time.Time         { return c.now }
 func (c *clock) advance(d time.Duration) { c.now = c.now.Add(d) }
 func (c *clock) millis() int64           { return c.now.UnixMilli() }
 func startOfTest() *clock                { return &clock{now: time.UnixMilli(1_800_000_000_000)} }
-func engineAt(t *testing.T, c *clock) *Engine {
-	t.Helper()
-	ctx := context.Background()
-	s, err := store.Open(ctx, ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	engine, err := New(ctx, s, c.read)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return engine
-}
 
 // phases reads back what was recorded, as "name:minutes:phase" with minutes since the start.
 func phases(t *testing.T, engine *Engine, from int64) []string {

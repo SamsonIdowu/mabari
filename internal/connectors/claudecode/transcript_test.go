@@ -66,11 +66,10 @@ func TestASessionStartedElsewhereIsReadFromItsTranscript(t *testing.T) {
 	b.write(transcriptUser, transcriptAssistant, transcriptResult)
 	b.hook(b.path)
 	id := agentID(b.session)
-	b.until("the conversation", func() bool { return len(b.said(id)) == 3 })
 	want := []string{"user: fix the cart", "assistant: On it.", "tool: Read done"}
-	if got := b.said(id); !slices.Equal(got, want) {
-		t.Fatalf("conversation = %q", got)
-	}
+	// The store is read here without the office's lock, so three rows can show before the third is
+	// finished.
+	b.until("the conversation", func() bool { return slices.Equal(b.said(id), want) })
 	items := b.conversation(id)
 	if items[0].From != models.SaidInSession || items[0].Time != time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC).UnixMilli() {
 		t.Fatalf("user item = %+v", items[0])
@@ -349,6 +348,8 @@ func TestTextTypedInATerminalShowsOnce(t *testing.T) {
 	b.attach()
 	agent := b.start("first")
 	b.untilState(agent.ID, models.StateDone)
+	// Done comes from the Stop hook, which can reach Mabari before the stream does.
+	b.until("the reply", func() bool { return slices.Contains(b.said(agent.ID), "assistant: Done: first") })
 	pid := b.read(agent.ID).Session.PID
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return processGone(pid) })
@@ -388,6 +389,8 @@ func TestTextTypedInATerminalIsReadWhenMabariCarriesOn(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("first")
 	b.untilState(agent.ID, models.StateDone)
+	// Done comes from the Stop hook, which can reach Mabari before the stream does.
+	b.until("the reply", func() bool { return slices.Contains(b.said(agent.ID), "assistant: Done: first") })
 	pid := b.read(agent.ID).Session.PID
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return processGone(pid) })
@@ -414,6 +417,8 @@ func TestAThreadAlreadyDoubledIsNotMadeWorse(t *testing.T) {
 	b := newBench(t)
 	agent := b.start("first")
 	b.untilState(agent.ID, models.StateDone)
+	// Done comes from the Stop hook, which can reach Mabari before the stream does.
+	b.until("the reply", func() bool { return slices.Contains(b.said(agent.ID), "assistant: Done: first") })
 	pid := b.read(agent.ID).Session.PID
 	_ = b.engine.Do(func() { _ = b.c.ReleaseSession(b.engine.Agent(agent.ID)) })
 	b.until("the process to end", func() bool { return processGone(pid) })

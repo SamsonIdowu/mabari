@@ -806,6 +806,7 @@ func TestEndingTheDemoKeepsRealAgentsRecords(t *testing.T) {
 		engine.AddAgent(mine)
 		engine.AddEvent(mine, "Edit", "Edit cart.ts", nil)
 		engine.Queue(mine, "Also add a test")
+		engine.Converse(mine.ID, models.ConversationItem{Kind: models.ConversationUser, Text: "Fix the cart"})
 	})
 	advance(t, sim, c, 120)
 	if got := engine.Snapshot().Messages; slices.ContainsFunc(got, func(m models.Message) bool {
@@ -820,6 +821,9 @@ func TestEndingTheDemoKeepsRealAgentsRecords(t *testing.T) {
 	}
 	if events, _ := s.Events(ctx, "cc-real", 10, 0); len(events) == 0 || events[0].Summary != "Edit cart.ts" {
 		t.Errorf("events = %+v", events)
+	}
+	if items, _, _ := s.Conversation(ctx, "cc-real", 0, 10); len(items) != 1 || items[0].Text != "Fix the cart" {
+		t.Errorf("conversation = %+v", items)
 	}
 	// The next step's id carries on instead of repeating one.
 	_ = engine.Do(func() {

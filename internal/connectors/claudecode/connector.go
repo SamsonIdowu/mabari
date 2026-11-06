@@ -43,6 +43,7 @@ type input struct {
 	SessionID            string          `json:"session_id"`
 	Cwd                  string          `json:"cwd"`
 	Event                string          `json:"hook_event_name"`
+	TranscriptPath       string          `json:"transcript_path"`
 	ToolName             string          `json:"tool_name"`
 	ToolInput            json.RawMessage `json:"tool_input"`
 	Prompt               string          `json:"prompt"`
@@ -115,6 +116,23 @@ type Connector struct {
 	HookBinary string
 	// asking are the questions hooks are waiting on, by question id.
 	asking map[string]*asked
+	// Program finds the claude program, or gives "" when this computer has none. Nil means Mabari
+	// doesn't run sessions here at all. Only the server's own start-up sets it, so no test can reach
+	// the real program by accident.
+	Program func() string
+	// Hook is how a session Mabari runs reports back.
+	Hook Hook
+	// runWait is how long a session Mabari runs waits for a click, and endWait how long a process
+	// has to end when asked.
+	runWait time.Duration
+	endWait time.Duration
+	// runs are the processes Mabari runs, by agent, and leaving those told to end, until they have.
+	runs    map[string]*run
+	leaving map[*run]struct{}
+	// sessions are the sessions Mabari runs or has run, as session id to agent id.
+	sessions map[string]string
+	// tails are how far each followed session's transcript has been read, by agent.
+	tails map[string]*tail
 }
 
 // New returns a connector. Register it with engine.AddConnector(Source, connector).
@@ -131,11 +149,21 @@ func New(engine *events.Engine) *Connector {
 		delivered: map[string]time.Time{},
 		refused:   map[string]bool{},
 		asking:    map[string]*asked{},
+
+		runWait:  SessionPermissionWait * time.Second,
+		endWait:  endWait,
+		runs:     map[string]*run{},
+		leaving:  map[*run]struct{}{},
+		sessions: map[string]string{},
+		tails:    map[string]*tail{},
 	}
 }
 
 // SetWait changes how long a permission or question hook waits, for tests.
 func (c *Connector) SetWait(wait time.Duration) { c.wait = wait }
+
+// SetRunWait changes how long a session Mabari runs waits for a click, for tests.
+func (c *Connector) SetRunWait(wait time.Duration) { c.runWait = wait }
 
 var sessionChars = regexp.MustCompile(`[^A-Za-z0-9-]`)
 
@@ -143,9 +171,30 @@ func agentID(session string) string {
 	return "cc-" + sessionChars.ReplaceAllString(session, "")
 }
 
-// Handle answers one hook call. The reply is what the hook prints: JSON for Claude Code, or
-// nothing, which leaves Claude Code's normal behaviour in place.
+// idOf is the agent a session belongs to. A session started elsewhere names its agent. One Mabari
+// runs belongs to the agent it was started for.
+func (c *Connector) idOf(session string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if id, ok := c.sessions[session]; ok {
+		return id
+	}
+	return agentID(session)
+}
+
+// Handle answers one hook call from a session's settings files. The reply is what the hook prints:
+// JSON for Claude Code, or nothing, which leaves Claude Code's normal behaviour in place.
 func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
+	return c.handle(ctx, body, false)
+}
+
+// HandleRun answers one hook call from the hooks Mabari passed to a session it runs. In such a
+// session, printing nothing denies whatever was asked.
+func (c *Connector) HandleRun(ctx context.Context, body []byte) []byte {
+	return c.handle(ctx, body, true)
+}
+
+func (c *Connector) handle(ctx context.Context, body []byte, fromRun bool) []byte {
 	var in input
 	if json.Unmarshal(body, &in) != nil || in.SessionID == "" {
 		return nil
@@ -153,7 +202,14 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 	c.mu.Lock()
 	c.lastEvent = time.Now()
 	stopped := c.stopped[in.SessionID]
+	_, live := c.runs[c.sessions[in.SessionID]]
 	c.mu.Unlock()
+	// With Claude Code attached, a session Mabari runs fires settings.json's hooks as well as its
+	// own, so that copy is ignored. A process Mabari no longer speaks for gets no answer, which
+	// denies what it asks. Both hooks firing would ask the person twice.
+	if fromRun != live {
+		return nil
+	}
 	if stopped {
 		if in.Event == "SessionEnd" {
 			c.mu.Lock()
@@ -163,7 +219,7 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 		return nil
 	}
 	if in.Event == "PermissionRequest" {
-		return c.permission(ctx, in)
+		return c.permission(ctx, in, fromRun)
 	}
 	if in.Event == "PreToolUse" && in.ToolName == AskTool {
 		return c.ask(ctx, in)
@@ -173,8 +229,52 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 		return nil
 	}
 	var reply []byte
-	_ = c.engine.Do(func() { reply = c.observe(in) })
+	_ = c.engine.Do(func() {
+		reply = c.observe(in)
+		if reply == nil && fromRun && in.Event == "PreToolUse" {
+			reply = c.gate(in)
+		}
+	})
+	if !fromRun {
+		c.follow(c.idOf(in.SessionID), in.TranscriptPath)
+	}
 	return reply
+}
+
+// gated reports whether a tool can change something or reach beyond this computer. Everything else
+// is left to Claude Code, which asks about it, and so denies it here, unless a rule allows it. Tools
+// like TodoWrite would otherwise need a click every time.
+func gated(tool string) bool {
+	switch tool {
+	case "Bash", "PowerShell", "Edit", "Write", "MultiEdit", "NotebookEdit", "Read", "WebFetch":
+		return true
+	}
+	return strings.HasPrefix(tool, "mcp__")
+}
+
+// gate makes sure a risky action reaches the approval flow even when a rule would let it through.
+// PermissionRequest only fires when Claude Code would ask, and an allow rule means it wouldn't, so
+// here Mabari's own risk rules decide. "ask" outranks any other hook's allow, and sends the call to
+// PermissionRequest. What the rules call low risk goes on as normal, and Claude Code can still ask
+// about it. Call inside Do.
+func (c *Connector) gate(in input) []byte {
+	if !gated(in.ToolName) {
+		return nil
+	}
+	agent := c.engine.Agent(c.idOf(in.SessionID))
+	if agent == nil {
+		return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+			"hookEventName": "PreToolUse", "permissionDecision": "deny",
+			"permissionDecisionReason": "This agent has left Mabari.",
+		}})
+	}
+	if approvalFor(in, workFolder(agent)).RiskLevel == models.RiskLow {
+		return nil
+	}
+	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName": "PreToolUse", "permissionDecision": "ask",
+		"permissionDecisionReason": "Mabari asks the person before this runs.",
+	}})
 }
 
 // agentFor finds the session's agent, seating a new one if this is the first event from it.
@@ -183,12 +283,13 @@ func (c *Connector) Handle(ctx context.Context, body []byte) []byte {
 // Mabari can't tell whether it was opened in a terminal, an editor, on the web or in the Claude
 // app, and doesn't need to. It returns nil only when the office is at its MaxDesks limit. Call inside Do.
 func (c *Connector) agentFor(in input) *models.LiveAgent {
-	id := agentID(in.SessionID)
+	id := c.idOf(in.SessionID)
 	if agent := c.engine.Agent(id); agent != nil {
 		if agent.Lead == nil && legacyNames[agent.Name] {
 			agent.Name = c.nameFor(agent.Folder)
 			c.engine.Touch(agent)
 		}
+		c.reported(agent, in)
 		c.recognise(agent, in)
 		return agent
 	}
@@ -236,12 +337,37 @@ func (c *Connector) agentFor(in input) *models.LiveAgent {
 	if project != "" {
 		agent.Project = &project
 	}
+	agent.Session = &models.AgentSession{ID: in.SessionID, Status: models.SessionElsewhere}
 	c.engine.AddAgent(agent)
 	c.engine.Log(agent.Name, models.LogSession, "Claude Code session started in "+in.Cwd,
 		seatText(agent), "ok")
 
 	c.connected()
 	return agent
+}
+
+// reported notes who has a session now. One saved by an earlier version gets its session recorded.
+// A session Mabari ran that reports with no process behind it has been opened somewhere else, by
+// the person carrying it on in a terminal, so Mabari only follows it from now on. Call inside Do.
+func (c *Connector) reported(agent *models.LiveAgent, in input) {
+	if agent.Lead != nil {
+		return
+	}
+	if agent.Session == nil {
+		agent.Session = &models.AgentSession{ID: in.SessionID, Status: models.SessionElsewhere}
+		c.engine.Touch(agent)
+		return
+	}
+	c.mu.Lock()
+	_, live := c.runs[agent.ID]
+	c.mu.Unlock()
+	if agent.RunsHere() && !live {
+		session := *agent.Session
+		session.Status, session.PID = models.SessionElsewhere, 0
+		agent.Session = &session
+		c.engine.Touch(agent)
+		c.engine.Log(agent.Name, models.LogSession, "Carried on outside Mabari", "Followed from here", "")
+	}
 }
 
 // connected marks the account as connected the first time a hook reports. Call inside Do.
@@ -501,10 +627,16 @@ func clip(text string, limit int) string {
 // observe handles every event except permission requests. Call inside Do.
 func (c *Connector) observe(in input) []byte {
 	if in.Event == "SessionEnd" {
+		id := c.idOf(in.SessionID)
 		c.mu.Lock()
-		delete(c.delivered, agentID(in.SessionID))
+		delete(c.delivered, id)
+		delete(c.tails, id)
 		c.mu.Unlock()
-		if agent := c.engine.Agent(agentID(in.SessionID)); agent != nil {
+		if agent := c.engine.Agent(id); agent != nil {
+			// A process Mabari runs ending isn't the session ending: it stays, and resumes.
+			if agent.RunsHere() {
+				return nil
+			}
 			c.engine.Log(agent.Name, models.LogSession, "Claude Code session ended", "Left", "")
 			for _, helper := range slices.Clone(c.engine.Agents()) {
 				if helper.Lead != nil && *helper.Lead == agent.ID {
@@ -708,14 +840,20 @@ func (c *Connector) display(in input) {
 		return
 	}
 	delete(c.streams, in.MessageID)
-	handed, ok := c.delivered[agentID(in.SessionID)]
+	id := in.SessionID
+	if known, found := c.sessions[id]; found {
+		id = known
+	} else {
+		id = agentID(id)
+	}
+	handed, ok := c.delivered[id]
 	c.mu.Unlock()
 	text := redact.Text(strings.TrimSpace(message.text.String()))
 	if !ok || message.started.Before(handed) || text == "" {
 		return
 	}
 	_ = c.engine.Do(func() {
-		agent := c.engine.Agent(agentID(in.SessionID))
+		agent := c.engine.Agent(id)
 		if agent == nil {
 			return
 		}
@@ -734,6 +872,7 @@ func (c *Connector) takeQueued(agent *models.LiveAgent) string {
 		}
 		lines = append(lines, asCommand(instruction.Text))
 		c.engine.AddEvent(agent, "instruction", "Received: "+clip(instruction.Text, 120), nil)
+		c.heard(agent, instruction.Text)
 	}
 	if len(lines) == 0 {
 		return ""
@@ -840,24 +979,44 @@ func diffOf(args toolInput) []models.DiffLine {
 	return lines
 }
 
-// permission asks the user in Mabari. It answers nothing, so Claude Code shows its own prompt,
-// when nobody has Mabari open, when nobody clicks in time, or when the hook gives up.
-func (c *Connector) permission(ctx context.Context, in input) []byte {
+// denyReply answers a permission request with no. message is what Claude is told.
+func denyReply(message string) []byte {
+	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName": "PermissionRequest",
+		"decision":      map[string]any{"behavior": "deny", "message": message, "interrupt": false},
+	}})
+}
+
+// permission asks the user in Mabari. For a session started elsewhere it answers nothing, so Claude
+// Code shows its own prompt, when nobody has Mabari open, when nobody clicks in time, or when the
+// hook gives up. A session Mabari runs has no prompt to fall back on, so it always waits for a
+// click, for longer, whether or not a page is open now, and the only way to an allow is below.
+func (c *Connector) permission(ctx context.Context, in input, fromRun bool) []byte {
 	// A question isn't a risk to approve: allowing it without answers would leave Claude with
 	// none. Mabari asks it through PreToolUse, so here it is left to Claude Code's own prompt.
 	if in.ToolName == AskTool {
 		return nil
 	}
 	decided := make(chan models.Approval, 1)
-	id := agentID(in.SessionID)
+	id := c.idOf(in.SessionID)
 	var (
 		agent  *models.LiveAgent
 		asked  bool
 		answer *models.Approval
 	)
 	c.mu.Lock()
+	earlier := c.waiting[id]
 	c.waiting[id] = decided
 	c.mu.Unlock()
+	// An agent waits on one approval at a time. In a session with no prompt to fall back on, the
+	// call that was waiting hears no at once, rather than holding Claude Code until it times out.
+	if fromRun && earlier != nil {
+		cancelled := models.DecisionCancelled
+		select {
+		case earlier <- models.Approval{Decision: &cancelled}:
+		default:
+		}
+	}
 	defer func() {
 		c.mu.Lock()
 		if c.waiting[id] == decided {
@@ -870,10 +1029,14 @@ func (c *Connector) permission(ctx context.Context, in input) []byte {
 		if agent == nil {
 			return
 		}
-		approval := approvalFor(in, agent.Folder)
+		folder := agent.Folder
+		if fromRun {
+			folder = workFolder(agent)
+		}
+		approval := approvalFor(in, folder)
 		auto := c.engine.Settings().AutoApprove
 		covered := auto.On && (auto.Scope == "all" || approval.RiskLevel == models.RiskLow)
-		if !covered && !c.engine.HasViewers() {
+		if !covered && !c.engine.HasViewers() && !fromRun {
 			return
 		}
 		asked = true
@@ -882,7 +1045,11 @@ func (c *Connector) permission(ctx context.Context, in input) []byte {
 	if !asked {
 		return nil
 	}
-	timer := time.NewTimer(c.wait)
+	wait := c.wait
+	if fromRun {
+		wait = c.runWait
+	}
+	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case approval := <-decided:
@@ -891,34 +1058,41 @@ func (c *Connector) permission(ctx context.Context, in input) []byte {
 	case <-ctx.Done():
 	}
 	if answer == nil {
+		said := "Left to Claude Code's own prompt"
+		if fromRun {
+			said = "Denied: nobody answered in time"
+		}
 		_ = c.engine.Do(func() {
 			if agent := c.engine.Agent(id); agent != nil {
 				c.engine.CancelApproval(agent)
 				agent.State = models.StateThinking
-				c.engine.AddEvent(agent, "approval", "Left to Claude Code's own prompt", nil)
+				c.engine.AddEvent(agent, "approval", said, nil)
 			}
 		})
+		if fromRun {
+			return denyReply("Nobody answered in Mabari in time, so this was denied. Ask the person before trying it another way.")
+		}
 		return nil
 	}
-	decision := map[string]any{"behavior": "allow"}
 	if answer.Decision == nil || *answer.Decision != models.DecisionAllowed {
-		decision = map[string]any{
-			"behavior": "deny", "message": "The user denied this in Mabari.", "interrupt": false,
-		}
+		return denyReply("The user denied this in Mabari.")
 	}
 	return mustJSON(map[string]any{"hookSpecificOutput": map[string]any{
-		"hookEventName": "PermissionRequest", "decision": decision,
+		"hookEventName": "PermissionRequest", "decision": map[string]any{"behavior": "allow"},
 	}})
 }
 
 // Start does nothing: hooks arrive by themselves once attached.
 func (c *Connector) Start() {}
 
-// Stop does nothing. Waiting permission hooks fall back to Claude Code's prompt on their own.
-func (c *Connector) Stop() {}
+// Stop ends the sessions Mabari runs, because the office they belong to is going. Waiting
+// permission hooks of other sessions fall back to Claude Code's prompt on their own. Call inside Do.
+func (c *Connector) Stop() { c.endAll(nil) }
 
-// Instruct queues the message. Claude Code reads it at the next checkpoint, which is the next
-// tool call, prompt or stop. A session that is waiting for its user gets it when it next runs.
+// Instruct passes a message on. A session Mabari runs that isn't working gets it at once, starting
+// its process again if it needs one. Otherwise it is queued, and Claude Code reads it at the next
+// checkpoint, which is the next tool call, prompt or stop. A session started elsewhere that is
+// waiting for its user gets it when it next runs, or when the person lets Mabari continue it.
 func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 	// A subagent has no hooks of its own, so its lead passes the message on.
 	if agent.Lead != nil {
@@ -927,15 +1101,36 @@ func (c *Connector) Instruct(agent *models.LiveAgent, text string) {
 			return
 		}
 	}
+	if agent.RunsHere() {
+		c.instructRun(agent, text)
+		return
+	}
 	c.engine.Queue(agent, text)
 	if !agent.State.Active() {
 		c.engine.Toast(agent.Name + " gets this when its session next runs a step.")
 	}
 }
 
+// instructRun delivers to a session Mabari runs, or queues while it is busy or waiting on the
+// person. When it can't get a process, the message waits rather than being lost. Call inside Do.
+func (c *Connector) instructRun(agent *models.LiveAgent, text string) {
+	if agent.State.Active() || agent.Approval != nil || agent.Asking() {
+		c.engine.Queue(agent, text)
+		return
+	}
+	if err := c.deliverNow(agent, text); err != nil {
+		c.engine.Queue(agent, text)
+		c.engine.Toast(err.Error())
+	}
+}
+
 // Decide wakes the permission hook waiting on this agent. Call inside Do.
 func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
-	if approval.Decision != nil && *approval.Decision == models.DecisionAllowed {
+	if approval.Type == models.ApprovalPlan && agent.RunsHere() {
+		c.planDecided(agent, approval)
+		return
+	}
+	if agent.RunsHere() || (approval.Decision != nil && *approval.Decision == models.DecisionAllowed) {
 		agent.State = models.StateThinking
 	}
 	c.mu.Lock()
@@ -949,17 +1144,62 @@ func (c *Connector) Decide(agent *models.LiveAgent, approval models.Approval) {
 	}
 }
 
-// Interrupt stops Claude at its next tool call. Typing in the session carries on.
+// Interrupt stops Claude at its next tool call. Typing in the session carries on. A session Mabari
+// runs stops at once, unless it is waiting on an approval: that stays waiting, and it pauses at its
+// next step after it, so no interrupt ever settles an approval.
 func (c *Connector) Interrupt(agent *models.LiveAgent) {
+	if agent.RunsHere() {
+		c.interruptRun(agent)
+		return
+	}
 	c.mu.Lock()
 	c.pause[strings.TrimPrefix(agent.ID, "cc-")] = true
 	c.mu.Unlock()
 	c.engine.Toast(agent.Name + " pauses at its next step.")
 }
 
+// interruptRun ends the turn in progress. Call inside Do.
+func (c *Connector) interruptRun(agent *models.LiveAgent) {
+	c.mu.Lock()
+	r := c.runs[agent.ID]
+	c.mu.Unlock()
+	switch {
+	case agent.State == models.StatePaused:
+	case agent.Approval != nil || agent.Asking():
+		c.mu.Lock()
+		c.pause[agent.Session.ID] = true
+		c.mu.Unlock()
+		c.engine.Toast(agent.Name + " pauses at its next step.")
+	case r == nil || !agent.State.Active():
+		c.engine.Toast(agent.Name + " isn't working, so there is nothing to interrupt.")
+	default:
+		if err := interruptProcess(r.cmd.Process); err != nil {
+			c.engine.Toast("Couldn't interrupt " + agent.Name + ": " + err.Error())
+			return
+		}
+		r.interrupted = true
+		agent.PausedFrom, agent.State = agent.State, models.StatePaused
+		c.engine.AddEvent(agent, "interrupt", "Paused from Mabari", nil)
+		c.engine.Log(agent.Name, models.LogInstruction, "Interrupt", "Paused", "amber")
+		c.engine.Touch(agent)
+	}
+}
+
 // Continue lifts a pause that hasn't happened yet. Once Claude Code has paused, its session waits
-// for the person, so the next step needs them to type in it; Mabari says so. Call inside Do.
+// for the person, so the next step needs them to type in it; Mabari says so. A session Mabari runs
+// is simply told to carry on. Call inside Do.
 func (c *Connector) Continue(agent *models.LiveAgent) {
+	if agent.RunsHere() {
+		c.mu.Lock()
+		delete(c.pause, agent.Session.ID)
+		c.mu.Unlock()
+		if agent.State == models.StatePaused {
+			if err := c.deliverNow(agent, "Carry on from where you stopped."); err != nil {
+				c.engine.Toast(err.Error())
+			}
+		}
+		return
+	}
 	session := strings.TrimPrefix(agent.ID, "cc-")
 	c.mu.Lock()
 	pending := c.pause[session]
@@ -976,8 +1216,44 @@ func (c *Connector) Continue(agent *models.LiveAgent) {
 	}
 }
 
-// StopAgent stops following a session. Its terminal keeps running, so Mabari says so.
+// stopRun ends a session Mabari runs and takes its agent out of the office. Claude Code keeps the
+// transcript, so the session itself isn't lost, and Mabari keeps the conversation. Call inside Do.
+func (c *Connector) stopRun(agent *models.LiveAgent) {
+	c.mu.Lock()
+	r := c.runs[agent.ID]
+	delete(c.sessions, agent.Session.ID)
+	delete(c.pause, agent.Session.ID)
+	waiter := c.waiting[agent.ID]
+	c.mu.Unlock()
+	if waiter != nil {
+		decision := models.DecisionCancelled
+		select {
+		case waiter <- models.Approval{Decision: &decision}:
+		default:
+		}
+	}
+	if r != nil {
+		c.retire(r)
+	}
+	c.engine.CancelApproval(agent)
+	c.engine.Log(agent.Name, models.LogInstruction, "Stop session", "Stopped", "")
+	for _, helper := range slices.Clone(c.engine.Agents()) {
+		if helper.Lead != nil && *helper.Lead == agent.ID {
+			c.engine.RemoveAgent(helper.ID)
+		}
+	}
+	resume, name := agent.Session.Resume, agent.Name
+	c.engine.RemoveAgent(agent.ID)
+	c.engine.Toast(name + " stopped. Its session is saved. To pick it up in a terminal: " + resume)
+}
+
+// StopAgent stops following a session. Its terminal keeps running, so Mabari says so. A session
+// Mabari runs has no terminal, so it is ended.
 func (c *Connector) StopAgent(agent *models.LiveAgent) {
+	if agent.RunsHere() {
+		c.stopRun(agent)
+		return
+	}
 	session := strings.TrimPrefix(agent.ID, "cc-")
 	c.mu.Lock()
 	c.stopped[session] = true
@@ -998,9 +1274,20 @@ func (c *Connector) StopAgent(agent *models.LiveAgent) {
 	c.engine.Toast(agent.Name + " left the office. Its terminal is still open; close it there.")
 }
 
-// Retry can't restart a Claude Code session from here.
+// Retry can't restart a Claude Code session started elsewhere from here. One Mabari runs is sent
+// its last message again.
 func (c *Connector) Retry(agent *models.LiveAgent) {
-	c.engine.Toast("Run the request again in " + agent.Name + "'s terminal.")
+	if !agent.RunsHere() {
+		c.engine.Toast("Run the request again in " + agent.Name + "'s terminal.")
+		return
+	}
+	text := "Please try that again."
+	if count := len(agent.Asked); count > 0 {
+		text = agent.Asked[count-1].Text
+	}
+	if err := c.deliverNow(agent, text); err != nil {
+		c.engine.Toast(err.Error())
+	}
 }
 
 // AddSubagent isn't possible: Claude Code starts its own subagents.

@@ -20,6 +20,11 @@ const (
 	SignatureHeader = "X-Mabari-Signature"
 )
 
+// RunHeader marks a hook call from a session Mabari runs, whose hooks are passed with --settings.
+// If Claude Code is also attached through settings.json, both sets of hooks fire for that session,
+// and this is how the second is told apart and ignored.
+const RunHeader = "X-Mabari-Run"
+
 func mac(token string, parts ...[]byte) string {
 	h := hmac.New(sha256.New, []byte(token))
 	for _, part := range parts {

@@ -43,6 +43,8 @@ function SavedCue() {
   );
 }
 
+const SESSION_CHOICES = [1, 2, 3, 4, 6, 8, 12, 16];
+
 const save = (patch: Partial<SettingsModel>) => {
   api
     .updateSettings(patch)
@@ -129,6 +131,27 @@ function DefaultsCard({ office }: { office: Snapshot }) {
             </select>,
           ];
         })}
+        <label className="flabel" htmlFor="maxSessions">
+          Claude Code sessions at once
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select
+            className="in"
+            id="maxSessions"
+            style={{ width: 'auto' }}
+            value={office.settings.maxSessions}
+            onChange={(event) => save({ maxSessions: Number(event.target.value) })}
+          >
+            {SESSION_CHOICES.map((count) => (
+              <option value={count} key={count}>
+                {count}
+              </option>
+            ))}
+          </select>
+          <span className="help">
+            Sessions waiting for a message give up their place when another needs it.
+          </span>
+        </div>
       </div>
     </div>
   );

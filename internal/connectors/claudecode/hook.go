@@ -37,30 +37,60 @@ const quickWait = 1500 * time.Millisecond
 // the reply. Whatever goes wrong, it prints nothing and succeeds, so Claude Code carries on as if
 // Mabari weren't there. It never approves anything by itself.
 func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token func() (string, error)) {
+	wait := func(body []byte) time.Duration {
+		if waitsForPerson(event, body) {
+			return PermissionWait*time.Second + 2*time.Second
+		}
+		return quickWait
+	}
+	callHook(event, port, stdin, stdout, token, wait, "")
+}
+
+// RunSessionHook is `mabari hook --run <event>`, the hook of a session Mabari runs. It reports
+// whether Mabari answered. Unlike RunHook it must not leave Claude Code to carry on when it can't
+// reach Mabari, so for an event that gates an action the caller blocks the action on false.
+func RunSessionHook(event string, port int, stdin io.Reader, stdout io.Writer, token func() (string, error)) bool {
+	wait := func([]byte) time.Duration {
+		switch event {
+		case "PermissionRequest":
+			return SessionPermissionWait*time.Second + 2*time.Second
+		case "PreToolUse":
+			return gateWait
+		}
+		return quickWait
+	}
+	return callHook(event, port, stdin, stdout, token, wait, "1")
+}
+
+// Gates reports whether a hook event decides if an action goes ahead.
+func Gates(event string) bool { return event == "PermissionRequest" || event == "PreToolUse" }
+
+// callHook makes the call and reports whether a signed answer came back, printing it if it has
+// anything to say. run is the value of RunHeader, or "".
+func callHook(
+	event string, port int, stdin io.Reader, stdout io.Writer, token func() (string, error),
+	wait func(body []byte) time.Duration, run string,
+) bool {
 	body, err := io.ReadAll(io.LimitReader(stdin, maxHookInput))
 	if err != nil {
-		return
+		return false
 	}
-	wait := quickWait
-	if waitsForPerson(event, body) {
-		wait = PermissionWait*time.Second + 2*time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	ctx, cancel := context.WithTimeout(context.Background(), wait(body))
 	defer cancel()
 	// Reading the token can stall, such as a keychain waiting to be unlocked. Claude Code waits
 	// up to two minutes for PreToolUse, so the read is held to the same short wait as the call.
 	secret, ok := readToken(ctx, token)
 	if !ok {
-		return
+		return false
 	}
 	url := "http://127.0.0.1:" + strconv.Itoa(port) + HookPath + event
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return
+		return false
 	}
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
-		return
+		return false
 	}
 	nonceText := hex.EncodeToString(nonce)
 	sent := strconv.FormatInt(time.Now().Unix(), 10)
@@ -68,23 +98,33 @@ func RunHook(event string, port int, stdin io.Reader, stdout io.Writer, token fu
 	request.Header.Set(TimeHeader, sent)
 	request.Header.Set(SignatureHeader, SignRequest(secret, nonceText, sent, event, body))
 	request.Header.Set("Content-Type", "application/json")
+	if run != "" {
+		request.Header.Set(RunHeader, run)
+	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return
+		return false
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return
+		return false
 	}
 	reply, err := io.ReadAll(io.LimitReader(response.Body, maxHookInput))
-	if err != nil || len(bytes.TrimSpace(reply)) == 0 || !json.Valid(reply) {
-		return
+	if err != nil {
+		return false
 	}
-	// Only a reply signed with the token, for this call, is printed.
+	// Only a reply signed with the token, for this call, counts, and an empty one is signed too.
 	if !Verify(SignReply(secret, nonceText, reply), response.Header.Get(SignatureHeader)) {
-		return
+		return false
+	}
+	if len(bytes.TrimSpace(reply)) == 0 {
+		return true
+	}
+	if !json.Valid(reply) {
+		return false
 	}
 	_, _ = stdout.Write(reply)
+	return true
 }
 
 // readToken reads the hook token, giving up when ctx ends.

@@ -23,6 +23,7 @@ import { ApprovalAnnouncer } from './ApprovalAnnouncer.tsx';
 import { Rail } from './Rail.tsx';
 import { useRailStore } from './railStore.ts';
 import { Toasts } from './Toasts.tsx';
+import { TrustDialog } from './TrustDialog.tsx';
 import { Topbar } from './Topbar.tsx';
 
 function Screen({ route }: { route: Route }) {
@@ -79,6 +80,7 @@ export function Shell() {
       <NewAgentDialog />
       <DeskDialog />
       <NewProjectDialog />
+      <TrustDialog />
       <ApprovalAnnouncer />
       <Toasts />
     </div>

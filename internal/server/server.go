@@ -104,6 +104,7 @@ func New(options Options) http.Handler {
 	a.loginRoutes(mux)
 	if a.claude != nil {
 		a.claudeRoutes(mux)
+		a.sessionRoutes(mux)
 	}
 	if a.codex != nil {
 		a.codexRoutes(mux)

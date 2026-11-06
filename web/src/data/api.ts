@@ -4,6 +4,7 @@ import type {
   AccountKind,
   Agent,
   AgentDef,
+  Conversation,
   DiffLine,
   Estimate,
   LiveAgent,
@@ -15,6 +16,7 @@ import type {
 } from '../gen/models.ts';
 import { applyHeldChanges } from './heldChanges.ts';
 import { keepSession, sessionHeaders } from './session.ts';
+import { useTrust, type FolderTrust } from './trust.ts';
 
 export interface NewAgentBody {
   name: string;
@@ -27,6 +29,8 @@ export interface NewAgentBody {
   allowedTools: string[];
   desk?: number;
   leadId?: string;
+  /** 'terminal' opens Claude Code in a terminal instead of running it here. */
+  where?: string;
 }
 
 export interface AgentPatch {
@@ -78,12 +82,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   applyHeldChanges();
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
+      trust?: FolderTrust;
       error?: string;
       login?: boolean;
     } | null;
     if (response.status === 401 && body?.login) {
       keepSession('');
       window.dispatchEvent(new Event(SIGN_IN_EVENT));
+    }
+    // The folder brings code of its own. Once the person says they trust it, the same request
+    // goes again, so nothing that starts a session has to know about this.
+    if (response.status === 409 && body?.trust) {
+      if (!(await useTrust.getState().ask(body.trust))) {
+        throw new Error("Nothing started: you didn't trust that folder.");
+      }
+      await request('/api/folders/trust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: body.trust.folder, confirm: true }),
+      });
+      return request<T>(path, init);
     }
     throw new Error(body?.error ?? `Request failed: ${response.status}`);
   }
@@ -305,6 +323,9 @@ export interface FolderCheck {
   error: string;
 }
 
+/** What starting an agent says: the agent, or, for a terminal, how that went. */
+export type StartedAgent = Partial<Agent> & { notice?: string };
+
 export interface ProjectStart {
   plan: ProjectPlan;
   name: string;
@@ -314,6 +335,8 @@ export interface ProjectStart {
   branch: string;
   mode: 'plan' | 'go';
   brief: string;
+  /** 'terminal' opens Claude Code in a terminal instead of running it here. */
+  where?: string;
 }
 
 export interface Scope {
@@ -420,7 +443,17 @@ export const api = {
   vee: (text: string, projectId = '') => send<VeeResult>('POST', '/api/vee', { text, projectId }),
   agentAction: (id: string, action: 'interrupt' | 'continue' | 'stop' | 'retry') =>
     send<{ ok: boolean }>('POST', `/api/agents/${id}/${action}`),
-  createAgent: (body: NewAgentBody) => send<Agent>('POST', '/api/agents', body),
+  createAgent: (body: NewAgentBody) => send<StartedAgent>('POST', '/api/agents', body),
+  conversation: (id: string, before?: number) =>
+    request<Conversation>(
+      `/api/agents/${encodeURIComponent(id)}/conversation${before ? `?before=${before}` : ''}`,
+    ),
+  resumeSession: (id: string, confirm: boolean) =>
+    send<{ ok: boolean }>('POST', `/api/agents/${encodeURIComponent(id)}/session/resume`, {
+      confirm,
+    }),
+  releaseSession: (id: string) =>
+    send<{ ok: boolean }>('POST', `/api/agents/${encodeURIComponent(id)}/session/release`),
   updateAgent: (id: string, patch: AgentPatch) => send<Agent>('PATCH', `/api/agents/${id}`, patch),
   addSubagent: (id: string, body: { name: string; task: string; model: string }) =>
     send<Agent>('POST', `/api/agents/${id}/subagents`, body),

@@ -76,10 +76,16 @@ function freeName(name: string, office: Snapshot): string {
   return `${name} ${number}`;
 }
 
-/** The accounts an agent can be started on from here: connected, and the server says it can. */
+/**
+ * The accounts an agent can be started on from here: ones the server says can. Claude Code needs
+ * no attaching, because it runs on the login this computer already has.
+ */
 function startableAccounts(office: Snapshot): Account[] {
   return office.accounts.filter(
-    (item) => item.status === 'connected' && ACCOUNT_LABELS[item.kind] && item.canStart,
+    (item) =>
+      (item.status === 'connected' || item.kind === 'claude_code') &&
+      ACCOUNT_LABELS[item.kind] &&
+      item.canStart,
   );
 }
 
@@ -88,6 +94,7 @@ const NAME_PROBLEM = /^(Give the agent a name|There is already an agent called)/
 
 function Form({ office, desk, project }: { office: Snapshot; desk?: number; project?: string }) {
   const set = useOfficeUi((state) => state.set);
+  const toast = useOfficeStore((state) => state.toast);
   const scope = useOfficeUi((state) => state.project);
   const accounts = startableAccounts(office);
   // Connected accounts that can't start an agent here are named, so nobody wonders where they went.
@@ -105,6 +112,7 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
   const [account, setAccount] = useState<AccountKind | ''>(accounts[0]?.kind ?? '');
   const [model, setModel] = useState('');
   const [cap, setCap] = useState(String(DEFAULT_CAP));
+  const [where, setWhere] = useState<'here' | 'terminal'>('here');
   // The project the office is showing, or none. Never another one: an agent filed under a
   // project nobody chose is lost in it. Opened from a project's own card, it is that project.
   const [projectId, setProjectId] = useState(
@@ -204,10 +212,12 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
         dailyCostCap: Number(cap),
         allowedTools: tools,
         ...(lead ? { leadId: lead } : desk === undefined ? {} : { desk }),
+        ...(account === 'claude_code' && where === 'terminal' ? { where } : {}),
       })
-      .then(() => {
+      .then((started) => {
         close();
         window.location.hash = '#office';
+        if (started.notice) toast(started.notice);
       })
       .catch((failure: Error) => {
         if (NAME_PROBLEM.test(failure.message)) nameProblem(failure.message);
@@ -304,6 +314,24 @@ function Form({ office, desk, project }: { office: Snapshot; desk?: number; proj
             </span>
           ) : null}
         </div>
+        {account === 'claude_code' && !office.demo ? (
+          <div className="field">
+            <label htmlFor="naWhere">Runs</label>
+            <select
+              className="in"
+              id="naWhere"
+              value={where}
+              onChange={(event) => setWhere(event.target.value as 'here' | 'terminal')}
+            >
+              <option value="here">Here in Mabari, with no terminal</option>
+              <option value="terminal">In a terminal window</option>
+            </select>
+            <span className="help">
+              Either way it uses the Claude Code you are signed in to, and risky actions wait for
+              your click.
+            </span>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="naModel">Model</label>
           <select

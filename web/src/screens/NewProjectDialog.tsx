@@ -99,6 +99,7 @@ function Brief() {
   const [repoHint, setRepoHint] = useState<{ text: string; bad: boolean } | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [mode, setMode] = useState<'plan' | 'go'>('plan');
+  const [where, setWhere] = useState<'here' | 'terminal'>('here');
   const [menu, setMenu] = useState(false);
   const [drag, setDrag] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -318,6 +319,7 @@ function Brief() {
       folder: repo?.src ?? '',
       branch: repo?.check.url ? repo.branch : '',
       mode,
+      ...(where === 'terminal' ? { where } : {}),
       brief: messages
         .filter((m) => m.who === 'you')
         .map((m) => m.text)
@@ -390,10 +392,20 @@ function Brief() {
         <p className="help">
           Runs on {label}
           {plan.account === 'claude_code'
-            ? '. Each Claude Code session joins this project when it starts in its folder.'
+            ? '. Mabari runs the lead here, in the project\'s folder, with no terminal.'
             : '.'}{' '}
           Say “use Codex” or “use Claude” to switch.
         </p>
+        {plan.account === 'claude_code' && !office?.demo ? (
+          <label className="switch" style={{ alignSelf: 'flex-start' }}>
+            <input
+              type="checkbox"
+              checked={where === 'terminal'}
+              onChange={(event) => setWhere(event.target.checked ? 'terminal' : 'here')}
+            />
+            <span>Open it in a terminal window instead</span>
+          </label>
+        ) : null}
         {isReady ? null : (
           <div className="banner amber" style={{ padding: '10px 12px' }}>
             <span className="grow">Connect {label} first.</span>

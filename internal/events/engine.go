@@ -74,6 +74,8 @@ type Engine struct {
 	defs []models.AgentDef
 	// accountNotes adds what only the running server knows to each account as the office shows it.
 	accountNotes func(account models.Account, demo bool) models.Account
+	// lastItem is the newest conversation item number of each agent seen since the server started.
+	lastItem map[string]int64
 }
 
 // New loads the office from the store. Pass nil for now to use the real clock.
@@ -89,6 +91,7 @@ func New(ctx context.Context, s *store.Store, now func() time.Time) (*Engine, er
 		dirty:      map[string]struct{}{},
 		eventNext:  map[string]int{},
 		connectors: map[string]Connector{},
+		lastItem:   map[string]int64{},
 	}
 	if err := e.load(ctx); err != nil {
 		return nil, fmt.Errorf("load office: %w", err)
@@ -222,6 +225,7 @@ func (e *Engine) resetMemory() {
 	e.agents, e.projects, e.messages, e.log = nil, nil, []models.Message{}, []models.LogEntry{}
 	e.dirty = map[string]struct{}{}
 	e.eventNext = map[string]int{}
+	e.lastItem = map[string]int64{}
 	e.accounts = map[models.AccountKind]*models.Account{}
 	for _, kind := range models.AccountKinds {
 		e.accounts[kind] = &models.Account{
@@ -567,6 +571,74 @@ func (e *Engine) AddMessage(
 	return message
 }
 
+// conversationTrimEvery is how many new items an agent adds between trims of its conversation.
+const conversationTrimEvery = 256
+
+// Converse adds an item to an agent's conversation, or replaces the item with its ID, and tells
+// every page. Secrets are masked and long text is cut here, so nothing a connector sends can reach
+// the database or a browser unchecked. Call inside Do.
+func (e *Engine) Converse(agentID string, item models.ConversationItem) models.ConversationItem {
+	ctx := context.Background()
+	item.Agent = agentID
+	if item.ID == "" {
+		item.ID = newID("item-")
+	}
+	if item.Time == 0 {
+		item.Time = e.now().UnixMilli()
+	}
+	var cutText, cutInput, cutOutput bool
+	item.Text, cutText = maskText(item.Text, models.ConversationTextLimit)
+	if item.Tool != nil {
+		tool := *item.Tool
+		tool.Summary, _ = maskText(tool.Summary, models.ConversationToolLimit)
+		tool.Input, cutInput = maskData(tool.Input)
+		tool.Output, cutOutput = maskData(tool.Output)
+		item.Tool = &tool
+	}
+	item = item.WithinLimits()
+	item.Clipped = item.Clipped || cutText || cutInput || cutOutput
+	seq, err := e.store.ConversationSeq(ctx, agentID, item.ID)
+	e.record(err)
+	if seq == 0 {
+		seq = e.nextItem(agentID)
+	}
+	item.Seq = seq
+	e.record(e.store.SaveConversationItem(ctx, item))
+	e.broadcast(models.ServerMessage{Type: models.MsgConversation, Item: &item})
+	return item
+}
+
+// nextItem numbers a new conversation item, trimming the agent's oldest now and then.
+func (e *Engine) nextItem(agentID string) int64 {
+	ctx := context.Background()
+	last, known := e.lastItem[agentID]
+	if !known {
+		var err error
+		last, err = e.store.LastConversationSeq(ctx, agentID)
+		e.record(err)
+	}
+	last++
+	e.lastItem[agentID] = last
+	if last%conversationTrimEvery == 0 && last > models.ConversationKept {
+		e.record(e.store.TrimConversation(ctx, agentID, last-models.ConversationKept))
+	}
+	return last
+}
+
+// ConverseDelta passes on more text for a streaming item, without storing it: the finished item
+// follows through Converse, and a page that missed some reloads the conversation. Connectors mask
+// the text themselves, since a secret can span two deltas. Call inside Do.
+func (e *Engine) ConverseDelta(agentID, itemID, text string) {
+	e.broadcast(models.ServerMessage{Type: models.MsgConversationDelta, AgentID: agentID, ID: itemID, Text: text})
+}
+
+// ConversationItem reads back one item of an agent's conversation, or returns nil. Call inside Do.
+func (e *Engine) ConversationItem(agentID, itemID string) *models.ConversationItem {
+	item, err := e.store.ConversationItem(context.Background(), agentID, itemID)
+	e.record(err)
+	return item
+}
+
 // Log adds a row to the activity log. Call inside Do.
 func (e *Engine) Log(agent string, kind models.LogType, message, outcome, chip string) models.LogEntry {
 	entry := models.LogEntry{
@@ -910,6 +982,12 @@ func (e *Engine) decide(agent *models.LiveAgent, decision, by string) {
 	}
 }
 
+// OfficeWatcher is a connector that needs to know when the office is cleared, because it runs
+// something for agents that are going. keep names the agents that stay. Called inside Do.
+type OfficeWatcher interface {
+	OfficeCleared(keep []string)
+}
+
 // Answerer is a connector whose agents can ask the person questions, and hear back.
 type Answerer interface {
 	// Answer passes checked answers to the agent's waiting session, and reports whether the
@@ -1180,12 +1258,28 @@ func (e *Engine) StoredAccounts() []models.Account {
 	return accounts
 }
 
-// ClearOffice empties agents, projects and history, keeping settings and accounts. Call inside Do.
-func (e *Engine) ClearOffice() {
-	e.record(e.store.ClearOffice(context.Background()))
+// ClearOffice empties agents, projects and history, keeping settings and accounts. keep names
+// agents the caller is about to put back, whose conversations stay. Call inside Do.
+func (e *Engine) ClearOffice(keep ...string) {
+	for _, connector := range e.connectors {
+		if watcher, ok := connector.(OfficeWatcher); ok {
+			watcher.OfficeCleared(keep)
+		}
+	}
+	e.record(e.store.ClearOffice(context.Background(), keep...))
 	accounts := e.accounts
 	e.resetMemory()
 	e.accounts = accounts
+	e.forgetHistory()
+}
+
+// forgetHistory drops the record of what changed, which holds conversation text, log rows and
+// replies, once what it describes has been deleted. A new boot id means a page that was away
+// reloads rather than resuming: without one, a page exactly up to date would be told to carry on
+// with an office that has gone. Pages still connected hear about it through Reset. Call inside Do.
+func (e *Engine) forgetHistory() {
+	e.history = nil
+	e.bootID = newID("")
 }
 
 // Wipe removes everything Mabari stores and returns to first run, with no projects, as on a fresh
@@ -1205,6 +1299,7 @@ func (e *Engine) Wipe() {
 	e.settings = settings
 	e.record(e.store.SaveSettings(context.Background(), settings))
 	e.firstRun, e.demo = true, false
+	e.forgetHistory()
 	e.Reset()
 }
 

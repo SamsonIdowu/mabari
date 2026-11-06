@@ -58,9 +58,17 @@ Usage:
 // mapEvery is how often Mabari brings map.md, its map of the projects, up to date.
 const mapEvery = 10 * time.Second
 
+// sessionsEndWait is how long Claude Code sessions have to end when Mabari stops, after which what
+// is left is killed.
+const sessionsEndWait = 8 * time.Second
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "mabari:", err)
+		var blocked actionBlocked
+		if errors.As(err, &blocked) {
+			os.Exit(2)
+		}
 		os.Exit(1)
 	}
 }
@@ -266,6 +274,7 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 	engine.AddConnector(claudecode.Source, claude)
 	_ = engine.Do(func() {
 		claude.TidyNames()
+		claude.Resume()
 		// Earlier versions kept a default that its account doesn't offer, and showed another.
 		engine.CorrectModels()
 		// Earlier versions stored the demo's pretend Claude Code connection. Without Mabari's
@@ -292,6 +301,10 @@ func openOffice(ctx context.Context, cfg config.Config) (*office, error) {
 
 func (o *office) close(stderr io.Writer) {
 	o.simulator.Stop()
+	// Before the database closes, so each session is saved as resumable.
+	ending, cancel := context.WithTimeout(context.Background(), sessionsEndWait)
+	defer cancel()
+	o.claude.Shutdown(ending)
 	if err := o.store.Close(); err != nil {
 		_, _ = fmt.Fprintln(stderr, "mabari: close database:", err)
 	}

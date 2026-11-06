@@ -110,6 +110,7 @@ func DefaultSettings() Settings {
 			"openai":    "gpt-5",
 		},
 		AutoApprove: AutoApprove{Scope: "safe"},
+		MaxSessions: DefaultSessions,
 	}
 }
 

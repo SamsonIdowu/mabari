@@ -195,6 +195,8 @@ type Agent struct {
 	// desk in the grid like everyone else, but only while it is on duty (AgentState.OnDuty).
 	// Otherwise its Desk is OffFloor and the office doesn't show it.
 	Workflow bool `json:"workflow"`
+	// Session is the Claude Code session behind this agent, or null for any other kind of agent.
+	Session *AgentSession `json:"session"`
 }
 
 // SessionState is what an agent is doing and how far along it is.
@@ -485,7 +487,18 @@ type Settings struct {
 	RequireLogin bool              `json:"requireLogin"`
 	Defaults     map[string]string `json:"defaults"`
 	AutoApprove  AutoApprove       `json:"autoApprove"`
+	// MaxSessions caps the Claude Code sessions Mabari runs at once, from MinSessions to
+	// MaxSessionsLimit. Sessions waiting for their next message give up their place when another
+	// needs it, because they resume with no loss.
+	MaxSessions int `json:"maxSessions"`
 }
+
+// Limits on the MaxSessions setting.
+const (
+	MinSessions      = 1
+	MaxSessionsLimit = 16
+	DefaultSessions  = 4
+)
 
 // Snapshot is the whole office at one moment. Apply ServerMessages with a higher Seq on top.
 type Snapshot struct {
@@ -572,6 +585,10 @@ const (
 	MsgToast    = "toast"
 	MsgDefs     = "defs"  // The agent definitions changed; Defs is the whole list.
 	MsgReset    = "reset" // The office was replaced by a wipe or the demo: reload and clear the view.
+	// MsgConversation adds Item to its agent's conversation, or replaces the item with its ID.
+	MsgConversation = "conversation"
+	// MsgConversationDelta adds Text to the streaming item ID of AgentID's conversation.
+	MsgConversationDelta = "conversation.delta"
 )
 
 // ServerMessage is one WebSocket message. Type says which of the other fields is set.
@@ -589,6 +606,10 @@ type ServerMessage struct {
 	Settings *Settings  `json:"settings,omitempty"`
 	Defs     []AgentDef `json:"defs,omitempty"`
 	Text     string     `json:"text,omitempty"`
+	// Item is the conversation entry of a MsgConversation.
+	Item *ConversationItem `json:"item,omitempty"`
+	// AgentID is whose conversation a MsgConversationDelta belongs to.
+	AgentID string `json:"agentId,omitempty"`
 }
 
 // WhisperStatus is what Settings shows about Local Whisper.

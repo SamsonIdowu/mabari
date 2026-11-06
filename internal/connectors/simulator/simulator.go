@@ -368,10 +368,59 @@ func (s *Simulator) makeAgent(spec agentSpec) *models.LiveAgent {
 		files = defaultFiles
 	}
 	agent.Files = files
+	if s.demoMode && spec.provider == models.ProviderClaude {
+		agent.Session = demoSession(agent)
+	}
 	s.engine.AddAgent(agent)
 	s.runtimes[agent.ID] = &runtime{stateLeft: stateLeft, spawned: spec.spawned}
 	s.seedFeed(agent)
+	if s.demoMode {
+		s.seedThread(agent)
+	}
 	return agent
+}
+
+// demoSession gives a demo agent a pretend session, so the session controls can be seen. Its
+// command is only an example, and the panel says so in the demo.
+func demoSession(agent *models.LiveAgent) *models.AgentSession {
+	id := "demo-" + strings.ReplaceAll(strings.ToLower(agent.Name), " ", "-")
+	return &models.AgentSession{
+		ID: id, Status: models.SessionRunning, Mode: "default", Started: true,
+		Resume: "cd " + agent.Folder + " && claude --resume " + id,
+	}
+}
+
+// seedThread gives a new demo agent a conversation so far, from what its steps already show. It
+// draws no random numbers, so the demo's sequence stays as the golden test has it.
+func (s *Simulator) seedThread(agent *models.LiveAgent) {
+	s.engine.Converse(agent.ID, models.ConversationItem{
+		Kind: models.ConversationUser, Text: agent.Task, From: models.SaidInMabari,
+	})
+	s.engine.Converse(agent.ID, models.ConversationItem{
+		Kind: models.ConversationAssistant, Text: "On it. I'll look at what's there first.",
+	})
+	for _, event := range slices.Backward(agent.Feed) {
+		s.converseStep(agent, event.Tool, event.Summary)
+	}
+}
+
+// converseStep adds a step to the agent's conversation. Thinking isn't a tool call.
+func (s *Simulator) converseStep(agent *models.LiveAgent, tool, summary string) {
+	if tool == "think" {
+		return
+	}
+	s.engine.Converse(agent.ID, models.ConversationItem{
+		Kind: models.ConversationTool,
+		Tool: &models.ToolCall{Name: tool, Summary: summary, State: models.ToolDone},
+	})
+}
+
+// converseExchange adds a message from the person and the agent's answer to its conversation.
+func (s *Simulator) converseExchange(agent *models.LiveAgent, text, said string) {
+	s.engine.Converse(agent.ID, models.ConversationItem{
+		Kind: models.ConversationUser, Text: text, From: models.SaidInMabari,
+	})
+	s.engine.Converse(agent.ID, models.ConversationItem{Kind: models.ConversationAssistant, Text: said})
 }
 
 func (s *Simulator) queriesFor(agent *models.LiveAgent) []string {
@@ -448,6 +497,9 @@ func (s *Simulator) setState(agent *models.LiveAgent, state models.AgentState) {
 	}
 	if tool, summary := s.toolCall(agent, state); tool != "" {
 		s.engine.AddEvent(agent, tool, summary, nil)
+		if s.demoMode {
+			s.converseStep(agent, tool, summary)
+		}
 	}
 	if agent.Lead != nil && s.random() < 0.35 {
 		if lead := s.engine.Agent(*agent.Lead); lead != nil {
@@ -475,6 +527,9 @@ func (s *Simulator) checkpoint(agent *models.LiveAgent) {
 	said := models.Ack(instruction.Text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
+	if s.demoMode {
+		s.converseExchange(agent, instruction.Text, said)
+	}
 }
 
 func (s *Simulator) stillHere(agent *models.LiveAgent) bool {
@@ -836,6 +891,9 @@ func (s *Simulator) Instruct(agent *models.LiveAgent, text string) {
 	said := models.Ack(text)
 	s.reply(agent, said, 7000)
 	s.engine.Answered(agent, said)
+	if s.demoMode {
+		s.converseExchange(agent, text, said)
+	}
 }
 
 // Interrupt pauses an agent after its current tool call, remembering where it was.
@@ -1200,7 +1258,11 @@ func (s *Simulator) endDemo(why, toast string) {
 			projects = append(projects, *project)
 		}
 	}
-	s.engine.ClearOffice()
+	keptIDs := make([]string, 0, len(kept))
+	for _, agent := range kept {
+		keptIDs = append(keptIDs, agent.ID)
+	}
+	s.engine.ClearOffice(keptIDs...)
 	for _, project := range projects {
 		s.engine.SaveProject(project)
 	}

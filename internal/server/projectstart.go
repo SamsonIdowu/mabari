@@ -92,7 +92,8 @@ func (a *api) officeForPlanner() planner.Office {
 	connected := map[models.AccountKind]bool{}
 	offered := map[models.AccountKind][]string{}
 	for _, account := range a.engine.Accounts() {
-		connected[account.Kind] = account.Status == models.AccountConnected
+		connected[account.Kind] = account.Status == models.AccountConnected ||
+			(account.Kind == models.AccountClaudeCode && account.CanStart)
 		offered[account.Kind] = account.Models
 	}
 	return planner.Office{
@@ -251,6 +252,8 @@ type startBody struct {
 	// Mode is "plan" for Plan first or "go" for Start right away.
 	Mode  string `json:"mode"`
 	Brief string `json:"brief"`
+	// Where is "terminal" to open Claude Code in a terminal, instead of running it here.
+	Where string `json:"where"`
 }
 
 func (b startBody) check() string {
@@ -315,7 +318,22 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 		problem    string
 		notice     string
 		realClaude bool
+		leadID     string
 	)
+	var demo bool
+	if err := a.engine.Do(func() { demo = a.simulator.DemoActive() }); err != nil {
+		internalError(w, err)
+		return
+	}
+	// A session Mabari runs, unless the person chose a terminal or none can run here.
+	running := body.Plan.Account == models.AccountClaudeCode && !demo && a.runsClaude() && body.Where != whereTerminal
+	// Asked before anything is made. A folder still to be cloned is checked once it has been.
+	if running && url == "" {
+		if trust := a.needsTrust(folder); trust != nil {
+			writeTrustNeeded(w, trust)
+			return
+		}
+	}
 	err := a.engine.Do(func() {
 		realClaude = body.Plan.Account == models.AccountClaudeCode && !a.simulator.DemoActive()
 		problem, notice = a.seatProject(body, name, folder, url, &project, &lead)
@@ -329,6 +347,18 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case running && url != "":
+		// The session starts once the repository is cloned.
+		go func() {
+			if a.cloneFor(project, lead, url, body.Branch, folder) {
+				if _, said := a.startLead(project, name, body); said != "" {
+					_ = a.engine.Do(func() { a.engine.Toast(said) })
+				}
+			}
+		}()
+		notice = "Cloning into " + folder + ". The session starts when it's done."
+	case running:
+		leadID, notice = a.startLead(project, name, body)
 	case realClaude && url != "":
 		// The session opens once the repository is cloned.
 		go func() {
@@ -351,7 +381,6 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	leadID := ""
 	if lead != nil {
 		leadID = lead.ID
 	}
@@ -361,7 +390,7 @@ func (a *api) startProject(w http.ResponseWriter, r *http.Request) {
 // seatProject saves the project and seats the lead, then brings in the team. Call inside Do.
 func (a *api) seatProject(body startBody, name, folder, url string, project *models.Project, lead **models.LiveAgent) (string, string) {
 	plan := body.Plan
-	if !a.connected(plan.Account) && !a.simulator.DemoActive() {
+	if !a.canUse(plan.Account) && !a.simulator.DemoActive() {
 		return "Connect " + accountLabel[plan.Account] + " first.", ""
 	}
 	if a.engine.AgentByName(plan.LeadName) != nil {
@@ -379,8 +408,8 @@ func (a *api) seatProject(body startBody, name, folder, url string, project *mod
 	if realCodex && body.Mode == "plan" && len(team) > 0 {
 		return "Plan first isn't ready for Codex yet. Choose Start right away.", ""
 	}
-	// Claude Code sessions run in the person's own terminal. Outside the demo, Mabari makes the
-	// project and says how to start; the session joins it by its folder.
+	// Outside the demo, Mabari makes the project first, and the Claude Code session starts once the
+	// request is answered: run here, or in a terminal it joins by its folder.
 	realClaude := plan.Account == models.AccountClaudeCode && !a.simulator.DemoActive()
 	// Outside the demo, an API key account has nothing real to run the team on yet.
 	if !a.simulator.DemoActive() && (plan.Account == models.AccountAnthropicKey || plan.Account == models.AccountOpenAIKey) {

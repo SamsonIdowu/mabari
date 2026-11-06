@@ -4013,6 +4013,66 @@ section[data-screen='components'] .page h1 {
   display: none;
 }
 
+/* "Tell me when it's done", on a panel and on a project card: a quiet switch, and what comes next.
+   Calm on purpose, with no colour of its own: only red and amber ask for attention. */
+.watch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+.watch .switch {
+  align-self: flex-start;
+}
+.watch .watchrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+}
+.watch .watchthen {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--fg2);
+}
+/* Every link-like button here is a target of 24 px at least, once the pages' 0.88 zoom is applied.
+   The margin takes the padding back out, so the rows keep their spacing. */
+.watch .linkbtn {
+  padding: 5px 0;
+  margin: -5px 0;
+}
+.watch .watchmore {
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.watch .watchmore:hover {
+  color: var(--fg);
+}
+.watch .thenform {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.watch .thenform select.in {
+  width: auto;
+  max-width: 130px;
+  min-height: 32px;
+  padding: 4px 8px;
+}
+.watch .thenform input.in {
+  flex: 1;
+  min-width: 110px;
+  width: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
 /* Giving a resting agent file a task, in its panel. */
 .restform {
   display: flex;

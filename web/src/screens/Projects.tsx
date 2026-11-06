@@ -13,12 +13,14 @@ import {
   STATE_CHIPS,
   stateLabel,
 } from '../format.ts';
-import type { LiveAgent, Project } from '../gen/models.ts';
+import type { LiveAgent, Project, Snapshot } from '../gen/models.ts';
 import { openAgent, useOfficeUi, type ProjectsTab } from '../office/uiStore.ts';
+import { projectWatchable } from '../office/watches.ts';
 import { Icon } from '../shell/Icon.tsx';
 import { PageHead } from './parts.tsx';
 import { ProjectChat } from './ProjectChat.tsx';
 import { ProjectDialog } from './ProjectDialog.tsx';
+import { WatchControl } from './WatchControl.tsx';
 
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 
@@ -308,7 +310,15 @@ function FolderLine({ project, edit }: { project: Project; edit: () => void }) {
   );
 }
 
-function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[] }) {
+function ProjectCard({
+  project,
+  agents,
+  office,
+}: {
+  project: Project;
+  agents: LiveAgent[];
+  office: Snapshot;
+}) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const remove = () =>
@@ -322,7 +332,7 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
   const colour = done ? 'var(--ok)' : project.color;
   const canComplete = project.status === 'ready' || project.status === 'idle';
   return (
-    <article className={done ? 'card eqcard pdone' : 'card eqcard'} style={{ height: 470 }}>
+    <article className={done ? 'card eqcard pdone' : 'card eqcard'}>
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {done ? (
@@ -393,6 +403,15 @@ function ProjectCard({ project, agents }: { project: Project; agents: LiveAgent[
         <b className="num">{percent}%</b>
       </div>
       {done ? <CompletedBody project={project} /> : <OpenBody project={project} agents={agents} />}
+      {!done && projectWatchable(project) ? (
+        <WatchControl
+          office={office}
+          kind="project"
+          target={project.id}
+          name={project.name}
+          compact
+        />
+      ) : null}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {canComplete ? (
           <button
@@ -454,7 +473,7 @@ function AllProjectsCard(props: { agents: LiveAgent[]; done: number; total: numb
   const longest = Math.max(0, ...working.map((agent) => agent.estimate?.secondsLeft ?? 0));
   const finish = Math.max(0, ...working.map((agent) => agent.estimate?.finishAt ?? 0));
   return (
-    <article className="card eqcard" style={{ height: 470 }}>
+    <article className="card eqcard">
       <div className="acchead" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <span className="pdot" style={{ background: '#8E8E93' }} />
@@ -588,6 +607,7 @@ export function Projects() {
                 key={project.id}
                 project={project}
                 agents={office.agents.filter((agent) => agent.projectId === project.id)}
+                office={office}
               />
             ))}
           </div>

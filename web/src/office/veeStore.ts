@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand';
 import { api, type VeeReply } from '../data/api.ts';
-import { addToastFilter, useOfficeStore } from '../data/officeStore.ts';
+import { addToastFilter, onWatchFired, useOfficeStore } from '../data/officeStore.ts';
 import { mabariCreate, mabariImprove } from './builderStore.tsx';
 import { slug } from './defs.ts';
 import { holderOf, relayLine, replyFor, stillWaiting, type Relay } from './relay.ts';
@@ -355,4 +355,12 @@ addToastFilter((text) => {
 
 useOfficeStore.subscribe((state, previous) => {
   if (state.office !== previous.office) watch();
+});
+
+// A watch that fires ("tell me when Ledger is done") says so in Home's chat too. The toast it
+// already got is the whole of what shows elsewhere, so unlike post this adds no second one.
+onWatchFired((fired) => {
+  const store = useVee.getState();
+  store.say({ ...VEE_HELLO, text: fired.text, gesture: 'nod', kind: '' }, true);
+  if (!store.onHome) useVee.setState((state) => ({ unread: state.unread + 1 }));
 });

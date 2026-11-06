@@ -12,6 +12,9 @@ import type {
   QuestionAnswer,
   Settings,
   Snapshot,
+  Watch,
+  WatchKind,
+  WatchOutcome,
   WhisperStatus,
 } from '../gen/models.ts';
 import { applyHeldChanges } from './heldChanges.ts';
@@ -366,6 +369,25 @@ export interface AccessInfo {
   token?: string;
 }
 
+/** What a watch is on, and the instruction it carries, if any. Mirrors internal/server watchBody. */
+export interface WatchRequest {
+  /** "agent" or "project". */
+  kind: WatchKind;
+  target: string;
+  then?: { agentId: string; text: string };
+}
+
+/**
+ * What setting a watch came to. Watch is null when the work had already ended, and Already says
+ * how; Text is Mabari's own sentence for it. Mirrors internal/server watchResult.
+ */
+export interface WatchResult {
+  watch: Watch | null;
+  already: WatchOutcome | '';
+  kept: boolean;
+  text: string;
+}
+
 /** The reply to POST /api/desks/start. Mirrors internal/server deskStartResult. */
 export interface DeskStartResult {
   notice: string;
@@ -431,6 +453,13 @@ export const api = {
   /** Takes back an instruction before it is delivered. */
   removeInstruction: (id: string) =>
     send<unknown>('DELETE', `/api/instructions/${encodeURIComponent(id)}`),
+  /** "Tell me when it's done": watches an agent or a project, with an instruction to send after. */
+  setWatch: (body: WatchRequest) => send<WatchResult>('POST', '/api/watches', body),
+  /** Turns a watch off, and with it any instruction it carried. */
+  cancelWatch: (id: string) => send<unknown>('DELETE', `/api/watches/${encodeURIComponent(id)}`),
+  /** Takes the instruction off a watch, which stays, so you are still told. */
+  cancelWatchThen: (id: string) =>
+    send<Watch>('DELETE', `/api/watches/${encodeURIComponent(id)}/then`),
   previewDispatch: (text: string, scope: Scope) =>
     send<{ decision: Decision | null }>('POST', '/api/dispatch/preview', { text, ...scope }),
   sendMessage: (text: string, mode: MessageMode, target: string, scope: Scope) =>

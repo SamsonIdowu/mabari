@@ -29,6 +29,9 @@ const (
 	MetaSettings = "app"
 	MetaFirstRun = "first_run"
 	MetaDemo     = "demo_active"
+	// MetaWatches holds the "tell me when it's done" watches, as JSON. They are few, and each is
+	// read and written whole, so they need no table of their own.
+	MetaWatches = "watches"
 )
 
 // Store is the database. One connection means one writer, so writes never contend.

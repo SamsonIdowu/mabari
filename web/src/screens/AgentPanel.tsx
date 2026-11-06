@@ -6,6 +6,7 @@ import { clockText, etaLong, etaShort, minsText, STATE_CHIPS, stateLabel } from 
 import type { LiveAgent, Message, Snapshot } from '../gen/models.ts';
 import { send } from '../office/send.ts';
 import { buildTrail, trailKinds, type TrailStep } from '../office/trail.ts';
+import { agentWatchable } from '../office/watches.ts';
 import { openThread, threadKey, useOfficeUi } from '../office/uiStore.ts';
 import {
   decisionColors,
@@ -21,6 +22,7 @@ import { AddSubagentDialog, AgentSettingsDialog } from './AgentDialogs.tsx';
 import { MessageBubble } from './Conversations.tsx';
 import { QuestionCard } from './QuestionCard.tsx';
 import { LatestConversation, SessionSection } from './SessionSection.tsx';
+import { WatchControl, WatchesWaiting } from './WatchControl.tsx';
 
 type Tab = 'live' | 'trail' | 'chats';
 type Dialog = 'settings' | 'subagent' | null;
@@ -809,7 +811,11 @@ export function AgentPanel({ office, agent }: { office: Snapshot; agent: LiveAge
             <SessionSection agent={agent} />
             <Section title="Current task">
               <p style={{ fontWeight: 700, fontSize: 15 }}>{agent.task}</p>
+              {agentWatchable(agent) ? (
+                <WatchControl office={office} kind="agent" target={agent.id} name={agent.name} />
+              ) : null}
             </Section>
+            <WatchesWaiting office={office} agentId={agent.id} />
             <OfficeSection
               agent={agent}
               subagents={subagents}

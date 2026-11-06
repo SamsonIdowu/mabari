@@ -1081,3 +1081,97 @@ func TestAutoApproveSettlesTheWholeLine(t *testing.T) {
 		}
 	}
 }
+
+func cardOf(tool string, toolInput any) models.Approval {
+	raw, _ := json.Marshal(toolInput)
+	return approvalFor(input{ToolName: tool, ToolInput: raw, Cwd: "/home/me/shop"}, "/home/me/shop")
+}
+
+func diffText(lines []models.DiffLine) string {
+	var text strings.Builder
+	for _, line := range lines {
+		text.WriteString(line.Kind + " " + line.Text + "\n")
+	}
+	return text.String()
+}
+
+// What the person is asked to approve is on the card, for every tool that changes a file.
+func TestACardShowsWhatAnEditChanges(t *testing.T) {
+	multi := cardOf("MultiEdit", map[string]any{
+		"file_path": "/home/me/shop/app.ts",
+		"edits": []map[string]any{
+			{"old_string": "first old", "new_string": "first new"},
+			{"old_string": "second old", "new_string": "password=hunter2hunter2"},
+		},
+	})
+	text := diffText(multi.Detail.Lines)
+	if multi.Detail.Path != "/home/me/shop/app.ts" || !strings.Contains(text, "del first old") ||
+		!strings.Contains(text, "add first new") || !strings.Contains(text, "del second old") {
+		t.Errorf("MultiEdit = %+v", multi.Detail)
+	}
+	if strings.Contains(text, "hunter2") {
+		t.Errorf("a secret on the card: %s", text)
+	}
+	// The cell's text is only data here: nothing runs it, and the card just has to show it.
+	notebook := cardOf("NotebookEdit", map[string]any{
+		"notebook_path": "/home/me/shop/analysis.ipynb", "cell_id": "c1", "new_source": "import os\nos.system('x')",
+	})
+	if notebook.Detail.Path != "/home/me/shop/analysis.ipynb" || !strings.Contains(diffText(notebook.Detail.Lines), "add os.system('x')") {
+		t.Errorf("NotebookEdit = %+v", notebook.Detail)
+	}
+	// It always needed a click, and knowing its path doesn't change that.
+	if notebook.RiskLevel != models.RiskHigh || strings.Contains(notebook.Risk, "outside") {
+		t.Errorf("NotebookEdit risk = %s: %s", notebook.RiskLevel, notebook.Risk)
+	}
+	if outside := cardOf("NotebookEdit", map[string]any{"notebook_path": "/etc/n.ipynb"}); !strings.Contains(outside.Risk, "outside") {
+		t.Errorf("outside the folder = %s", outside.Risk)
+	}
+	// Deleting a cell has no text, so the card shows the call itself rather than nothing.
+	deleted := cardOf("NotebookEdit", map[string]any{
+		"notebook_path": "/home/me/shop/analysis.ipynb", "cell_id": "c1", "edit_mode": "delete",
+	})
+	if !strings.Contains(diffText(deleted.Detail.Lines), `"edit_mode":"delete"`) {
+		t.Errorf("deleted = %+v", deleted.Detail)
+	}
+}
+
+// A long change says it was cut, so nobody thinks they saw all of it.
+func TestACardSaysWhenItLeavesLinesOut(t *testing.T) {
+	card := cardOf("Write", map[string]any{"file_path": "/home/me/shop/a", "content": strings.Repeat("line\n", 50)})
+	last := card.Detail.Lines[len(card.Detail.Lines)-1]
+	if len(card.Detail.Lines) != maxDiffLines+1 || !strings.Contains(last.Text, "11 more lines") {
+		t.Errorf("%d lines, last = %+v", len(card.Detail.Lines), last)
+	}
+}
+
+// An MCP or unknown tool can take anything, so the card shows the input itself. A summary would hide
+// every argument but the one Mabari happens to know.
+func TestACardShowsAnUnknownToolsInput(t *testing.T) {
+	card := cardOf("mcp__db__run", map[string]any{
+		"description": "Tidy up",
+		"sql":         "DROP TABLE users",
+		"api_key":     "plainvalue",
+		"nested":      map[string]any{"note": "Authorization: Bearer abcdefghijklmnop"},
+	})
+	if card.Type != models.ApprovalCommand || card.RiskLevel != models.RiskHigh {
+		t.Fatalf("card = %+v", card)
+	}
+	if !strings.Contains(card.Detail.Cmd, "DROP TABLE users") || !strings.Contains(card.Detail.Cmd, "Tidy up") {
+		t.Errorf("cmd = %s", card.Detail.Cmd)
+	}
+	for _, secret := range []string{"plainvalue", "abcdefghijklmnop"} {
+		if strings.Contains(card.Detail.Cmd, secret) {
+			t.Errorf("a secret on the card: %s", card.Detail.Cmd)
+		}
+	}
+	long := cardOf("Mystery", map[string]any{"text": strings.Repeat("a", 5000)})
+	if runes := []rune(long.Detail.Cmd); len(runes) != maxRawInput || runes[len(runes)-1] != '…' {
+		t.Errorf("%d runes", len(runes))
+	}
+	if card := cardOf("Mystery", map[string]any{"text": "a < b"}); !strings.Contains(card.Detail.Cmd, "a < b") {
+		t.Errorf("cmd = %s", card.Detail.Cmd)
+	}
+	if card := approvalFor(input{ToolName: "Mystery", Cwd: "/x"}, "/x"); card.Detail.Cmd != "Mystery" {
+		t.Errorf("no input: %s", card.Detail.Cmd)
+	}
+}

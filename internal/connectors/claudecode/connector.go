@@ -3,6 +3,7 @@
 package claudecode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -83,6 +84,14 @@ type toolInput struct {
 	OldString   string `json:"old_string"`
 	NewString   string `json:"new_string"`
 	Content     string `json:"content"`
+	// Edits is MultiEdit's list of changes, all to FilePath.
+	Edits []struct {
+		OldString string `json:"old_string"`
+		NewString string `json:"new_string"`
+	} `json:"edits"`
+	// NotebookPath is the notebook NotebookEdit changes, and NewSource the cell's new text.
+	NotebookPath string `json:"notebook_path"`
+	NewSource    string `json:"new_source"`
 }
 
 // Connector turns hook events into agents on the floor, and answers hooks with queued
@@ -963,10 +972,23 @@ func classify(in input, folder string) models.Approval {
 		}
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
 		path := args.FilePath
+		if in.ToolName == "NotebookEdit" {
+			path = args.NotebookPath
+		}
 		verdict := risk.Classify(risk.Action{Kind: risk.KindEdit, Path: path, Folder: folder})
+		// A notebook's cells can run when it is opened, so it never passes as a routine edit.
+		if in.ToolName == "NotebookEdit" && verdict.Level == models.RiskLow {
+			verdict = risk.Verdict{Level: models.RiskHigh, Reason: "Notebook cells can run code, so this needs a check."}
+		}
+		lines := diffOf(args)
+		// A card with nothing on it would ask for a click on something unseen, as a cell being
+		// deleted would.
+		if len(lines) == 0 {
+			lines = []models.DiffLine{{Kind: "ctx", Text: rawInput(in.ToolName, in.ToolInput)}}
+		}
 		return models.Approval{
 			Type: models.ApprovalFile, Title: "Change a file",
-			Detail: models.ApprovalDetail{Path: path, Lines: diffOf(args)},
+			Detail: models.ApprovalDetail{Path: path, Lines: lines},
 			Risk:   verdict.Reason, RiskLevel: verdict.Level,
 		}
 	case "Read":
@@ -979,32 +1001,62 @@ func classify(in input, folder string) models.Approval {
 	default:
 		return models.Approval{
 			Type: models.ApprovalCommand, Title: "Use " + in.ToolName,
-			Detail: models.ApprovalDetail{Cmd: summaryOf(in.ToolName, in.ToolInput)},
+			Detail: models.ApprovalDetail{Cmd: rawInput(in.ToolName, in.ToolInput)},
 			Risk:   "Mabari has no rule for this tool, so it always asks.", RiskLevel: models.RiskHigh,
 		}
 	}
 }
 
-// maxDiffLines keeps an approval card readable.
-const maxDiffLines = 40
+// maxDiffLines keeps an approval card readable, and maxRawInput does the same for a tool's input.
+const (
+	maxDiffLines = 40
+	maxRawInput  = 1500
+)
+
+// rawInput is a tool's input as the person should see it: the JSON itself, because Mabari can't
+// tell which of an unknown tool's arguments matter, with secrets masked and clipped to fit a card.
+func rawInput(tool string, raw json.RawMessage) string {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		if text := strings.TrimSpace(string(raw)); text != "" {
+			return clip(redact.Text(strings.ReplaceAll(text, "\n", " ")), maxRawInput)
+		}
+		return tool
+	}
+	var text bytes.Buffer
+	encoder := json.NewEncoder(&text)
+	encoder.SetEscapeHTML(false) // Shown as text, so < stays <.
+	if encoder.Encode(redact.Value(value)) != nil {
+		return tool
+	}
+	return clip(redact.Text(text.String()), maxRawInput)
+}
 
 func diffOf(args toolInput) []models.DiffLine {
 	var lines []models.DiffLine
+	hidden := 0
 	add := func(kind, text string) {
+		if text == "" {
+			return
+		}
 		for _, line := range strings.Split(redact.Text(text), "\n") {
 			if len(lines) < maxDiffLines {
 				lines = append(lines, models.DiffLine{Kind: kind, Text: line})
+			} else {
+				hidden++
 			}
 		}
 	}
-	if args.OldString != "" {
-		add("del", args.OldString)
+	add("del", args.OldString)
+	add("add", args.NewString)
+	add("add", args.Content)
+	for _, edit := range args.Edits {
+		add("del", edit.OldString)
+		add("add", edit.NewString)
 	}
-	if args.NewString != "" {
-		add("add", args.NewString)
-	}
-	if args.Content != "" {
-		add("add", args.Content)
+	add("add", args.NewSource)
+	if hidden > 0 {
+		lines = append(lines, models.DiffLine{Kind: "ctx", Text: "… and " + strconv.Itoa(hidden) + " more lines not shown"})
 	}
 	return lines
 }

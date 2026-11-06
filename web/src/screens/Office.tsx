@@ -285,7 +285,7 @@ function FilterBar({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }
   ];
 
   return (
-    <div className="obar2 inhead">
+    <div className="obar2 inhead" id="officeFilters">
       <div className="ddwrap">
         <button
           type="button"
@@ -1040,14 +1040,38 @@ const HEAD_GAP = 12;
 
 function OfficeHead({ office, scoped }: { office: Snapshot; scoped: LiveAgent[] }) {
   const head = useOneRowWhenItFits();
+  // On a phone the filters are folded away behind a button, so the floor has the screen. A data
+  // attribute, not a class, because the header's own measuring adds and removes classes.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filters = useFilters();
+  const narrowed = [
+    filters.project !== 'all',
+    filters.provider !== 'all',
+    filters.model !== 'all',
+    filters.status !== 'all',
+  ].filter(Boolean).length;
   return (
-    <div className="ohead" ref={head}>
+    <div className="ohead" ref={head} data-filters={filtersOpen ? 'open' : 'closed'}>
       <div className="ohtitle">
         <h1 id="oTitle">Agents</h1>
         <Summary scoped={scoped} />
       </div>
       <FilterBar office={office} scoped={scoped} />
       <div className="ohact">
+        {/* Only on a phone: the filters sit behind this, and say how many are narrowing the floor. */}
+        <button
+          type="button"
+          className="btn filtertoggle"
+          aria-expanded={filtersOpen}
+          aria-controls="officeFilters"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <Icon>
+            <path d="M4 6h16M7 12h10M10 18h4" />
+          </Icon>
+          Filters
+          {narrowed ? <span className="badge calm">{narrowed}</span> : null}
+        </button>
         <AutoApproveButton settings={office.settings} />
         <PauseEveryone office={office} />
         <MabariUpdatesButton />

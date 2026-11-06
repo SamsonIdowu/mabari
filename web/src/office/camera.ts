@@ -84,7 +84,7 @@ export function frameView(
   // Where on the screen the middle of the rect should be, and the view that puts it there.
   const at = { x: size.width / 2, y: clear.top + availH / 2 };
   const offsetX = (size.width - world.width * fit) / 2;
-  const offsetY = Math.max((size.height - world.height * fit) / 2, WALL_BAR - BACK_WALL * fit);
+  const offsetY = floorTop(size, world, fit);
   const centre = { x: (rect.x0 + rect.x1) / 2, y: (rect.y0 + rect.y1) / 2 };
   const cx = (world.width / 2 - (at.x - offsetX) / fit) / zoom + centre.x;
   const cy = (world.height / 2 - (at.y - offsetY) / fit) / zoom + centre.y;
@@ -115,7 +115,7 @@ export function fitScale(size: Size): number {
 /** Narrower than this, the floor is not drawn whole: it would be too small to read. */
 export const PHONE_WIDTH = 560;
 /** On a phone the floor is drawn at least this big, and at most this, however tall the screen. */
-export const PHONE_FIT = { min: 0.5, max: 0.6 } as const;
+export const PHONE_FIT = { min: 0.5, max: 0.75 } as const;
 
 /**
  * The scale on a phone. Fitting the whole floor into a screen 330 pixels wide draws agents a few
@@ -148,12 +148,23 @@ export const WALL_BAR = 58;
 /** The back wall's height in world pixels, which sits under the wall bar. */
 const BACK_WALL = 44;
 
+/**
+ * Where the floor's top edge is on the canvas at 100%. It is centred, but never so high that the
+ * wall bar covers the first row of desks. On a phone it sits right under the bar, since a floor
+ * drawn to the screen's height has no room to spare and what is left over is better below it.
+ */
+function floorTop(size: Size, world: Size, fit: number): number {
+  const lowest = WALL_BAR - BACK_WALL * fit;
+  return size.width < PHONE_WIDTH
+    ? lowest
+    : Math.max((size.height - world.height * fit) / 2, lowest);
+}
+
 /** Shows the office in the canvas at fitScale times the zoom, centred on the view's point. */
 export function viewMatrix(view: View, size: Size, world: Size = BASE_WORLD): Matrix {
   const fit = fitScale(size);
   const offsetX = (size.width - world.width * fit) / 2;
-  // The floor starts below the wall bar, so its first row of desks is never hidden.
-  const offsetY = Math.max((size.height - world.height * fit) / 2, WALL_BAR - BACK_WALL * fit);
+  const offsetY = floorTop(size, world, fit);
   return {
     a: fit * view.s,
     e: offsetX + fit * (world.width / 2 - view.cx * view.s),

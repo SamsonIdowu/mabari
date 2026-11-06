@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { cardShown, useAway } from '../data/away.ts';
 import { catchUp, recapGroups } from '../data/catchUp.ts';
 import { useOfficeStore } from '../data/officeStore.ts';
@@ -19,7 +19,7 @@ function openAgentById(id: string) {
  * What happened, as lists with a link to each agent still here. Every number comes from the
  * server; the page only words them. A long list is cut and says by how many.
  */
-export function RecapBody({ recap }: { recap: Recap }) {
+export function RecapBody({ recap, limit }: { recap: Recap; limit?: number | undefined }) {
   // Only an approval or an error waiting makes the count red; a question waits calmly.
   const red = useOfficeStore((state) => {
     const agents = state.office?.agents ?? [];
@@ -38,7 +38,7 @@ export function RecapBody({ recap }: { recap: Recap }) {
               </span>
             </h3>
             <ul className="hclist">
-              {group.items.map((item, index) => (
+              {group.items.slice(0, limit).map((item, index) => (
                 <li key={`${item.agentId}-${item.time}-${index}`}>
                   {item.hue ? (
                     <span className="idot" style={{ ['--ac' as string]: item.hue }} />
@@ -59,8 +59,10 @@ export function RecapBody({ recap }: { recap: Recap }) {
                   </span>
                 </li>
               ))}
-              {group.count > group.items.length ? (
-                <li className="muted">and {group.count - group.items.length} more</li>
+              {group.count > Math.min(group.items.length, limit ?? Infinity) ? (
+                <li className="muted">
+                  and {group.count - Math.min(group.items.length, limit ?? Infinity)} more
+                </li>
               ) : null}
             </ul>
           </section>
@@ -78,6 +80,22 @@ function needsKey(agents: LiveAgent[] | undefined): string {
     .join(',');
 }
 
+/** Where the card sits above Mabari instead of beside it, and has room for little. */
+const NARROW = '(max-width: 1100px)';
+/** How many rows of each kind it shows there until it is opened out. */
+export const NARROW_ROWS = 3;
+
+function useNarrow(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(NARROW);
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(NARROW).matches,
+  );
+}
+
 /**
  * "While you were away": a calm card on Home after the person comes back from at least 15
  * minutes. It shows only when something happened, and stays dismissed for that absence.
@@ -88,6 +106,10 @@ export function AwayCard() {
   const ready = useOfficeStore((state) => state.office !== null);
   const waiting = useOfficeStore((state) => needsKey(state.office?.agents));
   const [recap, setRecap] = useState<Recap | null>(null);
+  // Narrow, the card shows a few rows of each kind and opens out to all of them on request, so it
+  // is never cut off in the middle of a row, and never crowds Mabari's speech bubble.
+  const narrow = useNarrow();
+  const [opened, setOpened] = useState(false);
   const from = absence?.from;
   const to = absence?.to;
   const dismissed = absence?.dismissed ?? false;
@@ -109,8 +131,17 @@ export function AwayCard() {
   if (!absence || !recap || recap.since !== absence.from || !cardShown(absence, recap.happened)) {
     return null;
   }
+  const cut = narrow && !opened ? NARROW_ROWS : undefined;
+  const longer = recapGroups(recap).some(
+    ({ group }) => group.count > NARROW_ROWS || group.items.length > NARROW_ROWS,
+  );
   return (
-    <aside className="awaycard" aria-labelledby="awayTitle" data-testid="away-card">
+    <aside
+      className="awaycard"
+      aria-labelledby="awayTitle"
+      data-testid="away-card"
+      data-open={narrow && opened ? 'yes' : undefined}
+    >
       <div className="awayhead">
         <h2 id="awayTitle">
           While you were away{' '}
@@ -120,7 +151,17 @@ export function AwayCard() {
           Dismiss
         </button>
       </div>
-      <RecapBody recap={recap} />
+      <RecapBody recap={recap} limit={cut} />
+      {narrow && longer ? (
+        <button
+          type="button"
+          className="btn sm awaymore"
+          aria-expanded={opened}
+          onClick={() => setOpened(!opened)}
+        >
+          {opened ? 'Show less' : 'Show everything'}
+        </button>
+      ) : null}
     </aside>
   );
 }

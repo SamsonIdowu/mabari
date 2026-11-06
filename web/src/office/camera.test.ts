@@ -49,10 +49,10 @@ describe('fitScale on a phone', () => {
     expect(fitScale(phone)).toBeGreaterThan(whole * 2);
     expect(fitScale(phone)).toBeGreaterThanOrEqual(PHONE_FIT.min);
     expect(fitScale(phone)).toBeLessThanOrEqual(PHONE_FIT.max);
-    // So an agent is about 19 pixels across and 26 tall, where it was 9 and 12: a face and a name
+    // So an agent is about 24 pixels across and 33 tall, where it was 9 and 12: a face and a name
     // you can see.
-    expect(fitScale(phone) * 32).toBeGreaterThan(18);
-    expect(fitScale(phone) * 44).toBeGreaterThan(25);
+    expect(fitScale(phone) * 32).toBeGreaterThan(22);
+    expect(fitScale(phone) * 44).toBeGreaterThan(30);
   });
 
   it('shows the first desks and lets the rest be dragged to', () => {
@@ -64,6 +64,16 @@ describe('fitScale on a phone', () => {
     const end = clampView({ cx: 99999, cy: 352, s: 1 }, world, visible);
     expect(end.cx).toBe(world.width - visible.width / 2);
     expect(clampView({ cx: -99999, cy: 352, s: 1 }, world, visible).cx).toBe(visible.width / 2);
+  });
+
+  it('puts the floor right under the wall bar, so no screen is left empty above it', () => {
+    const phone = { width: 332, height: 727 };
+    const world = sizeOf(floorFor(desksUpTo(4)));
+    const top = atRest({ x: 0, y: 44 }, phone, world);
+    expect(top.y).toBeCloseTo(WALL_BAR, 3);
+    // A wider screen still centres the floor.
+    const wide = { width: 1124, height: 802 };
+    expect(atRest({ x: 0, y: 44 }, wide, world).y).toBeGreaterThan(WALL_BAR + 20);
   });
 
   it('grows with a taller phone, up to a limit, and never past what the height allows', () => {
